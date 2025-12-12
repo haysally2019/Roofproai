@@ -1,8 +1,8 @@
-
 import React, { useState } from 'react';
 import { Company, SubscriptionTier, User, UserRole, SoftwareLead, SoftwareLeadStatus, Tab, AgentConfig } from '../types';
-import { Building2, Users, TrendingUp, MoreVertical, Plus, ShieldCheck, Search, CheckCircle, XCircle, Briefcase, Mail, Phone, Calendar, ArrowRight, DollarSign, Mic, Save, Key, ChevronLeft, Zap, Loader2, Play } from 'lucide-react';
+import { Building2, Users, TrendingUp, MoreVertical, Plus, Search, CheckCircle, XCircle, Briefcase, Mail, DollarSign, Mic, Save, Key, ChevronLeft, Zap, Loader2 } from 'lucide-react';
 import { useStore } from '../lib/store';
+import { createVoiceAgent } from '../services/elevenLabsService';
 
 interface SuperAdminDashboardProps {
   view: Tab;
@@ -10,7 +10,7 @@ interface SuperAdminDashboardProps {
   onAddCompany: (company: Company) => void;
   onUpdateStatus: (id: string, status: Company['status']) => void;
   users: User[];
-  onAddUser: (user: Partial<User>) => void; // Used for adding internal SaaS reps
+  onAddUser: (user: Partial<User>) => void;
   onRemoveUser: (userId: string) => void;
   currentUser: User;
   softwareLeads: SoftwareLead[];
@@ -20,7 +20,7 @@ interface SuperAdminDashboardProps {
 
 const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ 
   view,
-  companies, onAddCompany, onUpdateStatus, 
+  companies, 
   users, onAddUser, onRemoveUser, currentUser,
   softwareLeads, onAddSoftwareLead, onUpdateSoftwareLead
 }) => {
@@ -49,7 +49,6 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
   const saasReps = users.filter(u => u.role === UserRole.SAAS_REP);
   const totalSoftwareLeads = softwareLeads.length;
-  const closedDeals = softwareLeads.filter(l => l.status === 'Closed Won').length;
 
   // --- HANDLERS ---
 
@@ -89,6 +88,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const handleAgentSave = () => {
     if (selectedCompanyId && agentForm) {
       updateCompany({ id: selectedCompanyId, agentConfig: agentForm });
+      addToast("Agent configuration saved locally.", "success");
     }
   };
 
@@ -98,33 +98,41 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       setAgentForm(company.agentConfig || {
         id: `ag-${company.id}`,
         elevenLabsAgentId: '',
-        elevenLabsApiKey: '',
-        voiceId: 'Sarah_Professional',
+        elevenLabsApiKey: '', // This will now come from .env mostly
+        voiceId: '21m00Tcm4TlvDq8ikWAM', // Default Rachel
         name: `${company.name} Assistant`,
         systemPrompt: "You are a helpful roofing receptionist. Ask for name, address, and damage type.",
-        firstMessage: `Thanks for calling ${company.name}. This is the automated assistant. How can I help you?`,
+        firstMessage: `Thanks for calling ${company.name}. How can I help you?`,
         isActive: false
       });
   };
 
-  const handleAutoProvision = () => {
+  const handleAutoProvision = async () => {
       if (!agentForm) return;
       setIsProvisioning(true);
-      // Simulate API call to ElevenLabs
-      setTimeout(() => {
-          const mockAgentId = `E1_prov_${Math.random().toString(36).substring(7)}`;
-          const mockKey = `sk_${Math.random().toString(36).substring(7)}`;
-          
+      
+      // REAL CALL to ElevenLabs Service
+      const result = await createVoiceAgent(
+          agentForm.name,
+          agentForm.firstMessage,
+          agentForm.systemPrompt
+      );
+
+      setIsProvisioning(false);
+
+      if (result.error) {
+          addToast(`Error: ${result.error}`, 'error');
+          return;
+      }
+
+      if (result.agentId) {
           setAgentForm(prev => prev ? ({
               ...prev,
-              elevenLabsAgentId: mockAgentId,
-              elevenLabsApiKey: prev.elevenLabsApiKey || mockKey,
+              elevenLabsAgentId: result.agentId,
               isActive: true
           }) : null);
-          
-          setIsProvisioning(false);
-          addToast("Agent successfully created on ElevenLabs Platform", "success");
-      }, 2000);
+          addToast("Success! Real agent created on ElevenLabs.", "success");
+      }
   };
 
   const getStatusBadge = (status: SoftwareLeadStatus) => {
@@ -462,20 +470,13 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-slate-800">ElevenLabs Integration</h3>
-                                    <p className="text-xs text-slate-500">Manage API keys and Agent IDs.</p>
+                                    <p className="text-xs text-slate-500">Master API Key is loaded from Environment.</p>
                                 </div>
                             </div>
                             {agentForm && (
                                 <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">API Key</label>
-                                        <input 
-                                            type="password"
-                                            value={agentForm.elevenLabsApiKey || ''}
-                                            onChange={(e) => setAgentForm({...agentForm, elevenLabsApiKey: e.target.value})}
-                                            className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm" 
-                                            placeholder="sk_..."
-                                        />
+                                    <div className="bg-slate-50 p-3 rounded border border-slate-100 text-xs text-slate-600">
+                                        Using Master API Key: <span className="font-mono">VITE_ELEVENLABS_API_KEY</span>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Agent ID</label>
