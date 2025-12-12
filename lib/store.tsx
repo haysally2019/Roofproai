@@ -1,11 +1,12 @@
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { 
-  User, Company, Lead, CalendarEvent, Task, Invoice, 
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import {
+  User, Company, Lead, CalendarEvent, Task, Invoice,
   Notification, UserRole, SubscriptionTier, LeadStatus, Tab, Toast,
   CallLog, AgentConfig, AutomationRule,
   Supplier, MaterialOrder
 } from '../types';
+import { supabase } from './supabase';
 
 // --- MOCK CONSTANTS ---
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
@@ -89,7 +90,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // Core State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DASHBOARD);
-  
+  const [loading, setLoading] = useState(true);
+
   // Data State
   const [companies, setCompanies] = useState<Company[]>(MOCK_COMPANIES);
   const [users, setUsers] = useState<User[]>(MOCK_USERS);
@@ -97,7 +99,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  
+
   // Local-only state
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [automations, setAutomations] = useState<AutomationRule[]>([]);
@@ -109,37 +111,153 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
+  const addToast = (message: string, type: Toast['type']) => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => removeToast(id), 3000);
+  };
+  const removeToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
+
+  const loadUserProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*, companies(*)')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        const user: User = {
+          id: data.id,
+          name: data.name,
+          email: data.email,
+          role: data.role as UserRole,
+          companyId: data.company_id,
+          avatarInitials: data.avatar_initials || data.name.slice(0, 2).toUpperCase()
+        };
+        setCurrentUser(user);
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      addToast('Error loading profile', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        loadUserProfile(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        loadUserProfile(session.user.id);
+      } else {
+        setCurrentUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   // --- ACTIONS ---
 
-  const login = async (email: string, pass: string): Promise<boolean> => {
-    // Local simulation
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === pass);
-    if (user) { 
-        setCurrentUser(user); 
-        return true; 
-    }
-    // Super Admin Backdoor
-    if (email === 'admin@roofpro.app' && pass === 'password') {
-        const admin: User = { id: 'admin', name: 'Super Admin', email, role: UserRole.SUPER_ADMIN, companyId: null, avatarInitials: 'SA' };
-        setCurrentUser(admin);
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        addToast(error.message, "error");
+        return false;
+      }
+
+      if (data.user) {
+        await loadUserProfile(data.user.id);
         return true;
+      }
+
+      return false;
+    } catch (error: any) {
+      console.error('Login error:', error);
+      addToast(error.message || "Login failed", "error");
+      return false;
     }
-    addToast("Invalid credentials", "error");
-    return false;
   };
 
   const register = async (companyName: string, name: string, email: string, password: string): Promise<boolean> => {
-    // Local simulation
-    const newUser: User = { id: `u-${Date.now()}`, name, email, password, role: UserRole.COMPANY_ADMIN, companyId: 'c1', avatarInitials: name.slice(0,2).toUpperCase() };
-    // In a real app we would create a new company ID here too
-    setCurrentUser(newUser);
-    return true;
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password
+      });
+
+      if (authError) {
+        addToast(authError.message, "error");
+        return false;
+      }
+
+      if (!authData.user) {
+        addToast("Registration failed", "error");
+        return false;
+      }
+
+      const { data: companyData, error: companyError } = await supabase
+        .from('companies')
+        .insert({
+          name: companyName,
+          tier: 'Starter',
+          status: 'Active',
+          setup_complete: false
+        })
+        .select()
+        .single();
+
+      if (companyError) {
+        addToast("Failed to create company", "error");
+        return false;
+      }
+
+      const { error: userError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          name,
+          email,
+          role: 'Company Owner',
+          company_id: companyData.id,
+          avatar_initials: name.slice(0, 2).toUpperCase()
+        });
+
+      if (userError) {
+        addToast("Failed to create user profile", "error");
+        return false;
+      }
+
+      await loadUserProfile(authData.user.id);
+      addToast("Account created successfully", "success");
+      return true;
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      addToast(error.message || "Registration failed", "error");
+      return false;
+    }
   };
 
   const logout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
     setLeads(MOCK_LEADS);
-    window.location.reload();
   };
 
   // --- ENTITY CRUD HANDLERS ---
@@ -187,25 +305,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setInvoices(prev => prev.map(i => i.id === id ? {...i, status} : i));
   };
 
-  // Helpers
-  const addToast = (message: string, type: Toast['type']) => {
-    const id = Date.now().toString();
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => removeToast(id), 3000);
-  };
-  const removeToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
-  
   const setTab = (tab: Tab) => setActiveTab(tab);
   const addAutomation = (r: AutomationRule) => setAutomations(prev => [...prev, r]);
   const toggleAutomation = (id: string) => setAutomations(prev => prev.map(a => a.id === id ? {...a, active: !a.active} : a));
   const deleteAutomation = (id: string) => setAutomations(prev => prev.filter(a => a.id !== id));
   const addOrder = (o: MaterialOrder) => setOrders(prev => [o, ...prev]);
 
+  if (loading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-900">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <StoreContext.Provider value={{
-      currentUser, activeTab, companies, users, leads, events, tasks, invoices, 
+      currentUser, activeTab, companies, users, leads, events, tasks, invoices,
       toasts, notifications, callLogs, automations, suppliers, orders,
-      login, register, logout, setTab, addToast, removeToast, updateLead, addLead, 
+      login, register, logout, setTab, addToast, removeToast, updateLead, addLead,
       updateCompany, updateUser, addAutomation, toggleAutomation, deleteAutomation, addOrder,
       addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus
     }}>
