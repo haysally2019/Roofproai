@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Company, SubscriptionTier, User, UserRole, SoftwareLead, SoftwareLeadStatus, Tab, AgentConfig } from '../types';
-import { Building2, Users, TrendingUp, MoreVertical, Plus, Search, CheckCircle, XCircle, Briefcase, Mail, DollarSign, Mic, Save, Key, ChevronLeft, Zap, Loader2 } from 'lucide-react';
+import { Building2, Users, TrendingUp, MoreVertical, Plus, Search, CheckCircle, XCircle, Briefcase, Mail, DollarSign, Mic, Save, Key, ChevronLeft, Zap, Loader2, Clock, Volume2 } from 'lucide-react';
 import { useStore } from '../lib/store';
-import { createVoiceAgent } from '../services/elevenLabsService';
+import { createVoiceAgent, updateVoiceAgent, getAvailableVoices } from '../services/elevenLabsService';
 
 interface SuperAdminDashboardProps {
   view: Tab;
@@ -40,6 +40,14 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [agentForm, setAgentForm] = useState<AgentConfig | null>(null);
   const [isProvisioning, setIsProvisioning] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<{id: string, name: string}[]>([]);
+
+  // Load voices when entering Agent view
+  useEffect(() => {
+      if (view === Tab.ADMIN_AGENTS) {
+          getAvailableVoices().then(voices => setAvailableVoices(voices));
+      }
+  }, [view]);
 
   // --- STATS ---
   const totalRevenue = companies.reduce((acc, curr) => {
@@ -85,10 +93,29 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     setNewRep({ name: '', email: '' });
   };
 
-  const handleAgentSave = () => {
+  const handleAgentSave = async () => {
     if (selectedCompanyId && agentForm) {
+      setIsProvisioning(true);
+
+      // 1. Sync to ElevenLabs if Agent ID exists
+      if (agentForm.elevenLabsAgentId) {
+          const result = await updateVoiceAgent(agentForm.elevenLabsAgentId, {
+              firstMessage: agentForm.firstMessage,
+              systemPrompt: agentForm.systemPrompt,
+              voiceId: agentForm.voiceId
+          });
+
+          if (!result.success) {
+              addToast(`Cloud Sync Error: ${result.error}`, 'error');
+              setIsProvisioning(false);
+              return;
+          }
+      }
+
+      // 2. Save to local DB
       updateCompany({ id: selectedCompanyId, agentConfig: agentForm });
-      addToast("Agent configuration saved locally.", "success");
+      addToast("Agent configuration synced and saved.", "success");
+      setIsProvisioning(false);
     }
   };
 
@@ -98,12 +125,19 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       setAgentForm(company.agentConfig || {
         id: `ag-${company.id}`,
         elevenLabsAgentId: '',
-        elevenLabsApiKey: '', // This will now come from .env mostly
+        elevenLabsApiKey: '', 
         voiceId: '21m00Tcm4TlvDq8ikWAM', // Default Rachel
         name: `${company.name} Assistant`,
         systemPrompt: "You are a helpful roofing receptionist. Ask for name, address, and damage type.",
         firstMessage: `Thanks for calling ${company.name}. How can I help you?`,
-        isActive: false
+        isActive: false,
+        businessHours: {
+            enabled: false,
+            start: "09:00",
+            end: "17:00",
+            days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+            timezone: "America/New_York"
+        }
       });
   };
 
@@ -115,7 +149,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       const result = await createVoiceAgent(
           agentForm.name,
           agentForm.firstMessage,
-          agentForm.systemPrompt
+          agentForm.systemPrompt,
+          agentForm.voiceId
       );
 
       setIsProvisioning(false);
@@ -126,11 +161,16 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       }
 
       if (result.agentId) {
-          setAgentForm(prev => prev ? ({
-              ...prev,
+          const updatedForm = {
+              ...agentForm,
               elevenLabsAgentId: result.agentId,
               isActive: true
-          }) : null);
+          };
+          setAgentForm(updatedForm);
+          // Auto-save to DB after provisioning
+          if (selectedCompanyId) {
+              updateCompany({ id: selectedCompanyId, agentConfig: updatedForm });
+          }
           addToast("Success! Real agent created on ElevenLabs.", "success");
       }
   };
@@ -457,11 +497,11 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                          </button>
                          <div>
                             <h2 className="text-xl font-bold text-slate-900">Configuring: {companies.find(c => c.id === selectedCompanyId)?.name}</h2>
-                            <p className="text-xs text-slate-500">ElevenLabs Agent Settings</p>
+                            <p className="text-xs text-slate-500">ElevenLabs Agent Settings (Super Admin View)</p>
                          </div>
                     </div>
 
-                    {/* API Credentials */}
+                    {/* Agent Status & Connection */}
                     <div className="space-y-6">
                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                             <div className="flex items-center gap-3 mb-6">
@@ -469,15 +509,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                                     <Key size={20} />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-slate-800">ElevenLabs Integration</h3>
-                                    <p className="text-xs text-slate-500">Master API Key is loaded from Environment.</p>
+                                    <h3 className="font-bold text-slate-800">Connection</h3>
+                                    <p className="text-xs text-slate-500">Manage provisioning.</p>
                                 </div>
                             </div>
                             {agentForm && (
                                 <div className="space-y-4">
-                                    <div className="bg-slate-50 p-3 rounded border border-slate-100 text-xs text-slate-600">
-                                        Using Master API Key: <span className="font-mono">VITE_ELEVENLABS_API_KEY</span>
-                                    </div>
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Agent ID</label>
                                         <div className="flex gap-2">
@@ -511,61 +548,136 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             )}
                         </div>
 
+                        {/* Business Hours */}
                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                             <div className="flex items-center gap-3 mb-6">
-                                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
-                                    <Mic size={20} />
+                                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                                    <Clock size={20} />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-slate-800">Agent Persona</h3>
-                                    <p className="text-xs text-slate-500">Configure the base personality.</p>
+                                    <h3 className="font-bold text-slate-800">Business Hours</h3>
+                                    <p className="text-xs text-slate-500">When should the agent pick up?</p>
                                 </div>
                             </div>
-                            {agentForm && (
+                            {agentForm && agentForm.businessHours && (
                                 <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Agent Name</label>
-                                        <input 
-                                            value={agentForm.name}
-                                            onChange={(e) => setAgentForm({...agentForm, name: e.target.value})}
-                                            className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
-                                        />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-xs text-slate-500">Start Time</label>
+                                            <input 
+                                                type="time"
+                                                value={agentForm.businessHours.start}
+                                                onChange={(e) => setAgentForm({
+                                                    ...agentForm, 
+                                                    businessHours: { ...agentForm.businessHours!, start: e.target.value }
+                                                })}
+                                                className="w-full p-2 border border-slate-200 rounded text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-slate-500">End Time</label>
+                                            <input 
+                                                type="time"
+                                                value={agentForm.businessHours.end}
+                                                onChange={(e) => setAgentForm({
+                                                    ...agentForm, 
+                                                    businessHours: { ...agentForm.businessHours!, end: e.target.value }
+                                                })}
+                                                className="w-full p-2 border border-slate-200 rounded text-sm"
+                                            />
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Greeting Message</label>
-                                        <textarea 
-                                            value={agentForm.firstMessage}
-                                            onChange={(e) => setAgentForm({...agentForm, firstMessage: e.target.value})}
-                                            className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm min-h-[80px]" 
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="checkbox"
+                                            checked={agentForm.businessHours.enabled}
+                                            onChange={(e) => setAgentForm({
+                                                ...agentForm, 
+                                                businessHours: { ...agentForm.businessHours!, enabled: e.target.checked }
+                                            })}
+                                            className="rounded border-slate-300"
                                         />
+                                        <span className="text-sm text-slate-700">Enforce Business Hours</span>
                                     </div>
                                 </div>
                             )}
                         </div>
                     </div>
 
-                    {/* System Prompt */}
+                    {/* Behavior & Voice */}
                     <div className="space-y-6">
-                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-full flex flex-col">
-                            <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <h3 className="font-bold text-slate-800">System Prompt</h3>
-                                    <p className="text-xs text-slate-500">The core instructions for the AI.</p>
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
+                                    <Mic size={20} />
                                 </div>
-                                <button 
-                                    onClick={handleAgentSave}
-                                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm"
-                                >
-                                    <Save size={16} /> Save Config
-                                </button>
+                                <div>
+                                    <h3 className="font-bold text-slate-800">Behavior & Persona</h3>
+                                    <p className="text-xs text-slate-500">Configure personality and voice.</p>
+                                </div>
                             </div>
                             {agentForm && (
-                                <textarea 
-                                    value={agentForm.systemPrompt}
-                                    onChange={(e) => setAgentForm({...agentForm, systemPrompt: e.target.value})}
-                                    className="w-full flex-1 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono leading-relaxed resize-none bg-slate-50" 
-                                />
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Agent Name (Internal)</label>
+                                        <input 
+                                            value={agentForm.name}
+                                            onChange={(e) => setAgentForm({...agentForm, name: e.target.value})}
+                                            className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                        />
+                                    </div>
+                                    
+                                    {/* VOICE SELECTOR */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-2">
+                                            Voice Selection <Volume2 size={12}/>
+                                        </label>
+                                        <select 
+                                            value={agentForm.voiceId}
+                                            onChange={(e) => setAgentForm({...agentForm, voiceId: e.target.value})}
+                                            className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                        >
+                                            {availableVoices.length > 0 ? (
+                                                availableVoices.map(v => (
+                                                    <option key={v.id} value={v.id}>{v.name} ({v.category})</option>
+                                                ))
+                                            ) : (
+                                                <option value={agentForm.voiceId}>Loading Voices...</option>
+                                            )}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Greeting Message</label>
+                                        <textarea 
+                                            value={agentForm.firstMessage}
+                                            onChange={(e) => setAgentForm({...agentForm, firstMessage: e.target.value})}
+                                            className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm min-h-[60px]" 
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">System Prompt</label>
+                                        <textarea 
+                                            value={agentForm.systemPrompt}
+                                            onChange={(e) => setAgentForm({...agentForm, systemPrompt: e.target.value})}
+                                            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono leading-relaxed resize-none bg-slate-50 h-32" 
+                                        />
+                                    </div>
+                                </div>
                             )}
+                        </div>
+
+                        {/* Save Actions */}
+                        <div className="flex justify-end pt-2">
+                            <button 
+                                onClick={handleAgentSave}
+                                disabled={isProvisioning}
+                                className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 disabled:opacity-70"
+                            >
+                                {isProvisioning ? <Loader2 className="animate-spin" size={20}/> : <Save size={20} />}
+                                {isProvisioning ? 'Syncing to Cloud...' : 'Update Agent Configuration'}
+                            </button>
                         </div>
                     </div>
                 </div>
