@@ -17,9 +17,9 @@ const InvoiceSystem: React.FC<InvoiceSystemProps> = ({ invoices, leads, currentU
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [lineItems, setLineItems] = useState<{desc: string, cost: number}[]>([{desc: 'Roof Replacement Deposit', cost: 5000}]);
   
-  // Check QB Status
+  // Check QB Status (PATCHED: Added safe navigation)
   const currentCompany = companies.find(c => c.id === currentUser.companyId);
-  const isQBConnected = currentCompany?.integrations?.quickbooks.isConnected;
+  const isQBConnected = currentCompany?.integrations?.quickbooks?.isConnected;
 
   const handleCreateSubmit = () => {
     if (!selectedLeadId) return;
