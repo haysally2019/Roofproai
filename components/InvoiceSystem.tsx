@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Invoice, Lead, User } from '../types';
 import { Receipt, Plus, Download, Send, CheckCircle, FileText, DollarSign, Calendar, Clock, RefreshCw } from 'lucide-react';
