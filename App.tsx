@@ -106,6 +106,7 @@ const AppLayout: React.FC = () => {
       // Login / Register Screen
       return (
          <div className="h-full w-full bg-slate-900 relative overflow-y-auto">
+             <ToastContainer />
              {/* Background Decoration - Fixed so it doesn't scroll */}
              <div className="fixed top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
                  <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-indigo-600 blur-3xl opacity-20"></div>
@@ -211,7 +212,12 @@ const AppLayout: React.FC = () => {
   // Check Onboarding
   const currentCompany = companies.find(c => c.id === currentUser.companyId);
   if (currentUser.role === UserRole.COMPANY_ADMIN && currentCompany && !currentCompany.setupComplete) {
-      return <Onboarding />;
+      return (
+          <>
+              <ToastContainer />
+              <Onboarding />
+          </>
+      );
   }
 
   const companyLeads = leads; // Already filtered by StoreContext for isolation
