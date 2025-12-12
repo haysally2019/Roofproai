@@ -103,6 +103,25 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         setCurrentUser(user);
 
+        if (data.companies) {
+          const company: Company = {
+            id: data.companies.id,
+            name: data.companies.name,
+            tier: data.companies.tier as SubscriptionTier,
+            userCount: data.companies.user_count,
+            maxUsers: data.companies.max_users,
+            status: data.companies.status,
+            renewalDate: data.companies.renewal_date,
+            address: data.companies.address,
+            logoUrl: data.companies.logo_url,
+            setupComplete: data.companies.setup_complete,
+            phone: data.companies.phone,
+            agentConfig: data.companies.agent_config,
+            integrations: data.companies.integrations
+          };
+          setCompanies([company]);
+        }
+
         if (data.company_id) {
           await loadCompanyData(data.company_id);
         }
@@ -417,13 +436,65 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   // --- ENTITY CRUD HANDLERS ---
-  
-  const updateCompany = (c: Partial<Company>) => {
+
+  const updateCompany = async (c: Partial<Company>) => {
+    try {
+      if (!c.id) {
+        addToast('Company ID is required', 'error');
+        return;
+      }
+
+      const updateData: any = {};
+      if (c.name !== undefined) updateData.name = c.name;
+      if (c.tier !== undefined) updateData.tier = c.tier;
+      if (c.status !== undefined) updateData.status = c.status;
+      if (c.address !== undefined) updateData.address = c.address;
+      if (c.phone !== undefined) updateData.phone = c.phone;
+      if (c.logoUrl !== undefined) updateData.logo_url = c.logoUrl;
+      if (c.setupComplete !== undefined) updateData.setup_complete = c.setupComplete;
+      if (c.agentConfig !== undefined) updateData.agent_config = c.agentConfig;
+      if (c.integrations !== undefined) updateData.integrations = c.integrations;
+
+      const { error } = await supabase
+        .from('companies')
+        .update(updateData)
+        .eq('id', c.id);
+
+      if (error) throw error;
+
       setCompanies(prev => prev.map(x => x.id === c.id ? {...x, ...c} : x));
+      addToast('Company updated successfully', 'success');
+    } catch (error: any) {
+      console.error('Error updating company:', error);
+      addToast(error.message || 'Failed to update company', 'error');
+    }
   };
 
-  const updateUser = (u: Partial<User>) => {
+  const updateUser = async (u: Partial<User>) => {
+    try {
+      if (!currentUser?.id) {
+        addToast('User ID is required', 'error');
+        return;
+      }
+
+      const updateData: any = {};
+      if (u.name !== undefined) updateData.name = u.name;
+      if (u.email !== undefined) updateData.email = u.email;
+      if (u.avatarInitials !== undefined) updateData.avatar_initials = u.avatarInitials;
+
+      const { error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', currentUser.id);
+
+      if (error) throw error;
+
       setCurrentUser(prev => prev ? {...prev, ...u} : null);
+      addToast('Profile updated successfully', 'success');
+    } catch (error: any) {
+      console.error('Error updating user:', error);
+      addToast(error.message || 'Failed to update profile', 'error');
+    }
   };
 
   const addLead = async (lead: Lead) => {
