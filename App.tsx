@@ -18,7 +18,6 @@ import TaskBoard from './components/TaskBoard';
 import InvoiceSystem from './components/InvoiceSystem';
 import PriceBook from './components/PriceBook';
 import Settings from './components/Settings';
-import Onboarding from './components/Onboarding';
 import AIReceptionist from './components/AIReceptionist';
 import Automations from './components/Automations';
 
@@ -210,16 +209,7 @@ const AppLayout: React.FC = () => {
       )
   }
 
-  // Check Onboarding
   const currentCompany = companies.find(c => c.id === currentUser.companyId);
-  if (currentUser.role === UserRole.COMPANY_ADMIN && currentCompany && !currentCompany.setupComplete) {
-      return (
-          <>
-              <ToastContainer />
-              <Onboarding />
-          </>
-      );
-  }
 
   const companyLeads = leads; // Already filtered by StoreContext for isolation
 
