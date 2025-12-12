@@ -438,36 +438,34 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // --- ENTITY CRUD HANDLERS ---
 
   const updateCompany = async (c: Partial<Company>) => {
-    try {
-      if (!c.id) {
-        addToast('Company ID is required', 'error');
-        return;
-      }
+    if (!c.id) {
+      addToast('Company ID is required', 'error');
+      throw new Error('Company ID is required');
+    }
 
-      const updateData: any = {};
-      if (c.name !== undefined) updateData.name = c.name;
-      if (c.tier !== undefined) updateData.tier = c.tier;
-      if (c.status !== undefined) updateData.status = c.status;
-      if (c.address !== undefined) updateData.address = c.address;
-      if (c.phone !== undefined) updateData.phone = c.phone;
-      if (c.logoUrl !== undefined) updateData.logo_url = c.logoUrl;
-      if (c.setupComplete !== undefined) updateData.setup_complete = c.setupComplete;
-      if (c.agentConfig !== undefined) updateData.agent_config = c.agentConfig;
-      if (c.integrations !== undefined) updateData.integrations = c.integrations;
+    const updateData: any = {};
+    if (c.name !== undefined) updateData.name = c.name;
+    if (c.tier !== undefined) updateData.tier = c.tier;
+    if (c.status !== undefined) updateData.status = c.status;
+    if (c.address !== undefined) updateData.address = c.address;
+    if (c.phone !== undefined) updateData.phone = c.phone;
+    if (c.logoUrl !== undefined) updateData.logo_url = c.logoUrl;
+    if (c.setupComplete !== undefined) updateData.setup_complete = c.setupComplete;
+    if (c.agentConfig !== undefined) updateData.agent_config = c.agentConfig;
+    if (c.integrations !== undefined) updateData.integrations = c.integrations;
 
-      const { error } = await supabase
-        .from('companies')
-        .update(updateData)
-        .eq('id', c.id);
+    const { error } = await supabase
+      .from('companies')
+      .update(updateData)
+      .eq('id', c.id);
 
-      if (error) throw error;
-
-      setCompanies(prev => prev.map(x => x.id === c.id ? {...x, ...c} : x));
-      addToast('Company updated successfully', 'success');
-    } catch (error: any) {
+    if (error) {
       console.error('Error updating company:', error);
       addToast(error.message || 'Failed to update company', 'error');
+      throw error;
     }
+
+    setCompanies(prev => prev.map(x => x.id === c.id ? {...x, ...c} : x));
   };
 
   const updateUser = async (u: Partial<User>) => {
