@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { EstimateItem, RoofType, GroundingResult, LogicArgument, RoofMeasurement } from '../types';
 
@@ -63,7 +62,9 @@ export const generateSmartEstimate = async (
     });
 
     if (response.text) {
-      return JSON.parse(response.text) as EstimateItem[];
+      // PATCH: Strip markdown code blocks if present to prevent JSON parse errors
+      const cleanJson = response.text.replace(/```json|```/g, '').trim();
+      return JSON.parse(cleanJson) as EstimateItem[];
     }
     return [];
   } catch (error) {
@@ -164,7 +165,7 @@ export const analyzeScopeOfLoss = async (scopeText: string): Promise<string> => 
  * Simulates Solar API roof measurement using Gemini estimation.
  */
 export const getRoofDataFromAddress = async (address: string): Promise<RoofMeasurement> => {
-    // In production, this would call https://solar.googleapis.com/v1/buildingInsights:findClosest
+    // In production, this would call [https://solar.googleapis.com/v1/buildingInsights:findClosest](https://solar.googleapis.com/v1/buildingInsights:findClosest)
     // Here we use Gemini to "Estimate" plausible geometry based on the address context (e.g. mansion vs cottage).
     try {
         const response = await ai.models.generateContent({
@@ -305,7 +306,9 @@ export const generateSupplementArgument = async (denialReason: string, itemInQue
     });
 
     if (response.text) {
-      return JSON.parse(response.text) as LogicArgument;
+      // PATCH: Strip markdown code blocks
+      const cleanJson = response.text.replace(/```json|```/g, '').trim();
+      return JSON.parse(cleanJson) as LogicArgument;
     }
     throw new Error("Empty response");
   } catch (error) {
