@@ -315,6 +315,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const register = async (companyName: string, name: string, email: string, password: string): Promise<boolean> => {
     try {
+      if (password.length < 6) {
+        addToast('Password must be at least 6 characters long', "error");
+        return false;
+      }
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password
@@ -322,7 +327,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       if (authError) {
         console.error('Auth error:', authError);
-        addToast(`Auth error: ${authError.message}`, "error");
+        if (authError.message.includes('already registered') || authError.message.includes('user_already_exists')) {
+          addToast('This email is already registered. Please log in instead.', "error");
+        } else {
+          addToast(`Registration failed: ${authError.message}`, "error");
+        }
         return false;
       }
 
