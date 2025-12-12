@@ -1,0 +1,8 @@
+{
+  "name": "RoofPro",
+  "description": "The intelligent operating system for modern roofing contractors.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
