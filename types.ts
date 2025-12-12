@@ -1,4 +1,3 @@
-
 export enum LeadStatus {
   NEW = 'New Lead',
   INSPECTION = 'Inspection',
@@ -151,15 +150,25 @@ export interface CallLog {
   sentiment: 'Positive' | 'Neutral' | 'Angry';
 }
 
+// NEW: Business Hours Logic
+export interface BusinessHours {
+  enabled: boolean;
+  start: string; // "09:00"
+  end: string;   // "17:00"
+  days: string[]; // ["Mon", "Tue", ...]
+  timezone: string;
+}
+
 export interface AgentConfig {
   id: string;
   elevenLabsAgentId: string;
   elevenLabsApiKey?: string;
-  voiceId: string;
+  voiceId: string; // NEW: Track selected voice
   name: string;
   systemPrompt: string;
   firstMessage: string;
   isActive: boolean;
+  businessHours?: BusinessHours; // NEW: Hours
 }
 
 export interface IntegrationConfig {
