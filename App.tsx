@@ -48,10 +48,11 @@ const ToastContainer: React.FC = () => {
 
 // --- Main Layout ---
 const AppLayout: React.FC = () => {
-  const { 
+  const {
       currentUser, activeTab, companies, leads, events, tasks, invoices, users,
       updateLead, addLead, addToast, setTab, notifications, login, register, logout,
-      addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus
+      addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
+      addUser, removeUser
   } = useStore();
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -417,11 +418,11 @@ const AppLayout: React.FC = () => {
               )}
 
               {activeTab === Tab.TEAM && currentCompany && (
-                <TeamManagement 
+                <TeamManagement
                   company={currentCompany}
                   users={users.filter(u => u.companyId === currentUser.companyId)}
-                  onAddUser={() => {}}
-                  onRemoveUser={() => {}}
+                  onAddUser={addUser}
+                  onRemoveUser={removeUser}
                 />
               )}
             </div>

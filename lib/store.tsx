@@ -43,6 +43,8 @@ interface StoreContextType {
   addEvent: (event: Partial<CalendarEvent>) => void;
   createInvoice: (invoice: Invoice) => void;
   updateInvoiceStatus: (id: string, status: Invoice['status']) => void;
+  addUser: (user: Partial<User>) => Promise<void>;
+  removeUser: (userId: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -116,6 +118,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const loadCompanyData = async (companyId: string) => {
     try {
       const [
+        usersRes,
         leadsRes,
         tasksRes,
         eventsRes,
@@ -124,6 +127,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         automationsRes,
         ordersRes
       ] = await Promise.all([
+        supabase.from('users').select('*').eq('company_id', companyId),
         supabase.from('leads').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
         supabase.from('tasks').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
         supabase.from('events').select('*').eq('company_id', companyId).order('start_time', { ascending: true }),
@@ -132,6 +136,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         supabase.from('automations').select('*').eq('company_id', companyId),
         supabase.from('material_orders').select('*').eq('company_id', companyId).order('created_at', { ascending: false })
       ]);
+
+      if (usersRes.data) {
+        const mappedUsers: User[] = usersRes.data.map((user: any) => ({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role as UserRole,
+          companyId: user.company_id,
+          avatarInitials: user.avatar_initials || user.name.slice(0, 2).toUpperCase()
+        }));
+        setUsers(mappedUsers);
+      }
 
       if (leadsRes.data) {
         const mappedLeads: Lead[] = leadsRes.data.map((lead: any) => ({
@@ -846,6 +862,93 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const addUser = async (user: Partial<User>) => {
+    try {
+      if (!currentUser?.companyId) {
+        addToast('No company ID found', 'error');
+        return;
+      }
+
+      if (!user.name || !user.email || !user.role) {
+        addToast('Name, email, and role are required', 'error');
+        return;
+      }
+
+      const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
+
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: user.email,
+        password: tempPassword
+      });
+
+      if (authError) {
+        if (authError.message.includes('already registered') || authError.message.includes('user_already_exists')) {
+          addToast('This email is already registered', 'error');
+        } else {
+          addToast(`Failed to create user: ${authError.message}`, 'error');
+        }
+        return;
+      }
+
+      if (!authData.user) {
+        addToast('Failed to create user', 'error');
+        return;
+      }
+
+      const { error: userError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          company_id: currentUser.companyId,
+          avatar_initials: user.name.slice(0, 2).toUpperCase()
+        });
+
+      if (userError) {
+        addToast(`Failed to create user profile: ${userError.message}`, 'error');
+        return;
+      }
+
+      await loadCompanyData(currentUser.companyId);
+      addToast(`User added successfully! Temporary password: ${tempPassword}`, 'success');
+    } catch (error: any) {
+      console.error('Error adding user:', error);
+      addToast(error.message || 'Failed to add user', 'error');
+    }
+  };
+
+  const removeUser = async (userId: string) => {
+    try {
+      if (!currentUser?.companyId) {
+        addToast('No company ID found', 'error');
+        return;
+      }
+
+      if (userId === currentUser.id) {
+        addToast('You cannot remove yourself', 'error');
+        return;
+      }
+
+      const { error: userError } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', userId);
+
+      if (userError) {
+        addToast(`Failed to remove user: ${userError.message}`, 'error');
+        return;
+      }
+
+      await loadCompanyData(currentUser.companyId);
+      addToast('User removed successfully', 'success');
+    } catch (error: any) {
+      console.error('Error removing user:', error);
+      addToast(error.message || 'Failed to remove user', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-900">
@@ -863,7 +966,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       toasts, notifications, callLogs, automations, suppliers, orders,
       login, register, logout, setTab, addToast, removeToast, updateLead, addLead,
       updateCompany, updateUser, addAutomation, toggleAutomation, deleteAutomation, addOrder,
-      addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus
+      addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
+      addUser, removeUser
     }}>
       {children}
     </StoreContext.Provider>
