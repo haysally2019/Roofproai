@@ -198,11 +198,9 @@ const AppLayout: React.FC = () => {
                      </div>
                      
                      <div className="mt-8 text-center pb-6">
-                         <p className="text-xs text-slate-500 font-medium bg-slate-800/50 inline-block px-3 py-1 rounded-full text-white/80">Demo Credentials</p>
-                         <div className="flex gap-4 justify-center mt-2 text-xs text-slate-400 mb-2">
-                             <span>Admin: admin@roofpro.app / password</span>
-                             <span>User: john@apex.com / password</span>
-                         </div>
+                         <p className="text-xs text-slate-400">
+                             Create a new account to get started with RoofPro AI
+                         </p>
                      </div>
                  </div>
              </div>
