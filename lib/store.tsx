@@ -203,14 +203,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       });
 
       if (authError) {
-        addToast(authError.message, "error");
+        console.error('Auth error:', authError);
+        addToast(`Auth error: ${authError.message}`, "error");
         return false;
       }
 
       if (!authData.user) {
-        addToast("Registration failed", "error");
+        addToast("Registration failed - no user returned", "error");
         return false;
       }
+
+      console.log('User created in auth, creating company...');
 
       const { data: companyData, error: companyError } = await supabase
         .from('companies')
@@ -224,9 +227,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .single();
 
       if (companyError) {
-        addToast("Failed to create company", "error");
+        console.error('Company error:', companyError);
+        addToast(`Company error: ${companyError.message}`, "error");
         return false;
       }
+
+      console.log('Company created, creating user profile...');
 
       const { error: userError } = await supabase
         .from('users')
@@ -240,7 +246,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         });
 
       if (userError) {
-        addToast("Failed to create user profile", "error");
+        console.error('User profile error:', userError);
+        addToast(`User profile error: ${userError.message}`, "error");
         return false;
       }
 
