@@ -1,10 +1,10 @@
 
 import React, { useState } from 'react';
 import { useStore } from '../lib/store';
-import { Building2, ArrowRight, Check, Users, Shield, Loader2 } from 'lucide-react';
+import { Building2, ArrowRight, Check, Users, Shield, Loader2, LogOut } from 'lucide-react';
 
 const Onboarding: React.FC = () => {
-  const { currentUser, updateCompany, addToast } = useStore();
+  const { currentUser, updateCompany, addToast, logout } = useStore();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -39,6 +39,12 @@ const Onboarding: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+       <button
+          onClick={logout}
+          className="absolute top-4 right-4 flex items-center gap-2 text-slate-500 hover:text-slate-700 text-sm"
+       >
+          <LogOut size={16} /> Sign Out
+       </button>
        <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
           {/* Progress Bar */}
           <div className="h-2 bg-slate-100 w-full">
