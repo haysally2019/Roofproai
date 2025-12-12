@@ -16,12 +16,15 @@ const Onboarding: React.FC = () => {
   const handleNext = () => {
     if (step === 3) {
         // Complete
-        updateCompany({ 
-            name: form.companyName, 
-            address: form.address,
-            phone: form.phone,
-            setupComplete: true 
-        });
+        if (currentUser?.companyId) {
+            updateCompany({
+                id: currentUser.companyId,
+                name: form.companyName,
+                address: form.address,
+                phone: form.phone,
+                setupComplete: true
+            });
+        }
         updateUser({ role: 'Company Owner' as any }); // Force role update if needed
     } else {
         setStep(step + 1);
