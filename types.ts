@@ -163,12 +163,12 @@ export interface AgentConfig {
   id: string;
   elevenLabsAgentId: string;
   elevenLabsApiKey?: string;
-  voiceId: string; // NEW: Track selected voice
+  voiceId: string; // <--- NEW: Store the selected voice ID
   name: string;
   systemPrompt: string;
   firstMessage: string;
   isActive: boolean;
-  businessHours?: BusinessHours; // NEW: Hours
+  businessHours?: BusinessHours;
 }
 
 export interface IntegrationConfig {
