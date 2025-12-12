@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useStore } from '../lib/store';
 import { Phone, Clock, MessageSquare, Play, Pause, User, AlertTriangle, CheckCircle, Mic, Activity } from 'lucide-react';
@@ -206,7 +205,8 @@ const AIReceptionist: React.FC = () => {
           </div>
           <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
              <span className="text-xs font-medium px-3 py-1 bg-white rounded shadow-sm text-slate-700">{agentConfig.name}</span>
-             <span className="text-[10px] text-slate-400 px-2">ID: {agentConfig.elevenLabsAgentId.substring(0,8)}...</span>
+             {/* PATCH: Added fallback for substring to prevent crash on undefined ID */}
+             <span className="text-[10px] text-slate-400 px-2">ID: {(agentConfig.elevenLabsAgentId || '').substring(0,8)}...</span>
           </div>
       </div>
     </div>
