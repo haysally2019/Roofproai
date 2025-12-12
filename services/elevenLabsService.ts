@@ -1,11 +1,37 @@
-import { AgentConfig } from '../types';
-
 const API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY;
 const BASE_URL = 'https://api.elevenlabs.io/v1/convai/agents';
 const VOICES_URL = 'https://api.elevenlabs.io/v1/voices';
 
 /**
- * Creates a new conversational agent on ElevenLabs
+ * 1. Fetch available voices so Super Admin can choose the "Tone"
+ */
+export const getAvailableVoices = async (): Promise<{id: string, name: string, category: string}[]> => {
+  if (!API_KEY) return [];
+
+  try {
+    const response = await fetch(VOICES_URL, {
+      method: 'GET',
+      headers: { 'xi-api-key': API_KEY }
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    // Return top 20 voices to keep the UI clean
+    return data.voices.map((v: any) => ({
+      id: v.voice_id,
+      name: v.name,
+      category: v.category || 'generated'
+    })).slice(0, 20);
+
+  } catch (error) {
+    console.error("Voice Fetch Error:", error);
+    return [];
+  }
+};
+
+/**
+ * 2. Create a new Agent in ElevenLabs
  */
 export const createVoiceAgent = async (
   name: string, 
@@ -29,15 +55,20 @@ export const createVoiceAgent = async (
         name: name,
         conversation_config: {
           agent: {
-            prompt: {
-              prompt: systemPrompt
-            },
+            prompt: { prompt: systemPrompt },
             first_message: firstMessage,
             language: "en" 
           },
           tts: {
-            voice_id: voiceId || "21m00Tcm4TlvDq8ikWAM" // Default Rachel if none selected
+            // Use selected voice or default to 'Rachel'
+            voice_id: voiceId || "21m00Tcm4TlvDq8ikWAM" 
           }
+        },
+        platform_settings: {
+            widget: {
+                variant: "compact",
+                avatar: { type: "orb" }
+            }
         }
       }),
     });
@@ -57,7 +88,7 @@ export const createVoiceAgent = async (
 };
 
 /**
- * Updates an existing agent's configuration (Voice, Prompt, First Message)
+ * 3. Update an existing Agent (if Super Admin changes settings)
  */
 export const updateVoiceAgent = async (
   agentId: string,
@@ -71,7 +102,7 @@ export const updateVoiceAgent = async (
   if (!API_KEY) return { success: false, error: 'Missing API Key' };
 
   try {
-    // Construct patch object with correct nesting
+    // Construct the specific nested object ElevenLabs expects for updates
     const patchData: any = {
       conversation_config: {
         agent: {},
@@ -100,35 +131,6 @@ export const updateVoiceAgent = async (
     return { success: true };
 
   } catch (error) {
-    console.error("ElevenLabs Update Error:", error);
     return { success: false, error: 'Network error updating agent' };
-  }
-};
-
-/**
- * Fetches available voices to let users choose "Tone"
- */
-export const getAvailableVoices = async (): Promise<{id: string, name: string, category: string}[]> => {
-  if (!API_KEY) return [];
-
-  try {
-    const response = await fetch(VOICES_URL, {
-      method: 'GET',
-      headers: { 'xi-api-key': API_KEY }
-    });
-
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    // Return voices, mapping them to a simple structure
-    return data.voices.map((v: any) => ({
-      id: v.voice_id,
-      name: v.name,
-      category: v.category || 'generated'
-    })).slice(0, 15); // Top 15 to keep list manageable
-
-  } catch (error) {
-    console.error("Voice Fetch Error:", error);
-    return [];
   }
 };
