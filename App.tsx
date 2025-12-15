@@ -20,7 +20,7 @@ import Settings from './components/Settings';
 import AIReceptionist from './components/AIReceptionist';
 import Automations from './components/Automations';
 import Onboarding from './components/Onboarding'; 
-import TrialFunnel from './components/TrialFunnel';
+import TrialFunnel from './components/TrialFunnel'; // NEW: Funnel Component
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -61,9 +61,19 @@ const AppLayout: React.FC = () => {
   const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [authLoading, setAuthLoading] = useState(false);
 
-  // --- ROUTING LOGIC ---
-  // Check if user is on the special onboarding link
-  const isOnboardingRoute = window.location.pathname === '/onboarding';
+  // --- ROUTING LOGIC (ROBUST PATCH) ---
+  // 1. Get the current path and hash, normalizing them
+  const path = window.location.pathname.toLowerCase().replace(/\/$/, ''); // Remove trailing slash
+  const hash = window.location.hash.toLowerCase().replace('#', '').replace(/\/$/, ''); // Handle hash routing
+
+  // 2. Check for ANY match (e.g. /onboarding, /onboarding/, /#/onboarding)
+  const isOnboardingRoute = 
+      path === '/onboarding' || 
+      hash === '/onboarding' || 
+      hash === 'onboarding';
+
+  // Debug to console so you can check if it's detected
+  // console.log("Route Check:", { path, hash, isOnboardingRoute });
 
   // Simulation State
   useEffect(() => {
