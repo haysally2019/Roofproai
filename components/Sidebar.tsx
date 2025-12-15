@@ -60,14 +60,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
         w-64 h-full shrink-0 overflow-hidden`}
       >
         {/* Logo Area */}
-        <div className="h-14 flex items-center px-4 border-b border-slate-800/50 shrink-0 relative bg-[#0F172A]">
-          <div className="flex items-center gap-2.5 w-full">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600 shrink-0">
-               <Zap className="text-white fill-white" size={18} strokeWidth={2.5} />
+        <div className="h-16 flex items-center px-4 border-b border-slate-800/50 shrink-0 relative bg-[#0F172A]">
+          <div className="flex items-center gap-3 w-full">
+            <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-600 shrink-0">
+               <Zap className="text-white fill-white" size={22} strokeWidth={2.5} />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-sm text-white tracking-tight leading-tight">Altus AI</span>
-              <span className="text-[9px] text-indigo-400 font-semibold tracking-wide leading-tight uppercase">Roofing Software</span>
+              <span className="font-bold text-base text-white tracking-tight leading-tight">Altus AI</span>
+              <span className="text-[10px] text-indigo-400 font-semibold tracking-wide leading-tight uppercase">Roofing Software</span>
             </div>
           </div>
           
