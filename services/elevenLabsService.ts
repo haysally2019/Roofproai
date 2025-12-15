@@ -3,10 +3,13 @@ const BASE_URL = 'https://api.elevenlabs.io/v1/convai/agents';
 const VOICES_URL = 'https://api.elevenlabs.io/v1/voices';
 
 /**
- * 1. Fetch available voices so Super Admin can choose the "Tone"
+ * Fetch available voices from ElevenLabs
  */
 export const getAvailableVoices = async (): Promise<{id: string, name: string, category: string}[]> => {
-  if (!API_KEY) return [];
+  if (!API_KEY) {
+    console.warn("Missing ElevenLabs API Key");
+    return [];
+  }
 
   try {
     const response = await fetch(VOICES_URL, {
@@ -17,12 +20,11 @@ export const getAvailableVoices = async (): Promise<{id: string, name: string, c
     if (!response.ok) return [];
 
     const data = await response.json();
-    // Return top 20 voices to keep the UI clean
     return data.voices.map((v: any) => ({
       id: v.voice_id,
       name: v.name,
       category: v.category || 'generated'
-    })).slice(0, 20);
+    })).slice(0, 20); // Limit to top 20 for UI simplicity
 
   } catch (error) {
     console.error("Voice Fetch Error:", error);
@@ -31,7 +33,7 @@ export const getAvailableVoices = async (): Promise<{id: string, name: string, c
 };
 
 /**
- * 2. Create a new Agent in ElevenLabs
+ * Create a new Conversational Agent
  */
 export const createVoiceAgent = async (
   name: string, 
@@ -60,7 +62,6 @@ export const createVoiceAgent = async (
             language: "en" 
           },
           tts: {
-            // Use selected voice or default to 'Rachel'
             voice_id: voiceId || "21m00Tcm4TlvDq8ikWAM" 
           }
         },
@@ -88,7 +89,7 @@ export const createVoiceAgent = async (
 };
 
 /**
- * 3. Update an existing Agent (if Super Admin changes settings)
+ * Update an existing Agent's configuration
  */
 export const updateVoiceAgent = async (
   agentId: string,
@@ -102,7 +103,6 @@ export const updateVoiceAgent = async (
   if (!API_KEY) return { success: false, error: 'Missing API Key' };
 
   try {
-    // Construct the specific nested object ElevenLabs expects for updates
     const patchData: any = {
       conversation_config: {
         agent: {},
