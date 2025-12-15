@@ -1,5 +1,3 @@
-// --- EXISTING CORE TYPES (Preserved) ---
-
 export enum LeadStatus {
   NEW = 'New Lead',
   INSPECTION = 'Inspection',
@@ -31,13 +29,13 @@ export interface ProductionStep {
 export interface Estimate {
   id: string;
   leadId: string;
-  name?: string;
+  name?: string; // e.g. "Initial Roof Quote"
   items: EstimateItem[];
   subtotal: number;
   tax: number;
   total: number;
   createdAt: string;
-  signature?: string;
+  signature?: string; // base64 signature
   status?: 'Draft' | 'Signed' | 'Sent';
 }
 
@@ -63,27 +61,30 @@ export interface Lead {
   id: string;
   name: string;
   address: string;
-  coordinates?: { x: number, y: number };
+  coordinates?: { x: number, y: number }; // Mock coordinates for map view
   phone: string;
   email?: string;
   status: LeadStatus;
   projectType: ProjectType;
   source?: 'Door Knocking' | 'Referral' | 'Web' | 'Ads' | 'Other';
   notes: string;
-  estimatedValue: number;
+  estimatedValue: number; // RCV or Estimate Total
   lastContact: string;
   createdAt?: string;
-  assignedTo?: string;
+  assignedTo?: string; // ID of the sales rep
   companyId?: string;
+  // Insurance Specifics
   insuranceCarrier?: string;
   policyNumber?: string;
   claimNumber?: string;
   adjusterName?: string;
   adjusterPhone?: string;
   damageDate?: string;
+  // Job Specifics
   projectManagerId?: string;
   productionDate?: string;
   paymentStatus?: 'Unpaid' | 'Partial' | 'Paid';
+  // Deep Dive Data
   documents?: LeadDocument[];
   productionSteps?: ProductionStep[];
   estimates?: Estimate[];
@@ -96,6 +97,7 @@ export interface RoofMeasurement {
   solarPotential: string;
   segments: number;
   maxSunlightHours: number;
+  // Detailed Geometry
   ridgeLen: number;
   hipLen: number;
   valleyLen: number;
@@ -117,32 +119,22 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
-// --- MULTI-TENANT & USER TYPES ---
+// --- Multi-Tenancy Types ---
 
 export enum UserRole {
   SUPER_ADMIN = 'Super Admin',
-  SAAS_REP = 'Software Sales Rep',
+  SAAS_REP = 'Software Sales Rep', // NEW: Sells ALTUS AI to companies
   COMPANY_ADMIN = 'Company Owner',
   SALES_REP = 'Sales Rep'
 }
 
 export enum SubscriptionTier {
-  STARTER = 'Starter',
-  PROFESSIONAL = 'Professional',
-  ENTERPRISE = 'Enterprise'
+  STARTER = 'Starter',         // up to 3 users, Basic AI
+  PROFESSIONAL = 'Professional', // up to 10 users, Vision + Adv AI
+  ENTERPRISE = 'Enterprise'      // Unlimited, Custom
 }
 
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  password?: string;
-  role: UserRole;
-  companyId: string | null;
-  avatarInitials: string;
-}
-
-// --- AI AGENT & AUTOMATION TYPES (UPDATED) ---
+// --- AI Receptionist Types ---
 
 export interface CallLog {
   id: string;
@@ -154,38 +146,29 @@ export interface CallLog {
   status: 'Completed' | 'Missed' | 'Voicemail' | 'Action Required';
   transcript: string;
   summary: string;
-  recordingUrl?: string;
+  recordingUrl?: string; // Mock URL
   sentiment: 'Positive' | 'Neutral' | 'Angry';
 }
 
+// NEW: Business Hours Logic
 export interface BusinessHours {
   enabled: boolean;
-  start: string;
-  end: string;
-  days: string[];
+  start: string; // "09:00"
+  end: string;   // "17:00"
+  days: string[]; // ["Mon", "Tue", ...]
   timezone: string;
-}
-
-export interface WorkflowConfig {
-  id: string;
-  name: string;
-  enabled: boolean;
-  trigger: 'call_missed' | 'call_completed' | 'voicemail_received';
-  action: 'sms_lead' | 'email_admin' | 'create_task';
-  template?: string;
 }
 
 export interface AgentConfig {
   id: string;
   elevenLabsAgentId: string;
   elevenLabsApiKey?: string;
-  voiceId: string;      // Selected Voice ID
-  name: string;         // Internal Name
-  systemPrompt: string; // The "Brain"
-  firstMessage: string; // Greeting
+  voiceId: string; // <--- NEW: Store the selected voice ID
+  name: string;
+  systemPrompt: string;
+  firstMessage: string;
   isActive: boolean;
   businessHours?: BusinessHours;
-  workflows?: WorkflowConfig[];
 }
 
 export interface IntegrationConfig {
@@ -205,14 +188,27 @@ export interface Company {
   status: 'Active' | 'Suspended' | 'Pending';
   renewalDate: string;
   address?: string;
-  phone?: string;
   logoUrl?: string;
+  // Onboarding fields
   setupComplete?: boolean;
+  phone?: string;
+  // AI Configuration
   agentConfig?: AgentConfig;
+  // Integrations
   integrations?: IntegrationConfig;
 }
 
-// --- SAAS CRM TYPES ---
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  password?: string; // Added for Auth
+  role: UserRole;
+  companyId: string | null; // Null if Super Admin or SaaS Rep
+  avatarInitials: string;
+}
+
+// --- Software CRM Types (Super Admin) ---
 
 export type SoftwareLeadStatus = 'Prospect' | 'Contacted' | 'Demo Booked' | 'Trial' | 'Closed Won' | 'Lost';
 
@@ -224,12 +220,12 @@ export interface SoftwareLead {
   phone: string;
   status: SoftwareLeadStatus;
   potentialUsers: number;
-  assignedTo: string;
+  assignedTo: string; // SaaS Rep ID
   notes: string;
   createdAt: string;
 }
 
-// --- APP UTILITY TYPES ---
+// --- New Modules ---
 
 export interface CalendarEvent {
   id: string;
@@ -264,7 +260,7 @@ export interface InvoiceItem {
 export interface Invoice {
   id: string;
   leadId: string;
-  leadName: string;
+  leadName: string; // Denormalized for easier display
   number: string;
   status: 'Draft' | 'Sent' | 'Paid' | 'Overdue';
   dateIssued: string;
@@ -281,8 +277,8 @@ export interface PriceBookItem {
   name: string;
   category: 'Material' | 'Labor' | 'Permit' | 'Other';
   unit: string;
-  price: number;
-  cost: number;
+  price: number; // Selling price
+  cost: number; // Cost to company
   description?: string;
 }
 
@@ -303,11 +299,13 @@ export interface WeatherAlert {
   date: string;
 }
 
+// --- SUPPLIER & ORDERS (NEW) ---
+
 export interface Supplier {
   id: string;
   name: string;
-  logo: string;
-  color: string;
+  logo: string; // url or placeholder
+  color: string; // brand color
   email: string;
 }
 
@@ -323,18 +321,22 @@ export interface MaterialOrder {
   instructions: string;
 }
 
+// --- Automation Types ---
+
 export interface AutomationRule {
   id: string;
   name: string;
   active: boolean;
   triggerType: 'Status Change';
-  triggerValue: string;
+  triggerValue: string; // e.g. "LeadStatus.APPROVED"
   actionType: 'Create Task' | 'Send Email' | 'Create Notification';
   actionConfig: {
-    template?: string;
+    template?: string; // Email template or Task title
     assignTo?: 'Lead Owner' | 'Project Manager';
   };
 }
+
+// --- AI Infrastructure Types ---
 
 export interface GroundingResult {
   text: string;
@@ -346,6 +348,8 @@ export interface LogicArgument {
   reasoning: string;
   action: string;
 }
+
+// --- UX Types ---
 
 export interface Toast {
   id: string;
