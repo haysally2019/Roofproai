@@ -123,8 +123,8 @@ const AppLayout: React.FC = () => {
                                 <Hammer className="absolute text-white" size={20} />
                             </div>
                          </div>
-                         <h1 className="text-3xl font-bold text-white tracking-tight">RoofPro AI</h1>
-                         <p className="text-slate-400 mt-2">The intelligent operating system for roofing.</p>
+                         <h1 className="text-3xl font-bold text-white tracking-tight">ALTUS AI</h1>
+                         <p className="text-slate-400 mt-2">ROOFING SOFTWARE</p>
                      </div>
 
                      <div className="bg-white rounded-2xl p-8 shadow-2xl animate-fade-in">
@@ -200,7 +200,7 @@ const AppLayout: React.FC = () => {
                      
                      <div className="mt-8 text-center pb-6">
                          <p className="text-xs text-slate-400">
-                             Create a new account to get started with RoofPro AI
+                             Create a new account to get started with ALTUS AI
                          </p>
                      </div>
                  </div>
@@ -231,7 +231,7 @@ const AppLayout: React.FC = () => {
             </button>
             <span className="font-bold text-slate-800 flex items-center gap-2">
                 <Hexagon className="text-indigo-600 fill-indigo-600/20" size={24} strokeWidth={2.5} />
-                RoofPro
+                ALTUS AI
             </span>
             <button onClick={() => setShowNotifications(!showNotifications)} className="text-slate-600 relative p-2 -mr-2">
                 <Bell size={24} />

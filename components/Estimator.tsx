@@ -799,7 +799,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                         <div className="flex flex-col sm:flex-row justify-between border-b-2 border-slate-800 pb-6 gap-4">
                             <div>
                                 <div className="flex items-center gap-2 text-indigo-700 font-bold text-2xl mb-1">
-                                    <Sparkles size={24}/> RoofPro
+                                    <Sparkles size={24}/> ALTUS AI
                                 </div>
                                 <p className="text-slate-500 text-sm">123 Construction Way</p>
                                 <p className="text-slate-500 text-sm">Builder City, TX 75001</p>

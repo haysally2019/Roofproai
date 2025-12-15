@@ -66,7 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
                <Hexagon className="text-indigo-600 fill-indigo-600/20" size={32} strokeWidth={2.5} />
                <Hammer className="absolute text-white" size={14} />
             </div>
-            <span className="tracking-tight whitespace-nowrap">Roof<span className="text-indigo-500">Pro</span></span>
+            <span className="tracking-tight whitespace-nowrap">ALTUS <span className="text-indigo-500">AI</span></span>
           </div>
           
           {/* Mobile Close Button */}

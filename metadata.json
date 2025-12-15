@@ -1,6 +1,6 @@
 {
-  "name": "RoofPro",
-  "description": "The intelligent operating system for modern roofing contractors.",
+  "name": "ALTUS AI",
+  "description": "Roofing software for modern contractors.",
   "requestFramePermissions": [
     "camera",
     "microphone"
