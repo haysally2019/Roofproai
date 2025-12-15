@@ -1,17 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../lib/store';
-import { ArrowRight, MapPin, Phone, Building, CheckCircle, Sparkles, Zap, ChevronRight } from 'lucide-react';
+import { ArrowRight, CheckCircle, Zap, Sparkles, Command } from 'lucide-react';
 
 const Onboarding: React.FC = () => {
   const { currentUser, companies, updateCompany, addToast } = useStore();
   const [step, setStep] = useState(1);
   const [isAnimating, setIsAnimating] = useState(false);
   const [loadingText, setLoadingText] = useState('');
-  
-  // Configuration State
-  const [setupPhase, setSetupPhase] = useState(0); // 0: Init, 1: AI, 2: Database, 3: Done
+  const [setupPhase, setSetupPhase] = useState(0); 
 
-  // Data State
   const myCompany = companies.find(c => c.id === currentUser?.companyId);
   const [form, setForm] = useState({
      companyName: '',
@@ -19,30 +16,36 @@ const Onboarding: React.FC = () => {
      phone: '',
   });
 
-  // Load existing data if available
   useEffect(() => {
       if (myCompany) {
           setForm(prev => ({ ...prev, companyName: myCompany.name }));
       }
   }, [myCompany]);
 
-  // Handle Step Transitions
   const nextStep = () => {
+      if (step === 1 && !form.companyName) return;
+      if (step === 2 && (!form.address || !form.phone)) return;
+
       setIsAnimating(true);
       setTimeout(() => {
           setStep(prev => prev + 1);
           setIsAnimating(false);
           if (step === 2) startConfigurationSequence();
-      }, 400);
+      }, 500);
   };
 
-  // Simulate "AI Building the System"
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+          nextStep();
+      }
+  };
+
   const startConfigurationSequence = () => {
       const phases = [
-          "Initializing your AI Receptionist...",
-          "Generating local price book for " + (form.address.split(',')[1] || "your area") + "...",
-          "Configuring material templates...",
-          "Finalizing workspace..."
+          "Analyzing local market data...",
+          "Building material price list for " + (form.address.split(',')[1] || "your region") + "...",
+          "Configuring AI Receptionist scripts...",
+          "Finalizing secure workspace..."
       ];
 
       let current = 0;
@@ -55,10 +58,10 @@ const Onboarding: React.FC = () => {
               setLoadingText(phases[current]);
           } else {
               clearInterval(interval);
-              setSetupPhase(3); // Done
+              setSetupPhase(3); 
               handleFinalSave();
           }
-      }, 1500);
+      }, 1200);
   };
 
   const handleFinalSave = async () => {
@@ -80,188 +83,160 @@ const Onboarding: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center relative overflow-hidden font-sans selection:bg-indigo-500/30">
+    <div className="min-h-screen bg-white text-slate-900 flex flex-col font-sans selection:bg-indigo-100">
        
-       {/* Ambient Background */}
-       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
-           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/20 rounded-full blur-[120px] animate-pulse-slow"></div>
-           <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px] animate-pulse-slow delay-1000"></div>
-       </div>
+       {/* Minimal Header */}
+       <header className="p-8 flex justify-between items-center fixed top-0 w-full z-50">
+           <div className="flex items-center gap-2 text-indigo-600 font-bold tracking-tight">
+               <Sparkles size={18} /> Altus AI
+           </div>
+           <div className="text-xs font-medium text-slate-400 uppercase tracking-widest">
+               Setup {step}/3
+           </div>
+       </header>
 
-       {/* Content Container */}
-       <div className={`relative z-10 w-full max-w-3xl px-6 transition-all duration-500 ease-out ${isAnimating ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
+       {/* Progress Bar (Top) */}
+       <div className="fixed top-0 left-0 h-1 bg-indigo-600 transition-all duration-700 ease-out z-50" style={{ width: `${(step/3)*100}%` }}></div>
+
+       {/* Main Stage */}
+       <div className="flex-1 flex flex-col justify-center max-w-3xl mx-auto w-full px-6 md:px-0 relative z-10">
            
-           {/* STEP 1: IDENTITY */}
-           {step === 1 && (
-               <div className="space-y-12">
-                   <div className="space-y-4">
-                       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-medium tracking-wide">
-                           <Sparkles size={12} /> SETUP WIZARD
-                       </div>
-                       <h1 className="text-5xl md:text-6xl font-bold tracking-tight leading-tight">
-                           Let's set up <br/>
-                           <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-blue-400">
-                               {form.companyName || 'your company'}
-                           </span>.
-                       </h1>
-                       <p className="text-xl text-slate-400 max-w-xl leading-relaxed">
-                           We're creating a dedicated AI environment for your team. Just confirm a few details to get started.
-                       </p>
-                   </div>
-
+           <div className={`transition-all duration-500 ease-in-out transform ${isAnimating ? 'opacity-0 -translate-y-4' : 'opacity-100 translate-y-0'}`}>
+               
+               {/* STEP 1: COMPANY NAME */}
+               {step === 1 && (
                    <div className="space-y-8">
-                       <div className="group">
-                           <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 ml-1">Company Name</label>
-                           <div className="relative flex items-center">
-                               <Building className="absolute left-4 text-slate-500 group-focus-within:text-indigo-400 transition-colors" size={24} />
-                               <input 
-                                   autoFocus
-                                   value={form.companyName}
-                                   onChange={e => setForm({...form, companyName: e.target.value})}
-                                   className="w-full bg-transparent border-b-2 border-slate-800 text-3xl md:text-4xl py-4 pl-14 text-white focus:border-indigo-500 focus:outline-none transition-all placeholder:text-slate-700"
-                                   placeholder="Type name..."
-                               />
-                           </div>
-                       </div>
-                   </div>
-
-                   <div className="pt-8">
-                       <button 
-                           onClick={nextStep}
-                           disabled={!form.companyName}
-                           className="group flex items-center gap-4 text-xl font-medium text-white hover:text-indigo-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                       >
-                           Next Step 
-                           <span className="w-12 h-12 rounded-full bg-indigo-600 group-hover:bg-indigo-500 flex items-center justify-center transition-all group-hover:scale-110">
-                               <ArrowRight size={24} />
+                       <div className="space-y-2">
+                           <span className="text-indigo-600 font-bold text-sm tracking-wide flex items-center gap-2">
+                               <span className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs">1</span> 
+                               WELCOME
                            </span>
-                       </button>
-                   </div>
-               </div>
-           )}
-
-           {/* STEP 2: LOCALIZATION */}
-           {step === 2 && (
-               <div className="space-y-12">
-                   <div className="space-y-4">
-                       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-medium tracking-wide">
-                           <MapPin size={12} /> LOCALIZATION
+                           <h1 className="text-4xl md:text-5xl font-bold text-slate-900 leading-tight">
+                               Let’s start with the basics. <br/> What is your <span className="text-indigo-600">company name</span>?
+                           </h1>
                        </div>
-                       <h1 className="text-4xl md:text-5xl font-bold tracking-tight leading-tight">
-                           Where do you operate?
-                       </h1>
-                       <p className="text-lg text-slate-400 max-w-xl">
-                           Altus uses your location to automatically pull local material prices, labor rates, and building codes.
-                       </p>
-                   </div>
 
-                   <div className="space-y-10 max-w-xl">
-                       <div className="group">
-                           <div className="relative flex items-center">
-                               <MapPin className="absolute left-0 text-slate-500 group-focus-within:text-blue-400 transition-colors" size={28} />
+                       <div className="relative">
+                           <input 
+                               autoFocus
+                               value={form.companyName}
+                               onChange={e => setForm({...form, companyName: e.target.value})}
+                               onKeyDown={handleKeyDown}
+                               className="w-full bg-transparent text-3xl md:text-4xl border-b-2 border-slate-200 focus:border-indigo-600 py-4 outline-none text-slate-800 placeholder:text-slate-300 transition-colors"
+                               placeholder="Type your company name..."
+                           />
+                           <p className="mt-4 text-slate-400 text-sm flex items-center gap-1">
+                               <Command size={14} /> Press <strong>Enter</strong> to continue
+                           </p>
+                       </div>
+
+                       <div className="pt-8">
+                           <button 
+                               onClick={nextStep}
+                               disabled={!form.companyName}
+                               className="group flex items-center gap-3 bg-indigo-600 text-white px-8 py-4 rounded-xl text-lg font-medium shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:scale-105 transition-all disabled:opacity-50 disabled:hover:scale-100"
+                           >
+                               OK <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                           </button>
+                       </div>
+                   </div>
+               )}
+
+               {/* STEP 2: DETAILS */}
+               {step === 2 && (
+                   <div className="space-y-10">
+                       <div className="space-y-2">
+                           <span className="text-blue-600 font-bold text-sm tracking-wide flex items-center gap-2">
+                               <span className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-xs">2</span> 
+                               DETAILS
+                           </span>
+                           <h1 className="text-4xl md:text-5xl font-bold text-slate-900 leading-tight">
+                               Where is <strong>{form.companyName}</strong> located?
+                           </h1>
+                           <p className="text-xl text-slate-500 max-w-xl">
+                               We use this to pull local building codes and material pricing.
+                           </p>
+                       </div>
+
+                       <div className="space-y-8 max-w-xl">
+                           <div className="space-y-2">
+                               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Business Address</label>
                                <input 
                                    autoFocus
                                    value={form.address}
                                    onChange={e => setForm({...form, address: e.target.value})}
-                                   className="w-full bg-transparent border-b border-slate-700 text-2xl py-4 pl-12 text-white focus:border-blue-500 focus:outline-none transition-all placeholder:text-slate-700"
-                                   placeholder="Business Address"
+                                   className="w-full bg-transparent text-2xl border-b-2 border-slate-200 focus:border-blue-500 py-3 outline-none text-slate-800 placeholder:text-slate-300 transition-colors"
+                                   placeholder="e.g. 123 Main St, Austin, TX"
                                />
                            </div>
-                       </div>
 
-                       <div className="group">
-                           <div className="relative flex items-center">
-                               <Phone className="absolute left-0 text-slate-500 group-focus-within:text-blue-400 transition-colors" size={28} />
+                           <div className="space-y-2">
+                               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Main Office Phone</label>
                                <input 
                                    value={form.phone}
                                    onChange={e => setForm({...form, phone: e.target.value})}
-                                   className="w-full bg-transparent border-b border-slate-700 text-2xl py-4 pl-12 text-white focus:border-blue-500 focus:outline-none transition-all placeholder:text-slate-700"
-                                   placeholder="Main Office Phone"
+                                   onKeyDown={handleKeyDown}
+                                   className="w-full bg-transparent text-2xl border-b-2 border-slate-200 focus:border-blue-500 py-3 outline-none text-slate-800 placeholder:text-slate-300 transition-colors"
+                                   placeholder="(555) 123-4567"
                                />
                            </div>
                        </div>
-                   </div>
 
-                   <div className="pt-8 flex items-center gap-8">
-                       <button onClick={() => setStep(1)} className="text-slate-500 hover:text-white transition-colors">Back</button>
-                       <button 
-                           onClick={nextStep}
-                           disabled={!form.address}
-                           className="group flex items-center gap-4 text-xl font-medium text-white hover:text-blue-300 transition-colors disabled:opacity-50"
-                       >
-                           Launch System
-                           <span className="w-12 h-12 rounded-full bg-blue-600 group-hover:bg-blue-500 flex items-center justify-center transition-all group-hover:scale-110">
-                               <ChevronRight size={24} />
-                           </span>
-                       </button>
+                       <div className="pt-8 flex items-center gap-6">
+                           <button 
+                               onClick={nextStep}
+                               disabled={!form.address || !form.phone}
+                               className="group flex items-center gap-3 bg-blue-600 text-white px-8 py-4 rounded-xl text-lg font-medium shadow-lg shadow-blue-200 hover:bg-blue-700 hover:scale-105 transition-all disabled:opacity-50 disabled:hover:scale-100"
+                           >
+                               Complete Setup <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                           </button>
+                           <p className="text-slate-400 text-sm flex items-center gap-1">
+                               or press <strong>Enter</strong>
+                           </p>
+                       </div>
                    </div>
-               </div>
-           )}
+               )}
 
-           {/* STEP 3: CONFIGURATION (THE MAGIC) */}
-           {step === 3 && (
-               <div className="text-center space-y-10">
-                   
-                   {/* Animation Container */}
-                   <div className="relative w-40 h-40 mx-auto">
-                       {setupPhase < 3 ? (
-                           <>
-                               <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
-                               <div className="absolute inset-0 rounded-full border-t-4 border-indigo-500 animate-spin"></div>
-                               <div className="absolute inset-0 flex items-center justify-center">
-                                   <Zap className="text-indigo-500 animate-pulse" size={48} fill="currentColor" />
+               {/* STEP 3: LOADING / SUCCESS */}
+               {step === 3 && (
+                   <div className="text-center space-y-8">
+                       <div className="relative mx-auto w-24 h-24">
+                           {setupPhase < 3 ? (
+                               <div className="absolute inset-0 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+                           ) : (
+                               <div className="absolute inset-0 bg-emerald-100 rounded-full flex items-center justify-center animate-scale-in">
+                                   <CheckCircle className="text-emerald-600" size={48} />
                                </div>
-                           </>
-                       ) : (
-                           <div className="absolute inset-0 bg-emerald-500 rounded-full flex items-center justify-center animate-scale-in">
-                               <CheckCircle className="text-white" size={64} />
+                           )}
+                           <div className="absolute inset-0 flex items-center justify-center">
+                               {setupPhase < 3 && <Zap className="text-indigo-600 animate-pulse" size={32} />}
+                           </div>
+                       </div>
+
+                       <div className="space-y-2">
+                           <h2 className="text-3xl font-bold text-slate-900">
+                               {setupPhase < 3 ? 'Building your workspace...' : 'You are all set!'}
+                           </h2>
+                           <p className="text-xl text-slate-500 h-8 font-light">
+                               {setupPhase < 3 ? loadingText : 'Redirecting you to the dashboard...'}
+                           </p>
+                       </div>
+
+                       {setupPhase === 3 && (
+                           <div className="animate-fade-in-up">
+                               <button 
+                                   onClick={() => window.location.reload()} 
+                                   className="px-10 py-4 bg-slate-900 text-white rounded-full font-bold text-lg hover:bg-slate-800 transition-all shadow-xl flex items-center gap-2 mx-auto"
+                               >
+                                   Go to Dashboard <ArrowRight size={20} />
+                               </button>
                            </div>
                        )}
                    </div>
+               )}
 
-                   <div className="space-y-4">
-                       <h2 className="text-3xl font-bold text-white">
-                           {setupPhase < 3 ? 'Building Workspace...' : 'You are all set!'}
-                       </h2>
-                       <div className="h-8">
-                           {setupPhase < 3 && (
-                               <p className="text-indigo-300 font-mono text-sm animate-pulse">
-                                   {`> ${loadingText}`}
-                               </p>
-                           )}
-                           {setupPhase === 3 && (
-                               <p className="text-slate-400">
-                                   Your 7-day free trial has officially started.
-                               </p>
-                           )}
-                       </div>
-                   </div>
-
-                   {setupPhase === 3 && (
-                       <div className="pt-8 animate-fade-in-up">
-                           <button 
-                               onClick={() => window.location.reload()} 
-                               className="px-10 py-4 bg-white text-slate-900 rounded-full font-bold text-lg hover:bg-indigo-50 transition-all shadow-lg shadow-white/10 flex items-center gap-2 mx-auto"
-                           >
-                               Enter Dashboard <ArrowRight size={20} />
-                           </button>
-                       </div>
-                   )}
-               </div>
-           )}
-
+           </div>
        </div>
-
-       {/* Simple Progress Dots */}
-       <div className="absolute bottom-10 left-0 w-full flex justify-center gap-3">
-           {[1, 2, 3].map(s => (
-               <div 
-                   key={s} 
-                   className={`h-1.5 rounded-full transition-all duration-500 ${s === step ? 'w-8 bg-indigo-500' : 'w-1.5 bg-slate-800'}`}
-               />
-           ))}
-       </div>
-
     </div>
   );
 };
