@@ -95,16 +95,21 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser }) => {
 
   const fetchInsight = async () => {
     setLoadingInsight(true);
-    // Use real stats for Gemini
-    const aiStats = {
-      insuranceVolume: stats.insuranceVol,
-      activeClaims: stats.activeClaims,
-      totalLeads: stats.totalLeads,
-      pendingTasks: stats.pendingTasks
-    };
-    const result = await generateBusinessInsights(aiStats);
-    setInsight(result);
-    setLoadingInsight(false);
+    try {
+      const aiStats = {
+        insuranceVolume: stats.insuranceVol,
+        activeClaims: stats.activeClaims,
+        totalLeads: stats.totalLeads,
+        pendingTasks: stats.pendingTasks
+      };
+      const result = await generateBusinessInsights(aiStats);
+      setInsight(result);
+    } catch (error) {
+      console.error('Insight Error:', error);
+      setInsight("AI insights temporarily unavailable. Your business metrics are displayed below.");
+    } finally {
+      setLoadingInsight(false);
+    }
   };
 
   useEffect(() => {

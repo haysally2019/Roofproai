@@ -59,6 +59,21 @@ const AppLayout: React.FC = () => {
   const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [authLoading, setAuthLoading] = useState(false);
 
+  const handleDraftEmail = async (leadId: string) => {
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+
+    try {
+      const topic = `${lead.projectType} project at ${lead.address}`;
+      const draft = await draftClientEmail(lead.name, topic, 'professional');
+      addToast('Email draft generated successfully', 'success');
+      return draft;
+    } catch (error) {
+      console.error('Email draft error:', error);
+      addToast('Failed to generate email draft', 'error');
+    }
+  };
+
   // --- ROUTING LOGIC ---
   const path = window.location.pathname.toLowerCase().replace(/\/$/, ''); 
   const hash = window.location.hash.toLowerCase().replace('#', '').replace(/\/$/, ''); 
@@ -162,48 +177,75 @@ const AppLayout: React.FC = () => {
         </div>
 
         <main className="flex-1 overflow-auto p-4 md:p-8 relative scroll-smooth custom-scrollbar">
-          {(currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.SAAS_REP) && activeTab !== Tab.SETTINGS ? (
-            <SuperAdminDashboard 
-              view={activeTab}
-              companies={companies || []} // Patch: Safety check
-              onAddCompany={() => {}} 
-              onUpdateStatus={() => {}} 
-              users={users || []} // Patch: Safety check
-              onAddUser={() => {}}
-              onRemoveUser={() => {}}
-              currentUser={currentUser}
-              softwareLeads={[]}
-              onAddSoftwareLead={() => {}}
-              onUpdateSoftwareLead={() => {}}
-            />
-          ) : activeTab === Tab.SETTINGS ? (
-             <Settings 
-                currentUser={currentUser}
-                company={currentCompany}
-                onUpdateUser={useStore().updateUser}
-                onUpdateCompany={useStore().updateCompany}
-             />
-          ) : (
-            <div className="max-w-7xl mx-auto h-full flex flex-col">
-              {activeTab === Tab.DASHBOARD && <Dashboard currentUser={currentUser} />}
-              
-              {/* Patch: Filter on companyLeads which is now guaranteed to be an array */}
-              {activeTab === Tab.LEADS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.NEW, LeadStatus.INSPECTION].includes(l.status))} viewMode="leads" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
-              {activeTab === Tab.CLAIMS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.CLAIM_FILED, LeadStatus.ADJUSTER_MEETING, LeadStatus.APPROVED, LeadStatus.SUPPLEMENTING].includes(l.status))} viewMode="claims" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
-              {activeTab === Tab.JOBS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.PRODUCTION, LeadStatus.CLOSED].includes(l.status))} viewMode="jobs" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
-              
-              {/* Patch: Safety checks for events, tasks, invoices */}
-              {activeTab === Tab.ESTIMATES && <Estimator leads={companyLeads} onSaveEstimate={(id, est) => { const lead = companyLeads.find(l => l.id === id); if(lead) updateLead({ ...lead, estimates: [...(lead.estimates||[]), est] }); }} />}
-              {activeTab === Tab.CALENDAR && <CalendarView events={events || []} currentUser={currentUser} onAddEvent={addEvent} />}
-              {activeTab === Tab.TASKS && <TaskBoard tasks={tasks || []} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
-              {activeTab === Tab.INVOICES && <InvoiceSystem invoices={invoices || []} leads={companyLeads} currentUser={currentUser} onCreateInvoice={createInvoice} onUpdateStatus={updateInvoiceStatus} />}
-              
-              {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}
-              {activeTab === Tab.AI_RECEPTIONIST && <AIReceptionist />}
-              {activeTab === Tab.AUTOMATIONS && <Automations />}
-              {activeTab === Tab.TEAM && currentCompany && <TeamManagement company={currentCompany} users={users || []} onAddUser={addUser} onRemoveUser={removeUser} />}
-            </div>
-          )}
+          {(() => {
+            try {
+              if ((currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.SAAS_REP) && activeTab !== Tab.SETTINGS) {
+                return (
+                  <SuperAdminDashboard
+                    view={activeTab}
+                    companies={companies || []}
+                    onAddCompany={() => {}}
+                    onUpdateStatus={() => {}}
+                    users={users || []}
+                    onAddUser={() => {}}
+                    onRemoveUser={() => {}}
+                    currentUser={currentUser}
+                    softwareLeads={[]}
+                    onAddSoftwareLead={() => {}}
+                    onUpdateSoftwareLead={() => {}}
+                  />
+                );
+              }
+
+              if (activeTab === Tab.SETTINGS) {
+                return (
+                  <Settings
+                    currentUser={currentUser}
+                    company={currentCompany}
+                    onUpdateUser={useStore().updateUser}
+                    onUpdateCompany={useStore().updateCompany}
+                  />
+                );
+              }
+
+              return (
+                <div className="max-w-7xl mx-auto h-full flex flex-col">
+                  {activeTab === Tab.DASHBOARD && <Dashboard currentUser={currentUser} />}
+
+                  {activeTab === Tab.LEADS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.NEW, LeadStatus.INSPECTION].includes(l.status))} viewMode="leads" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
+                  {activeTab === Tab.CLAIMS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.CLAIM_FILED, LeadStatus.ADJUSTER_MEETING, LeadStatus.APPROVED, LeadStatus.SUPPLEMENTING].includes(l.status))} viewMode="claims" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
+                  {activeTab === Tab.JOBS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.PRODUCTION, LeadStatus.CLOSED].includes(l.status))} viewMode="jobs" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
+
+                  {activeTab === Tab.ESTIMATES && <Estimator leads={companyLeads} onSaveEstimate={(id, est) => { const lead = companyLeads.find(l => l.id === id); if(lead) updateLead({ ...lead, estimates: [...(lead.estimates||[]), est] }); }} />}
+                  {activeTab === Tab.CALENDAR && <CalendarView events={events || []} currentUser={currentUser} onAddEvent={addEvent} />}
+                  {activeTab === Tab.TASKS && <TaskBoard tasks={tasks || []} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
+                  {activeTab === Tab.INVOICES && <InvoiceSystem invoices={invoices || []} leads={companyLeads} currentUser={currentUser} onCreateInvoice={createInvoice} onUpdateStatus={updateInvoiceStatus} />}
+
+                  {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}
+                  {activeTab === Tab.AI_RECEPTIONIST && <AIReceptionist />}
+                  {activeTab === Tab.AUTOMATIONS && <Automations />}
+                  {activeTab === Tab.TEAM && currentCompany && <TeamManagement company={currentCompany} users={users || []} onAddUser={addUser} onRemoveUser={removeUser} />}
+                </div>
+              );
+            } catch (error) {
+              console.error('Tab render error:', error);
+              return (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center p-8 bg-white rounded-lg shadow-lg border border-slate-200">
+                    <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+                    <h2 className="text-xl font-bold text-slate-900 mb-2">Something went wrong</h2>
+                    <p className="text-slate-600 mb-4">We encountered an error loading this view.</p>
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                    >
+                      Reload Page
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+          })()}
         </main>
       </div>
       <AIChat />
