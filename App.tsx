@@ -71,7 +71,7 @@ const AppLayout: React.FC = () => {
       }
   }, [currentUser, isOnboardingRoute]);
 
-  // --- VIEW: ONBOARDING FUNNEL (Full Screen Control) ---
+  // --- VIEW: ONBOARDING FUNNEL ---
   if (!currentUser && isOnboardingRoute) {
       return (
          <>
@@ -86,7 +86,6 @@ const AppLayout: React.FC = () => {
       return (
          <div className="h-full w-full bg-[#0F172A] relative overflow-y-auto flex flex-col">
              <ToastContainer />
-             {/* Background Decoration */}
              <div className="fixed inset-0 overflow-hidden pointer-events-none">
                  <div className="absolute -top-[20%] -right-[10%] w-[50%] h-[50%] rounded-full bg-indigo-600/20 blur-[100px]"></div>
                  <div className="absolute -bottom-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-blue-600/20 blur-[100px]"></div>
@@ -144,8 +143,8 @@ const AppLayout: React.FC = () => {
       return <div className="h-screen w-full bg-slate-50"><Onboarding /></div>;
   }
 
-  // --- VIEW: DASHBOARD ---
-  const companyLeads = leads; 
+  // --- VIEW: DASHBOARD (Private) ---
+  const companyLeads = leads || []; // Patch: Default to empty array
 
   return (
     <div className="flex h-screen bg-[#F8FAFC]">
@@ -166,10 +165,10 @@ const AppLayout: React.FC = () => {
           {(currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.SAAS_REP) && activeTab !== Tab.SETTINGS ? (
             <SuperAdminDashboard 
               view={activeTab}
-              companies={companies} 
+              companies={companies || []} // Patch: Safety check
               onAddCompany={() => {}} 
               onUpdateStatus={() => {}} 
-              users={[]} 
+              users={users || []} // Patch: Safety check
               onAddUser={() => {}}
               onRemoveUser={() => {}}
               currentUser={currentUser}
@@ -187,17 +186,22 @@ const AppLayout: React.FC = () => {
           ) : (
             <div className="max-w-7xl mx-auto h-full flex flex-col">
               {activeTab === Tab.DASHBOARD && <Dashboard currentUser={currentUser} />}
-              {activeTab === Tab.LEADS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.NEW, LeadStatus.INSPECTION].includes(l.status))} viewMode="leads" users={users} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
-              {activeTab === Tab.CLAIMS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.CLAIM_FILED, LeadStatus.ADJUSTER_MEETING, LeadStatus.APPROVED, LeadStatus.SUPPLEMENTING].includes(l.status))} viewMode="claims" users={users} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
-              {activeTab === Tab.JOBS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.PRODUCTION, LeadStatus.CLOSED].includes(l.status))} viewMode="jobs" users={users} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
+              
+              {/* Patch: Filter on companyLeads which is now guaranteed to be an array */}
+              {activeTab === Tab.LEADS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.NEW, LeadStatus.INSPECTION].includes(l.status))} viewMode="leads" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
+              {activeTab === Tab.CLAIMS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.CLAIM_FILED, LeadStatus.ADJUSTER_MEETING, LeadStatus.APPROVED, LeadStatus.SUPPLEMENTING].includes(l.status))} viewMode="claims" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
+              {activeTab === Tab.JOBS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.PRODUCTION, LeadStatus.CLOSED].includes(l.status))} viewMode="jobs" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
+              
+              {/* Patch: Safety checks for events, tasks, invoices */}
               {activeTab === Tab.ESTIMATES && <Estimator leads={companyLeads} onSaveEstimate={(id, est) => { const lead = companyLeads.find(l => l.id === id); if(lead) updateLead({ ...lead, estimates: [...(lead.estimates||[]), est] }); }} />}
-              {activeTab === Tab.CALENDAR && <CalendarView events={events} currentUser={currentUser} onAddEvent={addEvent} />}
-              {activeTab === Tab.TASKS && <TaskBoard tasks={tasks} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
-              {activeTab === Tab.INVOICES && <InvoiceSystem invoices={invoices} leads={companyLeads} currentUser={currentUser} onCreateInvoice={createInvoice} onUpdateStatus={updateInvoiceStatus} />}
+              {activeTab === Tab.CALENDAR && <CalendarView events={events || []} currentUser={currentUser} onAddEvent={addEvent} />}
+              {activeTab === Tab.TASKS && <TaskBoard tasks={tasks || []} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
+              {activeTab === Tab.INVOICES && <InvoiceSystem invoices={invoices || []} leads={companyLeads} currentUser={currentUser} onCreateInvoice={createInvoice} onUpdateStatus={updateInvoiceStatus} />}
+              
               {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}
               {activeTab === Tab.AI_RECEPTIONIST && <AIReceptionist />}
               {activeTab === Tab.AUTOMATIONS && <Automations />}
-              {activeTab === Tab.TEAM && currentCompany && <TeamManagement company={currentCompany} users={users} onAddUser={addUser} onRemoveUser={removeUser} />}
+              {activeTab === Tab.TEAM && currentCompany && <TeamManagement company={currentCompany} users={users || []} onAddUser={addUser} onRemoveUser={removeUser} />}
             </div>
           )}
         </main>
