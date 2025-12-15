@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { Menu, Bell, X, CheckCircle, AlertTriangle, Info, Zap, ArrowRight, Loader2 } from 'lucide-react';
+import { Menu, Bell, X, CheckCircle, AlertTriangle, Info, Zap, Loader2 } from 'lucide-react';
 
 // Context
 import { StoreProvider, useStore } from './lib/store';
@@ -20,9 +19,11 @@ import PriceBook from './components/PriceBook';
 import Settings from './components/Settings';
 import AIReceptionist from './components/AIReceptionist';
 import Automations from './components/Automations';
+import Onboarding from './components/Onboarding'; 
+import TrialFunnel from './components/TrialFunnel';
 
 // Types
-import { LeadStatus, UserRole, Tab, Toast } from './types';
+import { LeadStatus, UserRole, Tab } from './types';
 import { draftClientEmail } from './services/geminiService';
 
 // --- Toast Component ---
@@ -48,34 +49,30 @@ const ToastContainer: React.FC = () => {
 // --- Main Layout ---
 const AppLayout: React.FC = () => {
   const {
-      currentUser, activeTab, companies, leads, events, tasks, invoices, users,
-      updateLead, addLead, addToast, setTab, notifications, login, register, logout,
-      addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
+      currentUser, activeTab, companies, leads, events, tasks, invoices, users, notifications,
+      updateLead, addLead, addToast, login, addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
       addUser, removeUser
   } = useStore();
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   
-  // Auth State
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [authForm, setAuthForm] = useState({ companyName: '', name: '', email: '', password: '' });
+  // Auth Form State (For Login Page)
+  const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [authLoading, setAuthLoading] = useState(false);
+
+  // --- ROUTING LOGIC ---
+  // Check if user is on the special onboarding link
+  const isOnboardingRoute = window.location.pathname === '/onboarding';
 
   // Simulation State
   useEffect(() => {
     if (!currentUser) return;
-    
-    // Random "Live" events simulator
     const interval = setInterval(() => {
         const rand = Math.random();
-        if (rand > 0.95) {
-            addToast("New Web Lead: 124 Main St - Inspect Request", "info");
-        } else if (rand > 0.98) {
-            addToast("Weather Alert: Hail detected in Zip 75001", "error");
-        }
+        if (rand > 0.95) addToast("New Web Lead: 124 Main St - Inspect Request", "info");
+        else if (rand > 0.98) addToast("Weather Alert: Hail detected in Zip 75001", "error");
     }, 45000);
-
     return () => clearInterval(interval);
   }, [currentUser]);
 
@@ -86,15 +83,12 @@ const AppLayout: React.FC = () => {
     addToast("Email drafted successfully", "success");
   };
 
-  const handleAuthSubmit = async (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       setAuthLoading(true);
       try {
-          if (authMode === 'login') {
-              await login(authForm.email, authForm.password);
-          } else {
-              await register(authForm.companyName, authForm.name, authForm.email, authForm.password);
-          }
+          await login(authForm.email, authForm.password);
+          // If login success, store handles state update
       } catch (err) {
           console.error(err);
       } finally {
@@ -102,61 +96,44 @@ const AppLayout: React.FC = () => {
       }
   };
 
+  // --- VIEW 1: AUTHENTICATION (Login OR Funnel) ---
   if (!currentUser) {
-      // Login / Register Screen
       return (
-         <div className="h-full w-full bg-slate-900 relative overflow-y-auto">
+         <div className="h-full w-full bg-[#0F172A] relative overflow-y-auto flex flex-col">
              <ToastContainer />
-             {/* Background Decoration - Fixed so it doesn't scroll */}
-             <div className="fixed top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
-                 <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-indigo-600 blur-3xl opacity-20"></div>
-                 <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 rounded-full bg-blue-600 blur-3xl opacity-20"></div>
+             
+             {/* Background Decoration */}
+             <div className="fixed inset-0 overflow-hidden pointer-events-none">
+                 <div className="absolute -top-[20%] -right-[10%] w-[50%] h-[50%] rounded-full bg-indigo-600/20 blur-[100px]"></div>
+                 <div className="absolute -bottom-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-blue-600/20 blur-[100px]"></div>
              </div>
 
-             {/* Scrollable Content */}
-             <div className="min-h-full flex items-center justify-center p-6 relative z-10">
-                 <div className="w-full max-w-md">
-                     <div className="text-center mb-8">
-                         <div className="flex items-center justify-center gap-3 mb-4">
-                            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-xl">
-                                <Zap className="text-white fill-white" size={32} strokeWidth={2.5} />
-                            </div>
-                         </div>
-                         <h1 className="text-3xl font-bold text-white tracking-tight">ALTUS AI</h1>
-                         <p className="text-slate-400 mt-2">ROOFING SOFTWARE</p>
+             {/* Content */}
+             <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-6 min-h-[600px]">
+                 
+                 {/* Logo Area */}
+                 <div className="text-center mb-8 animate-fade-in">
+                     <div className="flex items-center justify-center gap-3 mb-4">
+                        <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-blue-900/50">
+                            <Zap className="text-white fill-white" size={28} strokeWidth={2.5} />
+                        </div>
                      </div>
+                     <h1 className="text-3xl font-bold text-white tracking-tight">ALTUS AI</h1>
+                     {isOnboardingRoute ? (
+                         <p className="text-indigo-300 mt-2 font-medium tracking-wide">7-Day Free Trial Configuration</p>
+                     ) : (
+                         <p className="text-slate-400 mt-2 font-medium">Enterprise Roofing CRM & AI Assistant</p>
+                     )}
+                 </div>
 
-                     <div className="bg-white rounded-2xl p-8 shadow-2xl animate-fade-in">
-                         <div className="flex justify-center mb-6 border-b border-slate-100 pb-1">
-                             <button onClick={() => setAuthMode('login')} className={`px-4 py-2 font-medium text-sm transition-colors ${authMode === 'login' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>Sign In</button>
-                             <button onClick={() => setAuthMode('register')} className={`px-4 py-2 font-medium text-sm transition-colors ${authMode === 'register' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>Create Account</button>
-                         </div>
-
-                         <form onSubmit={handleAuthSubmit} className="space-y-4">
-                             {authMode === 'register' && (
-                                 <>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Company Name</label>
-                                        <input 
-                                            required 
-                                            value={authForm.companyName} 
-                                            onChange={e => setAuthForm({...authForm, companyName: e.target.value})}
-                                            className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
-                                            placeholder="Apex Roofing"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Full Name</label>
-                                        <input 
-                                            required 
-                                            value={authForm.name} 
-                                            onChange={e => setAuthForm({...authForm, name: e.target.value})}
-                                            className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
-                                            placeholder="John Doe"
-                                        />
-                                    </div>
-                                 </>
-                             )}
+                 {isOnboardingRoute ? (
+                     /* 1A: SPECIAL FUNNEL (Only on /onboarding) */
+                     <TrialFunnel onSwitchToLogin={() => window.location.href = '/'} />
+                 ) : (
+                     /* 1B: STANDARD LOGIN (Only on /) */
+                     <div className="w-full max-w-md bg-white rounded-2xl p-8 shadow-2xl animate-fade-in border border-slate-100">
+                         <h2 className="text-2xl font-bold text-slate-900 text-center mb-6">Welcome Back</h2>
+                         <form onSubmit={handleLoginSubmit} className="space-y-4">
                              <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Email Address</label>
                                 <input 
@@ -164,7 +141,6 @@ const AppLayout: React.FC = () => {
                                     value={authForm.email} 
                                     onChange={e => setAuthForm({...authForm, email: e.target.value})}
                                     className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
-                                    placeholder="name@company.com"
                                 />
                              </div>
                              <div>
@@ -174,127 +150,70 @@ const AppLayout: React.FC = () => {
                                     value={authForm.password} 
                                     onChange={e => setAuthForm({...authForm, password: e.target.value})}
                                     className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
-                                    placeholder="••••••••"
                                 />
                              </div>
-
                              <button 
                                 type="submit" 
                                 disabled={authLoading}
-                                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-lg shadow-indigo-200 transition-all flex justify-center items-center gap-2"
+                                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-lg transition-all flex justify-center items-center gap-2"
                              >
-                                {authLoading ? <Loader2 className="animate-spin"/> : (authMode === 'login' ? 'Sign In' : 'Start Free Trial')}
+                                {authLoading ? <Loader2 className="animate-spin"/> : 'Sign In'}
                              </button>
                          </form>
-                         
-                         <div className="mt-6 pt-4 border-t border-slate-100 text-center">
-                             <p className="text-xs text-slate-400">
-                                 {authMode === 'login' ? "Don't have an account?" : "Already have an account?"}
-                                 <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="ml-1 text-indigo-600 font-bold hover:underline">
-                                     {authMode === 'login' ? 'Sign Up' : 'Log In'}
+                         <div className="mt-6 pt-6 border-t border-slate-100 text-center">
+                             <p className="text-sm text-slate-500">
+                                 New Roofing Company? 
+                                 {/* Redirects to the Special Funnel */}
+                                 <button onClick={() => window.location.href = '/onboarding'} className="ml-1 text-indigo-600 font-bold hover:underline">
+                                     Start Free Trial
                                  </button>
                              </p>
                          </div>
                      </div>
-                     
-                     <div className="mt-8 text-center pb-6">
-                         <p className="text-xs text-slate-400">
-                             Create a new account to get started with ALTUS AI
-                         </p>
-                     </div>
+                 )}
+                 
+                 <div className="mt-8 text-center text-slate-500 text-xs">
+                     &copy; 2025 Altus AI Inc. • Privacy • Terms
                  </div>
              </div>
          </div>
       )
   }
 
+  // --- VIEW 2: POST-SIGNUP SETUP (If setup is incomplete) ---
   const currentCompany = companies.find(c => c.id === currentUser.companyId);
+  
+  if (currentCompany && !currentCompany.setupComplete) {
+      return (
+          <div className="h-screen w-full bg-slate-50">
+              <Onboarding /> 
+          </div>
+      );
+  }
 
-  const companyLeads = leads; // Already filtered by StoreContext for isolation
+  // --- VIEW 3: MAIN APP (Dashboard) ---
+  const companyLeads = leads; // Leads are filtered in Store context
 
   return (
     <div className="flex h-screen bg-[#F8FAFC]">
       <ToastContainer />
-      
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        {/* Top Gradient Accent */}
+        {/* Top Gradient */}
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 z-10"></div>
         
-        {/* Mobile Header - Sticky */}
+        {/* Mobile Header */}
         <div className="md:hidden sticky top-0 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-20 shadow-sm">
-            <button onClick={() => setIsSidebarOpen(true)} className="text-slate-600 p-2 -ml-2">
-                <Menu size={24} />
-            </button>
-            <span className="font-bold text-slate-800 flex items-center gap-2">
-                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-blue-600">
-                    <Zap className="text-white fill-white" size={16} strokeWidth={2.5} />
-                </div>
-                Altus AI
-            </span>
+            <button onClick={() => setIsSidebarOpen(true)} className="text-slate-600 p-2 -ml-2"><Menu size={24} /></button>
+            <span className="font-bold text-slate-800 flex items-center gap-2"><Zap className="text-blue-600 fill-blue-600" size={20} /> Altus AI</span>
             <button onClick={() => setShowNotifications(!showNotifications)} className="text-slate-600 relative p-2 -mr-2">
-                <Bell size={24} />
-                {notifications.some(n => !n.read) && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>}
+                <Bell size={24} /> {notifications.some(n => !n.read) && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>}
             </button>
         </div>
 
-        {/* Mobile Notifications Overlay */}
-        {showNotifications && (
-            <div className="md:hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowNotifications(false)}>
-                 <div className="absolute top-16 right-0 left-0 bg-white shadow-xl border-b border-slate-200 max-h-[60vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                    <div className="p-3 border-b border-slate-100 font-semibold text-slate-700 flex justify-between items-center bg-slate-50">
-                        <span>Notifications</span>
-                        <button onClick={() => setShowNotifications(false)}><X size={18} className="text-slate-400"/></button>
-                    </div>
-                    {notifications.length === 0 ? (
-                        <div className="p-8 text-center text-slate-400 text-sm">No new notifications</div>
-                    ) : (
-                        notifications.map(n => (
-                            <div key={n.id} className="p-4 border-b border-slate-50 hover:bg-slate-50">
-                                <p className="text-sm font-medium text-slate-800">{n.title}</p>
-                                <p className="text-xs text-slate-500 mt-1">{n.message}</p>
-                                <p className="text-[10px] text-slate-400 mt-2 text-right">{n.time}</p>
-                            </div>
-                        ))
-                    )}
-                 </div>
-            </div>
-        )}
-
-        {/* Desktop Notification Bell (Absolute) */}
-        <div className="hidden md:block absolute top-4 right-8 z-30">
-            <button 
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="relative p-2 bg-white rounded-full text-slate-600 shadow-sm border border-slate-200 hover:text-indigo-600 transition-colors"
-            >
-                <Bell size={20} />
-                {notifications.some(n => !n.read) && (
-                    <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-                )}
-            </button>
-            
-            {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden animate-fade-in z-50">
-                    <div className="p-3 border-b border-slate-100 font-semibold text-slate-700 flex justify-between items-center">
-                        <span>Notifications</span>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto">
-                        {notifications.map(n => (
-                            <div key={n.id} className="p-3 border-b border-slate-50 hover:bg-slate-50">
-                                <p className="text-sm font-medium text-slate-800">{n.title}</p>
-                                <p className="text-xs text-slate-500">{n.message}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
-
-        {/* Content */}
+        {/* Content Area */}
         <main className="flex-1 overflow-auto p-4 md:p-8 relative scroll-smooth custom-scrollbar">
-          
           {(currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.SAAS_REP) && activeTab !== Tab.SETTINGS ? (
             <SuperAdminDashboard 
               view={activeTab}
@@ -319,119 +238,30 @@ const AppLayout: React.FC = () => {
           ) : (
             <div className="max-w-7xl mx-auto h-full flex flex-col">
               {activeTab === Tab.DASHBOARD && <Dashboard currentUser={currentUser} />}
-              
-              {activeTab === Tab.LEADS && (
-                <LeadBoard 
-                  leads={companyLeads.filter(l => [LeadStatus.NEW, LeadStatus.INSPECTION].includes(l.status))} 
-                  viewMode="leads"
-                  users={users.filter(u => u.companyId === currentUser.companyId)}
-                  currentUser={currentUser}
-                  onDraftEmail={handleDraftEmail} 
-                  onUpdateLead={updateLead}
-                  onAddLead={addLead}
-                />
-              )}
-
-              {activeTab === Tab.CLAIMS && (
-                 <LeadBoard 
-                  leads={companyLeads.filter(l => [LeadStatus.CLAIM_FILED, LeadStatus.ADJUSTER_MEETING, LeadStatus.APPROVED, LeadStatus.SUPPLEMENTING].includes(l.status))} 
-                  viewMode="claims"
-                  users={users.filter(u => u.companyId === currentUser.companyId)}
-                  currentUser={currentUser}
-                  onDraftEmail={handleDraftEmail} 
-                  onUpdateLead={updateLead}
-                  onAddLead={addLead}
-                />
-              )}
-
-              {activeTab === Tab.JOBS && (
-                 <LeadBoard 
-                  leads={companyLeads.filter(l => [LeadStatus.PRODUCTION, LeadStatus.CLOSED].includes(l.status))} 
-                  viewMode="jobs"
-                  users={users.filter(u => u.companyId === currentUser.companyId)}
-                  currentUser={currentUser}
-                  onDraftEmail={handleDraftEmail} 
-                  onUpdateLead={updateLead}
-                  onAddLead={addLead}
-                />
-              )}
-
-              {activeTab === Tab.ESTIMATES && (
-                 <Estimator 
-                    leads={companyLeads} 
-                    onSaveEstimate={(id, est) => {
-                       const lead = companyLeads.find(l => l.id === id);
-                       if(lead) {
-                           updateLead({ ...lead, estimates: [...(lead.estimates||[]), est] });
-                       }
-                    }}
-                 />
-              )}
-              
-              {activeTab === Tab.CALENDAR && (
-                 <CalendarView 
-                    events={events} 
-                    currentUser={currentUser}
-                    onAddEvent={addEvent}
-                 />
-              )}
-              
-              {activeTab === Tab.TASKS && (
-                 <TaskBoard 
-                    tasks={tasks} 
-                    currentUser={currentUser}
-                    onAddTask={addTask}
-                    onUpdateTask={updateTask}
-                    onDeleteTask={deleteTask}
-                 />
-              )}
-
-              {activeTab === Tab.INVOICES && (
-                  <InvoiceSystem 
-                      invoices={invoices} 
-                      leads={companyLeads}
-                      currentUser={currentUser}
-                      onCreateInvoice={createInvoice}
-                      onUpdateStatus={updateInvoiceStatus}
-                  />
-              )}
-
-              {activeTab === Tab.PRICE_BOOK && (
-                  <PriceBook items={[]} />
-              )}
-              
-              {activeTab === Tab.AI_RECEPTIONIST && (
-                  <AIReceptionist />
-              )}
-
-              {activeTab === Tab.AUTOMATIONS && (
-                  <Automations />
-              )}
-
-              {activeTab === Tab.TEAM && currentCompany && (
-                <TeamManagement
-                  company={currentCompany}
-                  users={users.filter(u => u.companyId === currentUser.companyId)}
-                  onAddUser={addUser}
-                  onRemoveUser={removeUser}
-                />
-              )}
+              {activeTab === Tab.LEADS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.NEW, LeadStatus.INSPECTION].includes(l.status))} viewMode="leads" users={users} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
+              {activeTab === Tab.CLAIMS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.CLAIM_FILED, LeadStatus.ADJUSTER_MEETING, LeadStatus.APPROVED, LeadStatus.SUPPLEMENTING].includes(l.status))} viewMode="claims" users={users} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
+              {activeTab === Tab.JOBS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.PRODUCTION, LeadStatus.CLOSED].includes(l.status))} viewMode="jobs" users={users} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
+              {activeTab === Tab.ESTIMATES && <Estimator leads={companyLeads} onSaveEstimate={(id, est) => { const lead = companyLeads.find(l => l.id === id); if(lead) updateLead({ ...lead, estimates: [...(lead.estimates||[]), est] }); }} />}
+              {activeTab === Tab.CALENDAR && <CalendarView events={events} currentUser={currentUser} onAddEvent={addEvent} />}
+              {activeTab === Tab.TASKS && <TaskBoard tasks={tasks} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
+              {activeTab === Tab.INVOICES && <InvoiceSystem invoices={invoices} leads={companyLeads} currentUser={currentUser} onCreateInvoice={createInvoice} onUpdateStatus={updateInvoiceStatus} />}
+              {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}
+              {activeTab === Tab.AI_RECEPTIONIST && <AIReceptionist />}
+              {activeTab === Tab.AUTOMATIONS && <Automations />}
+              {activeTab === Tab.TEAM && currentCompany && <TeamManagement company={currentCompany} users={users} onAddUser={addUser} onRemoveUser={removeUser} />}
             </div>
           )}
         </main>
       </div>
-
       <AIChat />
     </div>
   );
 };
 
-const App: React.FC = () => {
-    return (
-        <StoreProvider>
-            <AppLayout />
-        </StoreProvider>
-    )
-}
+const App: React.FC = () => (
+    <StoreProvider>
+        <AppLayout />
+    </StoreProvider>
+)
 
 export default App;
