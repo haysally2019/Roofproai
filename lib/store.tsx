@@ -359,6 +359,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setOrders([]);
   };
 
+  const setTab = (tab: Tab) => {
+    setActiveTab(tab);
+  };
+
   // CRUD handlers (condensed for brevity but fully functional)
   const updateCompany = async (c: Partial<Company>) => {
     if (!c.id) return;
@@ -375,20 +379,210 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setCurrentUser(prev => prev ? {...prev, ...u} : null);
   };
 
-  const addLead = async (lead: Lead) => { /* Same as before but safe */ };
-  const updateLead = async (lead: Lead) => { /* Same as before */ };
-  const addTask = async (task: Partial<Task>) => { /* Same as before */ };
-  const updateTask = async (task: Task) => { /* Same as before */ };
-  const deleteTask = async (taskId: string) => { /* Same as before */ };
-  const addEvent = async (event: Partial<CalendarEvent>) => { /* Same as before */ };
-  const createInvoice = async (invoice: Invoice) => { /* Same as before */ };
-  const updateInvoiceStatus = async (id: string, status: Invoice['status']) => { /* Same as before */ };
-  const addAutomation = async (r: AutomationRule) => { /* Same as before */ };
-  const toggleAutomation = async (id: string) => { /* Same as before */ };
-  const deleteAutomation = async (id: string) => { /* Same as before */ };
-  const addOrder = async (o: MaterialOrder) => { /* Same as before */ };
-  const addUser = async (u: Partial<User>) => { /* Same as before */ };
-  const removeUser = async (uid: string) => { /* Same as before */ };
+  const addLead = async (lead: Lead) => {
+    if (!currentUser?.companyId) return;
+    const { error } = await supabase.from('leads').insert({
+      id: lead.id,
+      name: lead.name,
+      address: lead.address,
+      phone: lead.phone,
+      email: lead.email,
+      status: lead.status,
+      project_type: lead.projectType,
+      source: lead.source,
+      notes: lead.notes,
+      estimated_value: lead.estimatedValue,
+      last_contact: lead.lastContact,
+      assigned_to: lead.assignedTo,
+      company_id: currentUser.companyId,
+      insurance_carrier: lead.insuranceCarrier,
+      policy_number: lead.policyNumber,
+      claim_number: lead.claimNumber,
+      adjuster_name: lead.adjusterName,
+      adjuster_phone: lead.adjusterPhone,
+      damage_date: lead.damageDate
+    });
+    if (!error) setLeads(prev => [...prev, lead]);
+  };
+
+  const updateLead = async (lead: Lead) => {
+    const { error } = await supabase.from('leads').update({
+      name: lead.name,
+      address: lead.address,
+      phone: lead.phone,
+      email: lead.email,
+      status: lead.status,
+      project_type: lead.projectType,
+      source: lead.source,
+      notes: lead.notes,
+      estimated_value: lead.estimatedValue,
+      last_contact: lead.lastContact,
+      assigned_to: lead.assignedTo,
+      insurance_carrier: lead.insuranceCarrier,
+      policy_number: lead.policyNumber,
+      claim_number: lead.claimNumber,
+      adjuster_name: lead.adjusterName,
+      adjuster_phone: lead.adjusterPhone,
+      damage_date: lead.damageDate,
+      project_manager_id: lead.projectManagerId,
+      production_date: lead.productionDate,
+      payment_status: lead.paymentStatus
+    }).eq('id', lead.id);
+    if (!error) setLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
+  };
+
+  const addTask = async (task: Partial<Task>) => {
+    if (!currentUser?.companyId) return;
+    const newTask = { ...task, id: Date.now().toString(), companyId: currentUser.companyId };
+    const { error } = await supabase.from('tasks').insert({
+      id: newTask.id,
+      title: newTask.title,
+      description: newTask.description,
+      due_date: newTask.dueDate,
+      priority: newTask.priority,
+      status: newTask.status || 'To Do',
+      assigned_to: newTask.assignedTo,
+      related_lead_id: newTask.relatedLeadId,
+      company_id: currentUser.companyId
+    });
+    if (!error) setTasks(prev => [...prev, newTask as Task]);
+  };
+
+  const updateTask = async (task: Task) => {
+    const { error } = await supabase.from('tasks').update({
+      title: task.title,
+      description: task.description,
+      due_date: task.dueDate,
+      priority: task.priority,
+      status: task.status,
+      assigned_to: task.assignedTo,
+      related_lead_id: task.relatedLeadId
+    }).eq('id', task.id);
+    if (!error) setTasks(prev => prev.map(t => t.id === task.id ? task : t));
+  };
+
+  const deleteTask = async (taskId: string) => {
+    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+    if (!error) setTasks(prev => prev.filter(t => t.id !== taskId));
+  };
+
+  const addEvent = async (event: Partial<CalendarEvent>) => {
+    if (!currentUser?.companyId) return;
+    const newEvent = { ...event, id: Date.now().toString(), companyId: currentUser.companyId, color: '#3b82f6' };
+    const { error } = await supabase.from('events').insert({
+      id: newEvent.id,
+      title: newEvent.title,
+      start_time: newEvent.start,
+      end_time: newEvent.end,
+      type: newEvent.type,
+      lead_id: newEvent.leadId,
+      assigned_to: newEvent.assignedTo,
+      company_id: currentUser.companyId
+    });
+    if (!error) setEvents(prev => [...prev, newEvent as CalendarEvent]);
+  };
+
+  const createInvoice = async (invoice: Invoice) => {
+    if (!currentUser?.companyId) return;
+    const { error } = await supabase.from('invoices').insert({
+      id: invoice.id,
+      number: invoice.number,
+      lead_id: invoice.leadName,
+      status: invoice.status,
+      date_issued: invoice.dateIssued,
+      date_due: invoice.dateDue,
+      items: invoice.items,
+      subtotal: invoice.subtotal,
+      tax: invoice.tax,
+      total: invoice.total,
+      company_id: currentUser.companyId
+    });
+    if (!error) setInvoices(prev => [...prev, invoice]);
+  };
+
+  const updateInvoiceStatus = async (id: string, status: Invoice['status']) => {
+    const { error } = await supabase.from('invoices').update({ status }).eq('id', id);
+    if (!error) setInvoices(prev => prev.map(i => i.id === id ? {...i, status} : i));
+  };
+
+  const addAutomation = async (r: AutomationRule) => {
+    if (!currentUser?.companyId) return;
+    const { error } = await supabase.from('automations').insert({
+      id: r.id,
+      name: r.name,
+      active: r.active,
+      trigger_type: r.trigger.type,
+      trigger_value: r.trigger.value,
+      action_type: r.action.type,
+      action_config: r.action.config,
+      company_id: currentUser.companyId
+    });
+    if (!error) setAutomations(prev => [...prev, r]);
+  };
+
+  const toggleAutomation = async (id: string) => {
+    const auto = automations.find(a => a.id === id);
+    if (!auto) return;
+    const { error } = await supabase.from('automations').update({ active: !auto.active }).eq('id', id);
+    if (!error) setAutomations(prev => prev.map(a => a.id === id ? {...a, active: !a.active} : a));
+  };
+
+  const deleteAutomation = async (id: string) => {
+    const { error } = await supabase.from('automations').delete().eq('id', id);
+    if (!error) setAutomations(prev => prev.filter(a => a.id !== id));
+  };
+
+  const addOrder = async (o: MaterialOrder) => {
+    if (!currentUser?.companyId) return;
+    const { error } = await supabase.from('material_orders').insert({
+      id: o.id,
+      po_number: o.poNumber,
+      supplier_id: o.supplierId,
+      lead_id: o.leadId,
+      status: o.status,
+      delivery_date: o.deliveryDate,
+      items: o.items,
+      instructions: o.instructions,
+      company_id: currentUser.companyId
+    });
+    if (!error) setOrders(prev => [...prev, o]);
+  };
+
+  const addUser = async (u: Partial<User>) => {
+    if (!currentUser?.companyId) return;
+    const tempPassword = Math.random().toString(36).slice(-8);
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email: u.email!,
+      password: tempPassword,
+      email_confirm: true
+    });
+    if (authError) { addToast('Failed to create user', 'error'); return; }
+
+    const { error: userError } = await supabase.from('users').insert({
+      id: authData.user.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      company_id: currentUser.companyId,
+      avatar_initials: u.name?.slice(0, 2).toUpperCase()
+    });
+    if (userError) { addToast('Failed to create user profile', 'error'); return; }
+
+    const newUser: User = {
+      id: authData.user.id,
+      name: u.name!,
+      email: u.email!,
+      role: u.role!,
+      companyId: currentUser.companyId,
+      avatarInitials: u.name?.slice(0, 2).toUpperCase() || 'NA'
+    };
+    setUsers(prev => [...prev, newUser]);
+  };
+
+  const removeUser = async (uid: string) => {
+    const { error } = await supabase.from('users').delete().eq('id', uid);
+    if (!error) setUsers(prev => prev.filter(u => u.id !== uid));
+  };
 
   if (loading) {
     return (
