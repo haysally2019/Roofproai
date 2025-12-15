@@ -59,37 +59,29 @@ const AppLayout: React.FC = () => {
   const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [authLoading, setAuthLoading] = useState(false);
 
-  // --- 1. ROUTING CHECK ---
-  // Detects /onboarding, /onboarding/, or /#/onboarding
+  // --- ROUTING LOGIC ---
   const path = window.location.pathname.toLowerCase().replace(/\/$/, ''); 
   const hash = window.location.hash.toLowerCase().replace('#', '').replace(/\/$/, ''); 
   const isOnboardingRoute = path === '/onboarding' || hash === '/onboarding' || hash === 'onboarding';
 
-  // --- 2. REDIRECT LOGIC ---
-  // If user IS logged in but tries to go to funnel, send them to dashboard
+  // --- REDIRECT ---
   useEffect(() => {
       if (currentUser && isOnboardingRoute) {
-          window.history.pushState(null, '', '/'); // Clean URL
+          window.history.pushState(null, '', '/'); 
       }
   }, [currentUser, isOnboardingRoute]);
 
-  // --- 3. VIEW: ONBOARDING FUNNEL (Public Only) ---
+  // --- VIEW: ONBOARDING FUNNEL (Full Screen Control) ---
   if (!currentUser && isOnboardingRoute) {
       return (
-         <div className="h-full w-full bg-[#0F172A] relative overflow-y-auto flex flex-col">
+         <>
              <ToastContainer />
-             <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-6 min-h-[600px]">
-                 <div className="text-center mb-8 animate-fade-in">
-                     <h1 className="text-3xl font-bold text-white tracking-tight mb-2">ALTUS AI</h1>
-                     <p className="text-indigo-300 font-medium tracking-wide">7-Day Free Trial Configuration</p>
-                 </div>
-                 <TrialFunnel onSwitchToLogin={() => window.location.href = '/'} />
-             </div>
-         </div>
+             <TrialFunnel onSwitchToLogin={() => window.location.href = '/'} />
+         </>
       )
   }
 
-  // --- 4. VIEW: LOGIN SCREEN (Public Only) ---
+  // --- VIEW: LOGIN SCREEN ---
   if (!currentUser) {
       return (
          <div className="h-full w-full bg-[#0F172A] relative overflow-y-auto flex flex-col">
@@ -137,19 +129,22 @@ const AppLayout: React.FC = () => {
                          </p>
                      </div>
                  </div>
+                 
+                 <div className="mt-8 text-center text-slate-500 text-xs">
+                     &copy; 2025 Altus AI Inc. • Privacy • Terms
+                 </div>
              </div>
          </div>
       )
   }
 
-  // --- 5. VIEW: SETUP WIZARD (Private - Incomplete Account) ---
+  // --- VIEW: SETUP WIZARD ---
   const currentCompany = companies.find(c => c.id === currentUser.companyId);
   if (currentUser && currentCompany && !currentCompany.setupComplete) {
       return <div className="h-screen w-full bg-slate-50"><Onboarding /></div>;
   }
 
-  // --- 6. VIEW: DASHBOARD (Private - Fully Authenticated) ---
-  // Note: currentUser is guarded above, so we can safely pass it.
+  // --- VIEW: DASHBOARD ---
   const companyLeads = leads; 
 
   return (
@@ -159,8 +154,6 @@ const AppLayout: React.FC = () => {
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 z-10"></div>
-        
-        {/* Mobile Header */}
         <div className="md:hidden sticky top-0 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-20 shadow-sm">
             <button onClick={() => setIsSidebarOpen(true)} className="text-slate-600 p-2 -ml-2"><Menu size={24} /></button>
             <span className="font-bold text-slate-800 flex items-center gap-2"><Zap className="text-blue-600 fill-blue-600" size={20} /> Altus AI</span>
@@ -169,7 +162,6 @@ const AppLayout: React.FC = () => {
             </button>
         </div>
 
-        {/* Content Area */}
         <main className="flex-1 overflow-auto p-4 md:p-8 relative scroll-smooth custom-scrollbar">
           {(currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.SAAS_REP) && activeTab !== Tab.SETTINGS ? (
             <SuperAdminDashboard 
