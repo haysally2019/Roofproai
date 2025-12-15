@@ -61,12 +61,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
       >
         {/* Logo Area */}
         <div className="h-16 flex items-center px-6 border-b border-slate-800/50 shrink-0 relative bg-[#0F172A]">
-          <div className="flex items-center gap-3 font-bold text-xl text-white w-full">
-            <div className="relative flex items-center justify-center w-8 h-8 shrink-0">
-               <Hexagon className="text-indigo-600 fill-indigo-600/20" size={32} strokeWidth={2.5} />
-               <Hammer className="absolute text-white" size={14} />
+          <div className="flex items-center gap-3 w-full">
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-blue-600 shrink-0">
+               <Zap className="text-white fill-white" size={20} strokeWidth={2.5} />
             </div>
-            <span className="tracking-tight whitespace-nowrap">ALTUS <span className="text-indigo-500">AI</span></span>
+            <div className="flex flex-col">
+              <span className="font-bold text-base text-white tracking-tight leading-tight">Altus AI</span>
+              <span className="text-[10px] text-indigo-400 font-semibold tracking-wide leading-tight uppercase">Roofing Software</span>
+            </div>
           </div>
           
           {/* Mobile Close Button */}

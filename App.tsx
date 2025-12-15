@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Menu, Bell, X, CheckCircle, AlertTriangle, Info, Hexagon, Hammer, ArrowRight, Loader2 } from 'lucide-react';
+import { Menu, Bell, X, CheckCircle, AlertTriangle, Info, Zap, ArrowRight, Loader2 } from 'lucide-react';
 
 // Context
 import { StoreProvider, useStore } from './lib/store';
@@ -118,9 +118,8 @@ const AppLayout: React.FC = () => {
                  <div className="w-full max-w-md">
                      <div className="text-center mb-8">
                          <div className="flex items-center justify-center gap-3 mb-4">
-                            <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/10 shadow-xl">
-                                <Hexagon className="text-indigo-400 fill-indigo-400/20" size={40} strokeWidth={2} />
-                                <Hammer className="absolute text-white" size={20} />
+                            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-xl">
+                                <Zap className="text-white fill-white" size={32} strokeWidth={2.5} />
                             </div>
                          </div>
                          <h1 className="text-3xl font-bold text-white tracking-tight">ALTUS AI</h1>
@@ -230,8 +229,10 @@ const AppLayout: React.FC = () => {
                 <Menu size={24} />
             </button>
             <span className="font-bold text-slate-800 flex items-center gap-2">
-                <Hexagon className="text-indigo-600 fill-indigo-600/20" size={24} strokeWidth={2.5} />
-                ALTUS AI
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-blue-600">
+                    <Zap className="text-white fill-white" size={16} strokeWidth={2.5} />
+                </div>
+                Altus AI
             </span>
             <button onClick={() => setShowNotifications(!showNotifications)} className="text-slate-600 relative p-2 -mr-2">
                 <Bell size={24} />
