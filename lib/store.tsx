@@ -82,7 +82,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
   const removeToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
 
-  const loadUserProfile = async (userId: string) => {
+  const loadUserProfile = async (userId: string, retryCount = 0) => {
     try {
       const { data, error } = await supabase
         .from('users')
@@ -125,6 +125,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (data.company_id) {
           await loadCompanyData(data.company_id);
         }
+      } else if (retryCount < 3) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return loadUserProfile(userId, retryCount + 1);
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
@@ -310,12 +313,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        loadUserProfile(session.user.id);
-      } else {
-        setCurrentUser(null);
-        setLoading(false);
-      }
+      (async () => {
+        if (session?.user) {
+          await loadUserProfile(session.user.id);
+        } else {
+          setCurrentUser(null);
+          setLoading(false);
+        }
+      })();
     });
 
     return () => subscription.unsubscribe();
@@ -336,7 +341,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
 
       if (data.user) {
-        await loadUserProfile(data.user.id);
         return true;
       }
 
@@ -413,7 +417,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return false;
       }
 
-      await loadUserProfile(authData.user.id);
       addToast("Account created successfully", "success");
       return true;
     } catch (error: any) {
