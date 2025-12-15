@@ -7,7 +7,7 @@ interface TrialFunnelProps {
 }
 
 const TrialFunnel: React.FC<TrialFunnelProps> = ({ onSwitchToLogin }) => {
-  const { register, addToast } = useStore();
+  const { register, addToast, currentUser } = useStore();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -19,6 +19,15 @@ const TrialFunnel: React.FC<TrialFunnelProps> = ({ onSwitchToLogin }) => {
     email: '',
     password: ''
   });
+
+  // 1. REDIRECT LOGIC:
+  // As soon as a user is successfully registered (and thus logged in),
+  // redirect them to the dashboard.
+  useEffect(() => {
+      if (currentUser) {
+          window.location.href = '/';
+      }
+  }, [currentUser]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   
@@ -53,6 +62,7 @@ const TrialFunnel: React.FC<TrialFunnelProps> = ({ onSwitchToLogin }) => {
     setLoading(true);
     try {
       await register(formData.companyName, formData.name, formData.email, formData.password);
+      // Redirect is handled by the useEffect above
     } catch (error) {
       console.error(error);
       addToast('Registration failed. Please try again.', 'error');
@@ -63,7 +73,7 @@ const TrialFunnel: React.FC<TrialFunnelProps> = ({ onSwitchToLogin }) => {
   return (
     <div className="h-screen w-full bg-[#0F172A] text-white flex flex-col relative font-sans overflow-hidden">
       
-      {/* Background Ambience */}
+      {/* Background Ambience - Matching the image's dark aesthetic */}
       <div className="absolute top-[-20%] left-[-10%] w-[60vw] h-[60vw] bg-indigo-600/20 rounded-full blur-[100px] animate-pulse pointer-events-none"></div>
       <div className="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] bg-blue-600/10 rounded-full blur-[100px] animate-pulse pointer-events-none delay-1000"></div>
       <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none"></div>
