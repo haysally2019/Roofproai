@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowRight, Check, Building2, User, Mail, Lock, Zap, Sparkles, ChevronRight } from 'lucide-react';
+import { ArrowRight, Check, Building2, User, Mail, Lock, Sparkles, ChevronRight, Loader2 } from 'lucide-react';
 import { useStore } from '../lib/store';
 
 interface TrialFunnelProps {
@@ -21,44 +21,37 @@ const TrialFunnel: React.FC<TrialFunnelProps> = ({ onSwitchToLogin }) => {
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Redirect if already logged in
+  // Auto-redirect if already logged in
   useEffect(() => {
-      if (currentUser) {
-          window.location.href = '/';
-      }
+      if (currentUser) window.location.href = '/';
   }, [currentUser]);
   
+  // Auto-focus logic
   useEffect(() => {
-      if (!isAnimating) {
-          setTimeout(() => inputRef.current?.focus(), 100);
-      }
+      if (!isAnimating) setTimeout(() => inputRef.current?.focus(), 100);
   }, [step, isAnimating]);
 
   const handleNext = () => {
-      if (step === 1 && !formData.companyName) return;
-      if (step === 2 && (!formData.name || !formData.email)) return;
-
+      if (step === 1 && (!formData.companyName || !formData.name)) {
+          addToast("Please fill in both fields", "info");
+          return;
+      }
+      
       setIsAnimating(true);
       setTimeout(() => {
           setStep(prev => prev + 1);
           setIsAnimating(false);
-      }, 400);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
-          if (step < 3) handleNext();
-          else handleRegister(e);
-      }
+      }, 300);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.password) return;
+    if (!formData.email || !formData.password) return;
     
     setLoading(true);
     try {
       await register(formData.companyName, formData.name, formData.email, formData.password);
+      // App.tsx takes over from here once currentUser is set
     } catch (error) {
       console.error(error);
       addToast('Registration failed. Please try again.', 'error');
@@ -66,163 +59,151 @@ const TrialFunnel: React.FC<TrialFunnelProps> = ({ onSwitchToLogin }) => {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+          if (step === 1) handleNext();
+          else handleRegister(e);
+      }
+  };
+
   return (
     <div className="h-screen w-full bg-white text-slate-900 flex flex-col font-sans overflow-hidden selection:bg-indigo-100 selection:text-indigo-900">
       
-      {/* --- Header (Static, No Overlap) --- */}
+      {/* Header */}
       <header className="w-full p-8 flex justify-between items-center shrink-0 z-20">
           <div className="flex items-center gap-2 text-sm font-bold tracking-widest uppercase text-indigo-600">
               <Sparkles size={16} fill="currentColor" />
-              <span>Free Trial Setup</span>
+              <span>7-Day Free Trial</span>
           </div>
-          <div className="flex gap-2">
-              {[1, 2, 3].map(s => (
-                  <div key={s} className={`h-1.5 w-8 rounded-full transition-all duration-500 ${step >= s ? 'bg-indigo-600' : 'bg-slate-100'}`} />
+          <div className="flex gap-1">
+              {[1, 2].map(s => (
+                  <div key={s} className={`h-1.5 w-12 rounded-full transition-all duration-500 ${step >= s ? 'bg-indigo-600' : 'bg-slate-100'}`} />
               ))}
           </div>
       </header>
 
-      {/* --- Main Content (Centered, Flexible) --- */}
-      <main className="flex-1 flex flex-col items-center justify-center relative w-full max-w-4xl mx-auto px-6 z-10">
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col items-center justify-center relative w-full max-w-2xl mx-auto px-6 z-10">
           
-          {/* Background Ambience */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-50/50 rounded-full blur-3xl -z-10 pointer-events-none"></div>
-
-          <div className={`w-full transition-all duration-500 ease-out transform ${isAnimating ? 'opacity-0 translate-y-4 scale-95' : 'opacity-100 translate-y-0 scale-100'}`}>
+          <div className={`w-full transition-all duration-500 ease-out transform ${isAnimating ? 'opacity-0 -translate-x-8' : 'opacity-100 translate-x-0'}`}>
               
-              {/* STEP 1: COMPANY */}
+              {/* STEP 1: IDENTITY */}
               {step === 1 && (
-                  <div className="space-y-10">
-                      <div className="space-y-4">
-                          <h1 className="text-4xl md:text-6xl font-extrabold leading-tight tracking-tight text-slate-900">
-                              Let's digitalize your <br/>
-                              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-600">Roofing Business</span>.
+                  <div className="space-y-8">
+                      <div className="space-y-2">
+                          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900">
+                              Let's set up your workspace.
                           </h1>
-                          <p className="text-lg text-slate-500 max-w-xl font-medium">
-                              Full CRM access. AI Estimating. No credit card required.
+                          <p className="text-lg text-slate-500 font-medium">
+                              We'll configure your CRM and AI tools automatically.
                           </p>
                       </div>
 
-                      <div className="relative group max-w-2xl">
-                          <input 
-                              ref={inputRef}
-                              autoFocus
-                              value={formData.companyName}
-                              onChange={e => setFormData({...formData, companyName: e.target.value})}
-                              onKeyDown={handleKeyDown}
-                              className="w-full bg-transparent text-3xl md:text-5xl py-4 border-b-2 border-slate-200 focus:border-indigo-600 outline-none placeholder:text-slate-300 transition-colors font-bold text-slate-900"
-                              placeholder="Your Company Name"
-                          />
-                          <Building2 className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-300 transition-colors group-focus-within:text-indigo-600" size={32} strokeWidth={1.5} />
+                      <div className="space-y-6 bg-white p-1">
+                          <div className="relative group">
+                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">Company Name</label>
+                              <div className="flex items-center border-b-2 border-slate-200 focus-within:border-indigo-600 transition-colors py-2">
+                                  <Building2 className="text-slate-400 mr-3" size={24} />
+                                  <input 
+                                      ref={inputRef}
+                                      autoFocus
+                                      value={formData.companyName}
+                                      onChange={e => setFormData({...formData, companyName: e.target.value})}
+                                      onKeyDown={handleKeyDown}
+                                      className="w-full bg-transparent text-2xl font-bold outline-none placeholder:text-slate-300 text-slate-900"
+                                      placeholder="e.g. Apex Roofing"
+                                  />
+                              </div>
+                          </div>
+
+                          <div className="relative group">
+                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">Your Full Name</label>
+                              <div className="flex items-center border-b-2 border-slate-200 focus-within:border-indigo-600 transition-colors py-2">
+                                  <User className="text-slate-400 mr-3" size={24} />
+                                  <input 
+                                      value={formData.name}
+                                      onChange={e => setFormData({...formData, name: e.target.value})}
+                                      onKeyDown={handleKeyDown}
+                                      className="w-full bg-transparent text-2xl font-bold outline-none placeholder:text-slate-300 text-slate-900"
+                                      placeholder="e.g. John Doe"
+                                  />
+                              </div>
+                          </div>
                       </div>
 
-                      <div className="pt-6">
+                      <div className="pt-4">
                           <button 
                               onClick={handleNext}
-                              disabled={!formData.companyName}
-                              className="group flex items-center gap-3 bg-slate-900 text-white px-8 py-4 rounded-full text-lg font-bold hover:bg-slate-800 hover:scale-105 transition-all disabled:opacity-50 disabled:hover:scale-100 shadow-xl shadow-slate-200"
+                              disabled={!formData.companyName || !formData.name}
+                              className="w-full bg-slate-900 text-white py-5 rounded-xl text-xl font-bold hover:bg-slate-800 hover:scale-[1.02] transition-all disabled:opacity-50 disabled:hover:scale-100 shadow-xl flex items-center justify-center gap-2"
                           >
-                              Start <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform"/>
+                              Next Step <ArrowRight size={20} />
                           </button>
                       </div>
                   </div>
               )}
 
-              {/* STEP 2: ADMIN USER */}
+              {/* STEP 2: CREDENTIALS */}
               {step === 2 && (
-                  <div className="space-y-10">
-                      <div className="space-y-4">
-                          <h1 className="text-4xl md:text-5xl font-extrabold leading-tight tracking-tight text-slate-900">
-                              Who is the <br/>
-                              <span className="text-indigo-600">Super Admin</span>?
+                  <div className="space-y-8">
+                      <div className="space-y-2">
+                          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900">
+                              Last step. Secure your account.
                           </h1>
                           <p className="text-lg text-slate-500 font-medium">
-                              You'll have full control over permissions and AI agents.
+                              You'll use this to log in to your Super Admin dashboard.
                           </p>
                       </div>
 
-                      <div className="space-y-6 max-w-xl">
+                      <div className="space-y-6">
                           <div className="relative group">
-                              <User className="absolute left-0 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={24} />
-                              <input 
-                                  ref={inputRef}
-                                  value={formData.name}
-                                  onChange={e => setFormData({...formData, name: e.target.value})}
-                                  className="w-full bg-transparent text-xl md:text-3xl py-3 pl-10 border-b-2 border-slate-200 focus:border-indigo-600 outline-none placeholder:text-slate-300 transition-colors text-slate-900 font-bold"
-                                  placeholder="Full Name"
-                              />
+                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">Work Email</label>
+                              <div className="flex items-center border-b-2 border-slate-200 focus-within:border-indigo-600 transition-colors py-2">
+                                  <Mail className="text-slate-400 mr-3" size={24} />
+                                  <input 
+                                      ref={inputRef}
+                                      type="email"
+                                      value={formData.email}
+                                      onChange={e => setFormData({...formData, email: e.target.value})}
+                                      onKeyDown={handleKeyDown}
+                                      className="w-full bg-transparent text-2xl font-bold outline-none placeholder:text-slate-300 text-slate-900"
+                                      placeholder="name@company.com"
+                                  />
+                              </div>
                           </div>
+
                           <div className="relative group">
-                              <Mail className="absolute left-0 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={24} />
-                              <input 
-                                  value={formData.email}
-                                  onChange={e => setFormData({...formData, email: e.target.value})}
-                                  onKeyDown={handleKeyDown}
-                                  type="email"
-                                  className="w-full bg-transparent text-xl md:text-3xl py-3 pl-10 border-b-2 border-slate-200 focus:border-indigo-600 outline-none placeholder:text-slate-300 transition-colors text-slate-900 font-bold"
-                                  placeholder="Work Email"
-                              />
+                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">Password</label>
+                              <div className="flex items-center border-b-2 border-slate-200 focus-within:border-indigo-600 transition-colors py-2">
+                                  <Lock className="text-slate-400 mr-3" size={24} />
+                                  <input 
+                                      type="password"
+                                      value={formData.password}
+                                      onChange={e => setFormData({...formData, password: e.target.value})}
+                                      onKeyDown={handleKeyDown}
+                                      className="w-full bg-transparent text-2xl font-bold outline-none placeholder:text-slate-300 text-slate-900 font-mono tracking-wide"
+                                      placeholder="••••••••"
+                                  />
+                              </div>
                           </div>
                       </div>
 
-                      <div className="pt-6 flex items-center gap-6">
-                          <button onClick={() => setStep(1)} className="text-slate-400 hover:text-slate-900 transition-colors font-bold">Back</button>
+                      <div className="pt-6 space-y-4">
                           <button 
-                              onClick={handleNext}
-                              disabled={!formData.name || !formData.email}
-                              className="group flex items-center gap-3 bg-indigo-600 text-white px-8 py-4 rounded-full text-lg font-bold hover:bg-indigo-700 hover:scale-105 transition-all disabled:opacity-50 shadow-xl shadow-indigo-200"
+                              onClick={handleRegister}
+                              disabled={!formData.email || !formData.password || loading}
+                              className="w-full bg-indigo-600 text-white py-5 rounded-xl text-xl font-bold hover:bg-indigo-700 hover:scale-[1.02] transition-all disabled:opacity-70 shadow-xl shadow-indigo-200 flex items-center justify-center gap-3"
                           >
-                              Next Step <ChevronRight size={20} />
+                              {loading ? <Loader2 className="animate-spin" /> : 'Create Account & Launch'} 
+                              {!loading && <Sparkles size={20} fill="currentColor" />}
                           </button>
-                      </div>
-                  </div>
-              )}
-
-              {/* STEP 3: PASSWORD */}
-              {step === 3 && (
-                  <div className="space-y-10">
-                      <div className="space-y-4">
-                          <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center mb-4 border border-indigo-100">
-                              <Zap className="text-indigo-600" size={24} fill="currentColor" />
-                          </div>
-                          <h1 className="text-4xl md:text-5xl font-extrabold leading-tight tracking-tight text-slate-900">
-                              Secure your <br/>
-                              <span className="text-slate-900">Command Center</span>.
-                          </h1>
-                          <p className="text-lg text-slate-500 font-medium">
-                              Set a password to protect your client data.
-                          </p>
-                      </div>
-
-                      <div className="max-w-xl relative group">
-                          <Lock className="absolute left-0 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={24} />
-                          <input 
-                              ref={inputRef}
-                              type="password"
-                              value={formData.password}
-                              onChange={e => setFormData({...formData, password: e.target.value})}
-                              onKeyDown={handleKeyDown}
-                              className="w-full bg-transparent text-3xl md:text-4xl py-3 pl-10 border-b-2 border-slate-200 focus:border-indigo-600 outline-none placeholder:text-slate-300 transition-colors text-slate-900 font-bold tracking-widest"
-                              placeholder="••••••••"
-                          />
-                      </div>
-
-                      <div className="pt-6 flex flex-col gap-6">
-                          <div className="flex gap-6 text-sm text-slate-600 font-bold uppercase tracking-wide">
-                              <div className="flex items-center gap-2"><Check size={16} className="text-emerald-500" strokeWidth={3}/> No Credit Card</div>
-                              <div className="flex items-center gap-2"><Check size={16} className="text-emerald-500" strokeWidth={3}/> 7-Day Free Trial</div>
-                          </div>
                           
-                          <div className="flex items-center gap-6">
-                              <button onClick={() => setStep(2)} className="text-slate-400 hover:text-slate-900 transition-colors font-bold">Back</button>
-                              <button 
-                                  onClick={handleRegister}
-                                  disabled={!formData.password || loading}
-                                  className="flex-1 bg-slate-900 text-white px-8 py-4 rounded-full text-lg font-bold hover:bg-slate-800 transition-all shadow-xl shadow-slate-300 flex items-center justify-center gap-3 disabled:opacity-70 hover:scale-105"
-                              >
-                                  {loading ? 'Creating Account...' : 'Launch Dashboard'} 
-                                  {!loading && <ArrowRight size={20} />}
-                              </button>
+                          <div className="flex justify-between items-center px-2">
+                              <button onClick={() => setStep(1)} className="text-slate-400 hover:text-slate-600 font-bold text-sm">Back</button>
+                              <div className="flex gap-4 text-xs font-bold text-slate-400 uppercase tracking-wide">
+                                  <span className="flex items-center gap-1"><Check size={12} className="text-emerald-500"/> No Credit Card</span>
+                                  <span className="flex items-center gap-1"><Check size={12} className="text-emerald-500"/> Instant Access</span>
+                              </div>
                           </div>
                       </div>
                   </div>
@@ -231,7 +212,7 @@ const TrialFunnel: React.FC<TrialFunnelProps> = ({ onSwitchToLogin }) => {
           </div>
       </main>
 
-      {/* --- Footer (Static) --- */}
+      {/* Footer */}
       <footer className="w-full p-6 text-center shrink-0 z-20">
           <p className="text-slate-400 text-sm font-medium">
               Already have an account? 
