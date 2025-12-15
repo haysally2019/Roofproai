@@ -62,18 +62,18 @@ const AppLayout: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(false);
 
   // --- ROUTING LOGIC (ROBUST PATCH) ---
-  // 1. Get the current path and hash, normalizing them
-  const path = window.location.pathname.toLowerCase().replace(/\/$/, ''); // Remove trailing slash
-  const hash = window.location.hash.toLowerCase().replace('#', '').replace(/\/$/, ''); // Handle hash routing
+  // 1. Get current path and hash, normalizing them to lower case and removing trailing slashes
+  const path = window.location.pathname.toLowerCase().replace(/\/$/, ''); 
+  const hash = window.location.hash.toLowerCase().replace('#', '').replace(/\/$/, ''); 
 
-  // 2. Check for ANY match (e.g. /onboarding, /onboarding/, /#/onboarding)
+  // 2. Check for ANY match (covers /onboarding, /onboarding/, /#/onboarding)
   const isOnboardingRoute = 
       path === '/onboarding' || 
       hash === '/onboarding' || 
       hash === 'onboarding';
 
-  // Debug to console so you can check if it's detected
-  // console.log("Route Check:", { path, hash, isOnboardingRoute });
+  // Debugging log to help you verify (Check Console F12)
+  console.log("Route Debug:", { path, hash, isOnboardingRoute });
 
   // Simulation State
   useEffect(() => {
@@ -98,7 +98,6 @@ const AppLayout: React.FC = () => {
       setAuthLoading(true);
       try {
           await login(authForm.email, authForm.password);
-          // If login success, store handles state update
       } catch (err) {
           console.error(err);
       } finally {
