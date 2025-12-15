@@ -26,15 +26,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
         setTab(tab);
         if (window.innerWidth < 768) setIsOpen(false); // Close on mobile click
       }}
-      className={`group w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-200 mb-1 ${
-        activeTab === tab 
-          ? 'bg-indigo-600/10 text-indigo-400 font-medium' 
+      className={`group w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-all duration-200 ${
+        activeTab === tab
+          ? 'bg-indigo-600/10 text-indigo-400 font-medium'
           : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
       }`}
       title={typeof label === 'string' ? label : tab}
     >
-      <div className="flex items-center gap-3">
-        <Icon size={18} className={`transition-colors ${activeTab === tab ? 'text-indigo-400' : 'group-hover:text-slate-200'}`} />
+      <div className="flex items-center gap-2.5">
+        <Icon size={17} className={`transition-colors ${activeTab === tab ? 'text-indigo-400' : 'group-hover:text-slate-200'}`} />
         <span className="text-sm whitespace-nowrap">{label || tab}</span>
       </div>
       {alert && (
@@ -60,14 +60,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
         w-64 h-full shrink-0 overflow-hidden`}
       >
         {/* Logo Area */}
-        <div className="h-16 flex items-center px-6 border-b border-slate-800/50 shrink-0 relative bg-[#0F172A]">
-          <div className="flex items-center gap-3 w-full">
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-blue-600 shrink-0">
-               <Zap className="text-white fill-white" size={20} strokeWidth={2.5} />
+        <div className="h-14 flex items-center px-4 border-b border-slate-800/50 shrink-0 relative bg-[#0F172A]">
+          <div className="flex items-center gap-2.5 w-full">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600 shrink-0">
+               <Zap className="text-white fill-white" size={18} strokeWidth={2.5} />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-base text-white tracking-tight leading-tight">Altus AI</span>
-              <span className="text-[10px] text-indigo-400 font-semibold tracking-wide leading-tight uppercase">Roofing Software</span>
+              <span className="font-bold text-sm text-white tracking-tight leading-tight">Altus AI</span>
+              <span className="text-[9px] text-indigo-400 font-semibold tracking-wide leading-tight uppercase">Roofing Software</span>
             </div>
           </div>
           
@@ -78,21 +78,21 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
         </div>
 
         {/* Nav Links */}
-        <nav className="flex-1 p-4 space-y-0.5 overflow-y-auto no-scrollbar overflow-x-hidden">
+        <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto no-scrollbar overflow-x-hidden">
           {(currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.SAAS_REP) ? (
             <>
-              <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mt-2 mb-1">Admin</div>
+              <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-1">Admin</div>
               <NavItem tab={Tab.ADMIN_OVERVIEW} icon={Globe} label="Overview" />
               <NavItem tab={Tab.ADMIN_LEADS} icon={Users} label="SaaS Leads" />
               <NavItem tab={Tab.ADMIN_TEAM} icon={UserCheck} label="Sales Team" />
               <NavItem tab={Tab.ADMIN_TENANTS} icon={Building2} label="Tenants" />
               <NavItem tab={Tab.ADMIN_AGENTS} icon={Headset} label="AI Configuration" />
-              <div className="mt-6 px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">System</div>
+              <div className="mt-4 px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">System</div>
               <NavItem tab={Tab.SETTINGS} icon={SettingsIcon} />
             </>
           ) : (
             <>
-              <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mt-2 mb-1">Main</div>
+              <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-1">Main</div>
               <NavItem tab={Tab.DASHBOARD} icon={LayoutDashboard} />
               <NavItem tab={Tab.CALENDAR} icon={Calendar} label="Calendar" />
               <NavItem tab={Tab.LEADS} icon={Users} />
@@ -100,17 +100,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               <NavItem tab={Tab.AI_RECEPTIONIST} icon={Mic} label="AI Receptionist" />
 
               {/* Collapsible Section: Production */}
-              <div className="mt-4">
-                 <button 
+              <div className="mt-3">
+                 <button
                     onClick={() => setProductionOpen(!productionOpen)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-300"
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-300"
                     title="Production"
                  >
                     <span>Production</span>
-                    {productionOpen ? <ChevronDown size={12}/> : <ChevronRight size={12}/>}
+                    {productionOpen ? <ChevronDown size={11}/> : <ChevronRight size={11}/>}
                  </button>
                  {productionOpen && (
-                    <div className="pl-2 space-y-0.5 mt-1">
+                    <div className="pl-2 space-y-0.5 mt-0.5">
                         <NavItem tab={Tab.JOBS} icon={Briefcase} />
                         <NavItem tab={Tab.TASKS} icon={CheckSquare} />
                         <NavItem tab={Tab.ESTIMATES} icon={FileText} />
@@ -119,24 +119,24 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               </div>
 
               {/* Collapsible Section: Finance */}
-              <div className="mt-4">
-                 <button 
+              <div className="mt-3">
+                 <button
                     onClick={() => setFinanceOpen(!financeOpen)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-300"
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-300"
                     title="Finance"
                  >
                     <span>Finance</span>
-                    {financeOpen ? <ChevronDown size={12}/> : <ChevronRight size={12}/>}
+                    {financeOpen ? <ChevronDown size={11}/> : <ChevronRight size={11}/>}
                  </button>
                  {financeOpen && (
-                    <div className="pl-2 space-y-0.5 mt-1">
+                    <div className="pl-2 space-y-0.5 mt-0.5">
                         <NavItem tab={Tab.INVOICES} icon={Receipt} />
                         <NavItem tab={Tab.PRICE_BOOK} icon={Tag} label="Price Book" />
                     </div>
                  )}
               </div>
               
-              <div className="mt-6 px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Admin</div>
+              <div className="mt-4 px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Admin</div>
               <NavItem tab={Tab.AUTOMATIONS} icon={Zap} label="Workflows" />
               <NavItem tab={Tab.TEAM} icon={UserCheck} label="Team" />
               <NavItem tab={Tab.SETTINGS} icon={SettingsIcon} />
@@ -145,23 +145,23 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
         </nav>
 
         {/* Profile Footer */}
-        <div className="border-t border-slate-800 bg-[#0B1120] shrink-0 p-4">
-           <div className="flex items-center gap-3 group">
-              <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-bold shadow-lg ring-2 ring-indigo-600/20 shrink-0">
+        <div className="border-t border-slate-800 bg-[#0B1120] shrink-0 p-3">
+           <div className="flex items-center gap-2.5 group">
+              <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow-lg ring-2 ring-indigo-600/20 shrink-0">
                   {currentUser.avatarInitials}
               </div>
-              
+
               <div className="flex-1 text-left overflow-hidden">
                   <p className="text-sm font-medium text-white truncate">{currentUser.name}</p>
-                  <p className="text-xs text-slate-500 truncate">{currentUser.role}</p>
+                  <p className="text-[11px] text-slate-500 truncate">{currentUser.role}</p>
               </div>
-              
-              <button 
-                onClick={logout} 
-                className="text-slate-500 hover:text-red-400 transition-colors p-1.5 hover:bg-slate-800 rounded-md" 
+
+              <button
+                onClick={logout}
+                className="text-slate-500 hover:text-red-400 transition-colors p-1 hover:bg-slate-800 rounded-md"
                 title="Logout"
               >
-                 <LogOut size={18} />
+                 <LogOut size={16} />
               </button>
            </div>
         </div>
