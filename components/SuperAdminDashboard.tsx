@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Company, User, SoftwareLead, Tab, AgentConfig, SubscriptionTier } from '../types';
-import { Building2, Users, TrendingUp, Key, ChevronLeft, Zap, Loader2, Save, Mic, Volume2, Plus, Clock, Globe } from 'lucide-react';
+import { Company, User, SoftwareLead, Tab, AgentConfig, SubscriptionTier, UserRole } from '../types';
+import { Building2, Users, TrendingUp, Key, ChevronLeft, Zap, Loader2, Save, Mic, Volume2, Plus, Clock, Globe, UserPlus, Mail, Shield, Trash2 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { createVoiceAgent, updateVoiceAgent, getAvailableVoices } from '../services/elevenLabsService';
 
@@ -33,6 +33,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [showAddCompany, setShowAddCompany] = useState(false);
   const [newCompanyForm, setNewCompanyForm] = useState({ name: '', address: '', phone: '', tier: 'Starter' });
 
+  // SaaS Team State
+  const [showAddRep, setShowAddRep] = useState(false);
+  const [newRepForm, setNewRepForm] = useState({ name: '', email: '' });
+
   useEffect(() => {
       // Load voices whenever we enter Agent Config
       if (view === Tab.ADMIN_AGENTS || selectedCompanyId) {
@@ -52,6 +56,18 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       const newCompany = companies.find(c => c.id === newId) || { id: newId, name: newCompanyForm.name } as Company;
       selectCompanyForAgent(newCompany);
     }
+  };
+
+  const handleCreateRep = async () => {
+      if (!newRepForm.name || !newRepForm.email) return;
+      onAddUser({
+          name: newRepForm.name,
+          email: newRepForm.email,
+          role: UserRole.SAAS_REP,
+          companyId: null // SaaS Reps belong to the Super Admin org
+      });
+      setShowAddRep(false);
+      setNewRepForm({ name: '', email: '' });
   };
 
   const selectCompanyForAgent = (company: Company) => {
@@ -129,14 +145,24 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Super Admin Console</h1>
               <p className="text-slate-500 font-medium">Platform Management & Onboarding Hub</p>
           </div>
-          {view === Tab.ADMIN_TENANTS && (
-             <button 
-                onClick={() => setShowAddCompany(true)}
-                className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-800"
-             >
-                <Plus size={18} /> Onboard Company
-             </button>
-          )}
+          <div className="flex gap-3">
+              {view === Tab.ADMIN_TENANTS && (
+                <button 
+                    onClick={() => setShowAddCompany(true)}
+                    className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-800 shadow-lg shadow-slate-200"
+                >
+                    <Plus size={18} /> Onboard Company
+                </button>
+              )}
+              {view === Tab.ADMIN_TEAM && (
+                <button 
+                    onClick={() => setShowAddRep(true)}
+                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200"
+                >
+                    <UserPlus size={18} /> Add Sales Rep
+                </button>
+              )}
+          </div>
       </div>
 
       {/* --- TENANTS / ONBOARDING TAB --- */}
@@ -173,10 +199,71 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           </div>
       )}
 
+      {/* --- SAAS SALES TEAM TAB --- */}
+      {view === Tab.ADMIN_TEAM && (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="p-6 border-b border-slate-100">
+                  <h2 className="font-bold text-lg text-slate-800">SaaS Sales Team</h2>
+                  <p className="text-sm text-slate-500">Manage representatives selling Rafter AI to roofing companies.</p>
+              </div>
+              <table className="w-full text-left">
+                  <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold tracking-wider">
+                      <tr>
+                          <th className="p-4">Representative</th>
+                          <th className="p-4">Email</th>
+                          <th className="p-4">Role</th>
+                          <th className="p-4 text-right">Actions</th>
+                      </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                      {users.filter(u => u.role === UserRole.SAAS_REP || u.role === UserRole.SUPER_ADMIN).map(user => (
+                          <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="p-4">
+                                  <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                                          {user.avatarInitials}
+                                      </div>
+                                      <div>
+                                          <div className="font-bold text-slate-900">{user.name}</div>
+                                          <div className="text-xs text-slate-400">ID: {user.id.slice(0,8)}...</div>
+                                      </div>
+                                  </div>
+                              </td>
+                              <td className="p-4 text-sm font-medium text-slate-600">{user.email}</td>
+                              <td className="p-4">
+                                  <span className={`px-2 py-1 rounded text-xs font-bold ${user.role === UserRole.SUPER_ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                      {user.role}
+                                  </span>
+                              </td>
+                              <td className="p-4 text-right">
+                                  {user.role !== UserRole.SUPER_ADMIN && (
+                                      <button 
+                                          onClick={() => onRemoveUser(user.id)}
+                                          className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                                          title="Remove User"
+                                      >
+                                          <Trash2 size={18} />
+                                      </button>
+                                  )}
+                              </td>
+                          </tr>
+                      ))}
+                      {users.filter(u => u.role === UserRole.SAAS_REP).length === 0 && (
+                          <tr>
+                              <td colSpan={4} className="p-8 text-center text-slate-400 italic">
+                                  No sales representatives added yet. Click "Add Sales Rep" to grow your team.
+                              </td>
+                          </tr>
+                      )}
+                  </tbody>
+              </table>
+          </div>
+      )}
+
       {/* --- ADD COMPANY MODAL --- */}
       {showAddCompany && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
                <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                    <h3 className="font-bold text-lg">Onboard New Tenant</h3>
                    <button onClick={() => setShowAddCompany(false)} className="text-slate-400 hover:text-slate-600"><Key size={20}/></button>
@@ -233,6 +320,53 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50"
                    >
                       Create & Setup AI
+                   </button>
+               </div>
+           </div>
+        </div>
+      )}
+
+      {/* --- ADD SALES REP MODAL --- */}
+      {showAddRep && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden animate-fade-in">
+               <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                   <h3 className="font-bold text-lg">Add SaaS Sales Rep</h3>
+                   <button onClick={() => setShowAddRep(false)} className="text-slate-400 hover:text-slate-600"><Key size={20}/></button>
+               </div>
+               <div className="p-6 space-y-4">
+                   <div className="p-3 bg-blue-50 text-blue-800 text-xs rounded border border-blue-100 mb-4">
+                       This user will have access to the SaaS CRM to sell Rafter AI to roofing companies. They will <b>not</b> see specific tenant data.
+                   </div>
+                   <div>
+                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Full Name</label>
+                       <input 
+                          value={newRepForm.name} 
+                          onChange={e => setNewRepForm({...newRepForm, name: e.target.value})}
+                          className="w-full p-2.5 border border-slate-200 rounded-lg outline-none focus:border-indigo-500"
+                          placeholder="e.g. Alex Salesman"
+                          autoFocus
+                       />
+                   </div>
+                   <div>
+                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Email Address</label>
+                       <input 
+                          type="email"
+                          value={newRepForm.email} 
+                          onChange={e => setNewRepForm({...newRepForm, email: e.target.value})}
+                          className="w-full p-2.5 border border-slate-200 rounded-lg outline-none focus:border-indigo-500"
+                          placeholder="alex@rafter.ai"
+                       />
+                   </div>
+               </div>
+               <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+                   <button onClick={() => setShowAddRep(false)} className="px-4 py-2 font-bold text-slate-600 hover:bg-slate-200 rounded-lg">Cancel</button>
+                   <button 
+                      onClick={handleCreateRep}
+                      disabled={!newRepForm.name || !newRepForm.email}
+                      className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                   >
+                      Send Invitation
                    </button>
                </div>
            </div>
