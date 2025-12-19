@@ -30,6 +30,7 @@ interface StoreContextType {
   removeToast: (id: string) => void;
   updateLead: (lead: Lead) => void;
   addLead: (lead: Lead) => void;
+  createCompany: (company: Partial<Company>) => Promise<string | null>;
   updateCompany: (company: Partial<Company>) => void;
   updateUser: (user: Partial<User>) => void;
   addAutomation: (rule: AutomationRule) => void;
@@ -102,9 +103,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         setCurrentUser(user);
 
-        // --- UPDATED LOGIC START ---
-        // If Super Admin, fetch ALL companies and users for the Dashboard
+        // --- SUPER ADMIN LOGIC ---
         if (user.role === UserRole.SUPER_ADMIN) {
+            // Fetch ALL companies and ALL users for management
             const [companiesRes, usersRes] = await Promise.all([
                 supabase.from('companies').select('*').order('created_at', { ascending: false }),
                 supabase.from('users').select('*').order('created_at', { ascending: false })
@@ -138,9 +139,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                     avatarInitials: u.avatar_initials || u.name.slice(0, 2).toUpperCase()
                 })));
             }
-        // --- UPDATED LOGIC END ---
         } else {
-            // Normal User: Only load their specific company
+            // --- STANDARD USER LOGIC ---
             if (data.companies) {
               const company: Company = {
                 id: data.companies.id,
@@ -397,13 +397,54 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setCallLogs([]);
     setAutomations([]);
     setOrders([]);
+    // Clear Super Admin data as well
+    setCompanies([]);
+    setUsers([]);
   };
 
   const setTab = (tab: Tab) => {
     setActiveTab(tab);
   };
 
-  // CRUD handlers (condensed for brevity but fully functional)
+  // --- NEW: Create Company (Super Admin) ---
+  const createCompany = async (c: Partial<Company>): Promise<string | null> => {
+      if (!currentUser || currentUser.role !== UserRole.SUPER_ADMIN) return null;
+      
+      const { data, error } = await supabase.from('companies').insert({
+          name: c.name,
+          tier: c.tier || 'Starter',
+          address: c.address,
+          phone: c.phone,
+          status: 'Active',
+          setup_complete: false
+      }).select().single();
+
+      if (error) {
+          addToast(`Failed to create company: ${error.message}`, 'error');
+          return null;
+      }
+
+      const newCompany: Company = {
+        id: data.id,
+        name: data.name,
+        tier: data.tier as SubscriptionTier,
+        userCount: 0,
+        maxUsers: data.max_users,
+        status: data.status,
+        renewalDate: data.renewal_date,
+        address: data.address,
+        logoUrl: data.logo_url,
+        setupComplete: data.setup_complete,
+        phone: data.phone,
+        agentConfig: data.agent_config,
+        integrations: data.integrations
+      };
+
+      setCompanies(prev => [newCompany, ...prev]);
+      addToast('Company onboarded successfully', 'success');
+      return data.id;
+  };
+
   const updateCompany = async (c: Partial<Company>) => {
     if (!c.id) return;
     const { error } = await supabase.from('companies').update({
@@ -648,7 +689,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       suppliers: suppliers || [],
       orders: orders || [],
       login, register, logout, setTab, addToast, removeToast,
-      updateLead, addLead, updateCompany, updateUser,
+      updateLead, addLead, createCompany, updateCompany, updateUser,
       addAutomation, toggleAutomation, deleteAutomation, addOrder,
       addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
       addUser, removeUser
