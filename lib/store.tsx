@@ -44,7 +44,6 @@ interface StoreContextType {
   addEvent: (event: Partial<CalendarEvent>) => void;
   createInvoice: (invoice: Invoice) => void;
   updateInvoiceStatus: (id: string, status: Invoice['status']) => void;
-  // UPDATED: addUser returns the temporary password string or null
   addUser: (user: Partial<User>) => Promise<string | null>;
   removeUser: (userId: string) => Promise<void>;
   addSoftwareLead: (lead: SoftwareLead) => void;
@@ -640,7 +639,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!error) setOrders(prev => [...prev, o]);
   };
 
-  // --- UPDATED ADD USER LOGIC (Returns temp password) ---
+  // --- UPDATED: Use Edge Function for User Creation ---
   const addUser = async (u: Partial<User>): Promise<string | null> => {
     const targetCompanyId = u.companyId || currentUser?.companyId;
 
@@ -649,45 +648,44 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return null; 
     }
 
-    const tempPassword = Math.random().toString(36).slice(-8) + "Aa1!"; // Ensure complexity
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: u.email!,
-      password: tempPassword,
-      email_confirm: true
-    });
-    
-    if (authError) { 
-        addToast(`Failed to create user auth: ${authError.message}`, 'error'); 
-        return null; 
-    }
+    const tempPassword = Math.random().toString(36).slice(-8) + "Aa1!"; // Client generated, passed to function
 
-    const { error: userError } = await supabase.from('users').insert({
-      id: authData.user.id,
-      name: u.name,
-      email: u.email,
-      role: u.role,
-      company_id: targetCompanyId || null, 
-      avatar_initials: u.name?.slice(0, 2).toUpperCase()
-    });
-    
-    if (userError) { 
-        addToast('Failed to create user profile', 'error'); 
-        return null; 
-    }
+    try {
+        const { data, error } = await supabase.functions.invoke('create-user', {
+            body: {
+                email: u.email,
+                password: tempPassword,
+                name: u.name,
+                role: u.role,
+                companyId: targetCompanyId || null,
+                avatarInitials: u.name?.slice(0, 2).toUpperCase()
+            }
+        });
 
-    const newUser: User = {
-      id: authData.user.id,
-      name: u.name!,
-      email: u.email!,
-      role: u.role!,
-      companyId: targetCompanyId || null,
-      avatarInitials: u.name?.slice(0, 2).toUpperCase() || 'NA'
-    };
-    
-    setUsers(prev => [newUser, ...prev]);
-    addToast('User created successfully', 'success');
-    
-    return tempPassword;
+        if (error) {
+            console.error(error);
+            throw new Error(error.message || "Unknown error calling create-user");
+        }
+
+        // If successful, the Edge Function returns the user object.
+        // We now update local state manually to reflect the change immediately
+        const newUser: User = {
+            id: data.user.id,
+            name: u.name!,
+            email: u.email!,
+            role: u.role!,
+            companyId: targetCompanyId || null,
+            avatarInitials: u.name?.slice(0, 2).toUpperCase() || 'NA'
+        };
+        
+        setUsers(prev => [newUser, ...prev]);
+        addToast('User created successfully', 'success');
+        return tempPassword;
+
+    } catch (error: any) {
+        addToast(`Failed to create user: ${error.message}`, 'error');
+        return null;
+    }
   };
 
   const removeUser = async (uid: string) => {
