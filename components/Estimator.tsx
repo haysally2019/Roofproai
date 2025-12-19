@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { EstimateItem, Lead, Estimate, EstimateTier } from '../types';
 import { 
-  Sparkles, Printer, Save, Trash2, Calculator, 
-  MapPin, MousePointer2, Search, RotateCcw,
-  CheckCircle2, Layers, PenTool, Satellite, FileText, Truck, AlertTriangle, Sun, Crosshair
+  Sparkles, Save, Calculator, MapPin, Search, RotateCcw,
+  CheckCircle2, Layers, PenTool, Satellite, FileText, Truck, AlertTriangle, Scan, Crosshair, MousePointer2
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import MaterialOrderModal from './MaterialOrderModal';
@@ -30,7 +29,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   const [pitch, setPitch] = useState<number>(6); // 6/12 default
   const [wasteFactor, setWasteFactor] = useState<number>(10);
   const [selectedTier, setSelectedTier] = useState<EstimateTier>('Better');
-  // Track if measurements are Flat (Draw) or Surface (Solar API)
+  // Track if measurements are Flat (Draw) or Surface (3D Data)
   const [measurementType, setMeasurementType] = useState<'flat' | 'surface'>('flat'); 
   
   const [items, setItems] = useState<EstimateItem[]>([]);
@@ -46,9 +45,9 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   const [polygons, setPolygons] = useState<any[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   
-  // Track map center for Solar API
+  // Track map center for Data Lookup
   const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(null);
-  const [loadingSolar, setLoadingSolar] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -68,9 +67,13 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
             return;
         }
         
-        // Prevent duplicate script injection
         if (document.querySelector('script[src*="maps.googleapis.com"]')) {
-            initMap();
+            const interval = setInterval(() => {
+                if (window.google && window.google.maps) {
+                    clearInterval(interval);
+                    initMap();
+                }
+            }, 100);
             return; 
         }
 
@@ -85,7 +88,6 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
 
     loadMapScript();
     
-    // Cleanup
     return () => {
         if (polygons.length) polygons.forEach(p => p.setMap(null));
     };
@@ -98,19 +100,20 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
         center: { lat: 39.8283, lng: -98.5795 }, // USA Center
         zoom: 4,
         mapTypeId: 'satellite',
-        tilt: 0, // Top-down only
+        tilt: 0, // Top-down view
         fullscreenControl: false,
         streetViewControl: false,
         mapTypeControl: false,
         rotateControl: false,
+        zoomControl: true,
     });
 
     setMapInstance(map);
 
-    // Track Center for Solar API
+    // Track Center for API Lookup
     map.addListener('idle', () => {
         const center = map.getCenter();
-        setMapCenter({ lat: center.lat(), lng: center.lng() });
+        if(center) setMapCenter({ lat: center.lat(), lng: center.lng() });
     });
 
     // Drawing Manager
@@ -124,6 +127,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
             strokeColor: '#4f46e5',
             clickable: true,
             editable: true,
+            draggable: false, 
             zIndex: 1,
         },
     });
@@ -136,21 +140,18 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
         if (event.type === 'polygon') {
             const newPoly = event.overlay;
             
-            // Listen for edits
             const path = newPoly.getPath();
             ['set_at', 'insert_at', 'remove_at'].forEach(evt => {
                 window.google.maps.event.addListener(path, evt, () => updateAreaFromPolygons([...polygons, newPoly]));
             });
             
-            // Update State
             const newPolygons = [...polygons, newPoly];
             setPolygons(newPolygons);
             updateAreaFromPolygons(newPolygons);
             
-            // Reset tool
             manager.setDrawingMode(null);
             setIsDrawing(false);
-            setMeasurementType('flat'); // Drawing is always flat area
+            setMeasurementType('flat'); // Drawn measurements are always flat
         }
     });
 
@@ -190,23 +191,22 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
       setMeasuredSqFt(totalSqFt);
   };
 
-  // --- SOLAR API LOGIC ---
-  const fetchSolarData = async () => {
+  // --- ROOF DATA LOOKUP ---
+  const fetchRoofData = async () => {
       if (!mapCenter || !apiKey) {
           addToast("Please center the map on a roof first.", "error");
           return;
       }
 
-      setLoadingSolar(true);
+      setAnalyzing(true);
       try {
           const response = await fetch(
               `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${mapCenter.lat}&location.longitude=${mapCenter.lng}&requiredQuality=HIGH&key=${apiKey}`
           );
 
           if (!response.ok) {
-              // 404 usually means no solar data for this specific lat/lng (rural or no roof detected)
               if (response.status === 404) throw new Error("Roof not detected at center. Try moving map slightly.");
-              throw new Error("Solar API Error");
+              throw new Error("Could not fetch roof data.");
           }
 
           const data = await response.json();
@@ -214,10 +214,10 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
           if (data.solarPotential && data.solarPotential.wholeRoofStats) {
               const stats = data.solarPotential.wholeRoofStats;
               
-              // 1. Get Surface Area (This includes pitch!)
+              // Get Surface Area (This includes pitch!)
               const areaSqFt = Math.round(stats.areaMeters2 * 10.7639);
               
-              // 2. Calculate Pitch (Weighted Average)
+              // Calculate Pitch from dominant segment
               let dominantPitchDegrees = 0;
               if (data.solarPotential.roofSegmentStats) {
                   const segments = data.solarPotential.roofSegmentStats;
@@ -226,28 +226,27 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                   if (segments.length > 0) dominantPitchDegrees = segments[0].pitchDegrees;
               }
 
-              // Convert degrees to x/12
+              // Convert degrees to x/12 pitch
               const pitchRise = Math.round(12 * Math.tan(dominantPitchDegrees * (Math.PI / 180)));
 
-              // 3. Update State
               setMeasuredSqFt(areaSqFt);
               setPitch(Math.max(0, Math.min(18, pitchRise))); 
-              setMeasurementType('surface'); // Mark as Surface Area (don't double pitch)
+              setMeasurementType('surface'); // Mark as Surface Area
               
-              // Clear manual drawings to avoid confusion
+              // Clear manual drawings
               polygons.forEach(p => p.setMap(null));
               setPolygons([]);
               
-              addToast(`Detected: ${areaSqFt.toLocaleString()} sqft at ${pitchRise}/12 pitch`, "success");
+              addToast(`Roof Analyzed: ${areaSqFt.toLocaleString()} sqft at ${pitchRise}/12 pitch`, "success");
           } else {
               throw new Error("No roof data found.");
           }
 
       } catch (error: any) {
-          console.error("Solar API:", error);
+          console.error("Analysis Error:", error);
           addToast(error.message, "error");
       } finally {
-          setLoadingSolar(false);
+          setAnalyzing(false);
       }
   };
 
@@ -273,37 +272,40 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
 
   const calculateEstimate = () => {
       if (measuredSqFt <= 0) {
-          addToast("Please measure the roof first.", "error");
+          addToast("Please measure the roof area on the map first.", "error");
           return;
       }
 
-      // 1. Calculate True Surface Area
+      // Calculate True Surface Area
       let trueSqFt = measuredSqFt;
       
-      // IMPORTANT: Only apply pitch multiplier if measurement was 2D (Flat/Drawing)
-      // If Solar API was used, measuredSqFt is ALREADY surface area.
+      // Only apply pitch multiplier if measurement was Flat (Manual Draw)
       if (measurementType === 'flat') {
           const pitchMult = getPitchFactor(pitch);
           trueSqFt = measuredSqFt * pitchMult;
       }
       
-      // 2. Add Waste
       const wasteMult = 1 + (wasteFactor / 100);
       const billableSqFt = trueSqFt * wasteMult;
       const squares = Math.ceil(billableSqFt / 100);
 
       generateLineItems(billableSqFt, squares);
       setActiveTab('calculator');
-      addToast(`Generated for ${squares} Squares (${measurementType === 'surface' ? 'Solar Data' : 'Manual Draw'})`, "success");
+      addToast(`Generated estimate for ${squares} Squares`, "success");
   };
 
   const generateLineItems = (sqFt: number, squares: number) => {
+      // Pricing Logic
       let pricePerSq = 380; 
       let systemName = "3-Tab System";
       let warrantyName = "25-Year Warranty";
 
-      if (selectedTier === 'Better') { pricePerSq = 495; systemName = "Architectural System"; warrantyName = "Lifetime Warranty"; }
-      if (selectedTier === 'Best') { pricePerSq = 675; systemName = "Class 4 Impact System"; warrantyName = "Platinum Warranty"; }
+      if (selectedTier === 'Better') { 
+          pricePerSq = 495; systemName = "Architectural System"; warrantyName = "Lifetime Warranty";
+      }
+      if (selectedTier === 'Best') { 
+          pricePerSq = 675; systemName = "Class 4 Impact System"; warrantyName = "Platinum Warranty";
+      }
 
       if (pitch > 7) pricePerSq += 25;
       if (pitch > 10) pricePerSq += 45;
@@ -361,6 +363,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   const drawSign = (e: any) => {
       if(isSigning) { const ctx = signCanvasRef.current?.getContext('2d'); if(ctx) { const r = signCanvasRef.current!.getBoundingClientRect(); ctx.lineTo((e.touches?e.touches[0].clientX:e.clientX)-r.left, (e.touches?e.touches[0].clientY:e.clientY)-r.top); ctx.stroke(); } }
   };
+  const endSign = () => setIsSigning(false);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -418,29 +421,30 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                       
                       <div className="relative flex-1 bg-slate-100 rounded-lg border border-slate-200 min-h-[400px] mb-3 overflow-hidden">
                           <div ref={mapRef} className="absolute inset-0 w-full h-full"></div>
-                          {/* Crosshair Overlay */}
-                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10 opacity-50">
+                          {/* Crosshair Overlay for Targeting Center */}
+                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10 opacity-60">
                               <Crosshair size={32} className="text-white drop-shadow-md" strokeWidth={1.5} />
                           </div>
                       </div>
 
                       <div className="flex flex-col gap-2 mb-4">
-                          {/* SOLAR API BUTTON */}
+                          {/* AUTO MEASURE BUTTON */}
                           <button 
-                              onClick={fetchSolarData}
-                              disabled={loadingSolar || !mapCenter}
-                              className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-lg font-bold text-sm flex justify-center items-center gap-2 hover:from-orange-600 hover:to-amber-600 disabled:opacity-50 shadow-md transition-all"
+                              onClick={fetchRoofData}
+                              disabled={analyzing || !mapCenter}
+                              className="w-full py-3 bg-gradient-to-r from-indigo-500 to-blue-600 text-white rounded-lg font-bold text-sm flex justify-center items-center gap-2 hover:from-indigo-600 hover:to-blue-700 disabled:opacity-50 shadow-md transition-all"
                           >
-                              {loadingSolar ? <span className="animate-spin">☀️</span> : <Sun size={18}/>}
-                              {loadingSolar ? 'Analyzing Roof...' : 'Auto-Measure (Solar API)'}
+                              {analyzing ? <span className="animate-spin">🔄</span> : <Scan size={18}/>}
+                              {analyzing ? 'Analyzing Roof...' : 'Auto-Measure Roof'}
                           </button>
 
+                          {/* Drawing Tools */}
                           <div className="flex gap-2">
                               <button 
                                   onClick={toggleDrawingMode}
                                   className={`flex-1 py-2 rounded-lg font-bold text-sm flex justify-center items-center gap-2 border transition-all ${isDrawing ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
                               >
-                                  <PenTool size={16}/> {isDrawing ? 'Finish Drawing' : 'Manual Draw'}
+                                  <PenTool size={16}/> {isDrawing ? 'Stop Drawing' : 'Manual Draw'}
                               </button>
                               <button onClick={clearMap} className="px-3 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors" title="Clear All">
                                   <RotateCcw size={16}/>
@@ -448,6 +452,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                           </div>
                       </div>
                       
+                      {/* Stats Display */}
                       <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100 mb-4">
                           <div className="flex justify-between items-center mb-1">
                               <span className="text-xs font-bold text-indigo-400 uppercase">Measured Area</span>
@@ -456,7 +461,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                           <div className="flex justify-between items-center">
                               <span className="text-xs font-bold text-indigo-400 uppercase">Source</span>
                               <span className="text-sm font-bold text-indigo-900 flex items-center gap-1">
-                                  {measurementType === 'surface' ? <><Sun size={12}/> Solar Data (True Area)</> : <><PenTool size={12}/> Manual Draw (Flat)</>}
+                                  {measurementType === 'surface' ? <><Scan size={12}/> 3D Satellite Data</> : <><PenTool size={12}/> Manual Draw (Flat)</>}
                               </span>
                           </div>
                       </div>
@@ -591,7 +596,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                           {viewMode === 'proposal' && (
                               <div className="mt-12">
                                   <p className="text-xs text-slate-400 uppercase font-bold mb-2">Authorization</p>
-                                  <div className="border-2 border-dashed border-slate-300 rounded h-24 relative bg-slate-50 hover:bg-white transition-colors" onMouseDown={startSign} onMouseMove={drawSign} onMouseUp={() => setIsSigning(false)}>
+                                  <div className="border-2 border-dashed border-slate-300 rounded h-24 relative bg-slate-50 hover:bg-white transition-colors" onMouseDown={startSign} onMouseMove={drawSign} onMouseUp={() => setIsSigning(false)} onMouseLeave={endSign}>
                                       {!signature && <div className="absolute inset-0 flex items-center justify-center text-slate-300 font-bold uppercase pointer-events-none">Sign Here</div>}
                                       <canvas ref={signCanvasRef} width={600} height={96} className="w-full h-full cursor-crosshair relative z-10"/>
                                   </div>
