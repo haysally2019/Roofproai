@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Company, User, UserRole } from '../../types';
-import { Plus, Users, Zap, Search, Mail, User as UserIcon, X, Trash2, Edit2, CheckCircle, Copy, Key } from 'lucide-react';
+import { Company, User, UserRole, SubscriptionTier } from '../../types';
+import { Plus, Users, Zap, Search, Mail, User as UserIcon, X, Trash2, Edit2, CheckCircle, Copy, Key, Settings, CreditCard, ShieldAlert, Activity, FileText } from 'lucide-react';
 import { useStore } from '../../lib/store';
 
 interface Props {
@@ -12,7 +12,10 @@ interface Props {
 }
 
 const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, initialData, onClearInitialData }) => {
-  const { updateUser, removeUser, addUser } = useStore();
+  const { updateUser, removeUser, addUser, deleteCompany, updateCompany } = useStore();
+
+  // View Mode
+  const [statusFilter, setStatusFilter] = useState<'Active' | 'Inactive'>('Active');
 
   // Tenant State
   const [showCompanyModal, setShowCompanyModal] = useState(false);
@@ -20,15 +23,18 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
   const [searchQuery, setSearchQuery] = useState('');
 
   // User Management State
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null); // For viewing users
   const [showUserModal, setShowUserModal] = useState(false); // To add/edit user
   const [userForm, setUserForm] = useState<Partial<User>>({ name: '', email: '', role: 'Staff' });
   const [isEditingUser, setIsEditingUser] = useState(false);
   
+  // Settings Management State (New)
+  const [settingsCompany, setSettingsCompany] = useState<Company | null>(null);
+  const [settingsTab, setSettingsTab] = useState<'Subscription' | 'Billing' | 'Danger'>('Subscription');
+
   // Success State (New User Credentials)
   const [createdUserCreds, setCreatedUserCreds] = useState<{email: string, password: string} | null>(null);
 
-  // Auto-open modal if converting lead
   useEffect(() => {
       if (initialData) {
           setCompanyForm(prev => ({ ...prev, ...initialData, tier: 'Starter' }));
@@ -44,9 +50,34 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
       onClearInitialData();
   };
 
-  const filteredCompanies = companies.filter(c => 
-      c.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCompanies = companies.filter(c => {
+      const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = statusFilter === 'Active' ? c.status === 'Active' : c.status !== 'Active';
+      return matchesSearch && matchesStatus;
+  });
+
+  // --- SETTINGS ACTIONS ---
+  const handleUpdateSubscription = (tier: SubscriptionTier) => {
+      if (settingsCompany) {
+          updateCompany({ id: settingsCompany.id, tier });
+          setSettingsCompany({ ...settingsCompany, tier }); // Optimistic update for modal
+      }
+  };
+
+  const handleToggleStatus = () => {
+      if (settingsCompany) {
+          const newStatus = settingsCompany.status === 'Active' ? 'Suspended' : 'Active';
+          updateCompany({ id: settingsCompany.id, status: newStatus });
+          setSettingsCompany(null); // Close modal on status change
+      }
+  };
+
+  const handleDeleteCompany = async () => {
+      if (settingsCompany && window.confirm(`DANGER: Are you sure you want to permanently delete ${settingsCompany.name}? This cannot be undone.`)) {
+          await deleteCompany(settingsCompany.id);
+          setSettingsCompany(null);
+      }
+  };
 
   // --- USER ACTIONS ---
   const handleOpenAddUser = () => {
@@ -65,52 +96,71 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
       if (!selectedCompany) return;
 
       if (isEditingUser && userForm.id) {
-          // Edit existing
           await updateUser(userForm);
           setShowUserModal(false);
       } else {
-          // Create new
           const tempPass = await addUser({ ...userForm, companyId: selectedCompany.id });
           if (tempPass) {
               setCreatedUserCreds({ email: userForm.email!, password: tempPass });
               setShowUserModal(false);
-              // Note: createdUserCreds will trigger the success view overlay
           }
       }
   };
 
   const handleDeleteUser = async (userId: string) => {
-      if (window.confirm('Are you sure you want to remove this user from the tenant?')) {
+      if (window.confirm('Remove this user?')) {
           await removeUser(userId);
       }
   };
 
-  const copyToClipboard = (text: string) => {
-      navigator.clipboard.writeText(text);
-  };
+  const copyToClipboard = (text: string) => navigator.clipboard.writeText(text);
+
+  // Mock Billing History
+  const mockInvoices = [
+      { id: 'inv-001', date: '2024-12-01', amount: '$199.00', status: 'Paid' },
+      { id: 'inv-002', date: '2024-11-01', amount: '$199.00', status: 'Paid' },
+      { id: 'inv-003', date: '2024-10-01', amount: '$199.00', status: 'Paid' },
+  ];
 
   return (
     <div>
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-            <div>
-                <h1 className="text-2xl font-extrabold text-slate-900">Tenants</h1>
-                <p className="text-slate-500 text-sm">Active roofing companies on the platform</p>
-            </div>
-            
-            <div className="flex items-center gap-3">
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
-                    <input 
-                        type="text" 
-                        placeholder="Search companies..." 
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none w-64"
-                    />
+        {/* Header & Controls */}
+        <div className="flex flex-col gap-6 mb-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-extrabold text-slate-900">Tenants</h1>
+                    <p className="text-slate-500 text-sm">Manage roofing companies, subscriptions, and access.</p>
                 </div>
-                <button onClick={() => setShowCompanyModal(true)} className="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-800 shadow-lg shadow-slate-200">
-                    <Plus size={18}/> Onboard Company
+                <div className="flex items-center gap-3">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+                        <input 
+                            type="text" 
+                            placeholder="Search companies..." 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none w-64"
+                        />
+                    </div>
+                    <button onClick={() => setShowCompanyModal(true)} className="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-800 shadow-lg shadow-slate-200">
+                        <Plus size={18}/> Onboard Company
+                    </button>
+                </div>
+            </div>
+
+            {/* Status Filter Tabs */}
+            <div className="flex border-b border-slate-200">
+                <button 
+                    onClick={() => setStatusFilter('Active')}
+                    className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${statusFilter === 'Active' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                >
+                    Active Tenants
+                </button>
+                <button 
+                    onClick={() => setStatusFilter('Inactive')}
+                    className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${statusFilter === 'Inactive' ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                >
+                    Inactive / Suspended
                 </button>
             </div>
         </div>
@@ -118,13 +168,23 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
         {/* Company Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCompanies.map(company => (
-                <div key={company.id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col h-full group">
+                <div key={company.id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col h-full group relative">
+                    {/* Header */}
                     <div className="flex justify-between items-start mb-4">
                         <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600 font-bold text-xl">
                             {company.name.substring(0,2).toUpperCase()}
                         </div>
-                        <span className={`px-2 py-1 rounded text-xs font-bold ${company.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{company.status}</span>
+                        <div className="flex gap-2">
+                             <span className={`px-2 py-1 rounded text-xs font-bold ${company.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{company.status}</span>
+                             <button 
+                                onClick={() => setSettingsCompany(company)}
+                                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded"
+                             >
+                                 <Settings size={16} />
+                             </button>
+                        </div>
                     </div>
+                    
                     <h3 className="text-lg font-bold text-slate-900 mb-1">{company.name}</h3>
                     <p className="text-sm text-slate-500 mb-4 truncate">{company.address || 'No address'}</p>
                     
@@ -143,6 +203,11 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                     </div>
                 </div>
             ))}
+            {filteredCompanies.length === 0 && (
+                <div className="col-span-full py-12 text-center text-slate-400">
+                    No {statusFilter.toLowerCase()} companies found.
+                </div>
+            )}
         </div>
 
         {/* --- ONBOARD COMPANY MODAL --- */}
@@ -152,11 +217,11 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                     <button onClick={() => { setShowCompanyModal(false); onClearInitialData(); }} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X size={20}/></button>
                     <h3 className="font-bold text-lg mb-4">Onboard New Tenant</h3>
                     <div className="space-y-4">
-                        <input value={companyForm.name} onChange={e => setCompanyForm({...companyForm, name: e.target.value})} placeholder="Company Name" className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"/>
-                        <input value={companyForm.address} onChange={e => setCompanyForm({...companyForm, address: e.target.value})} placeholder="Address" className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"/>
+                        <input value={companyForm.name} onChange={e => setCompanyForm({...companyForm, name: e.target.value})} placeholder="Company Name" className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"/>
+                        <input value={companyForm.address} onChange={e => setCompanyForm({...companyForm, address: e.target.value})} placeholder="Address" className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"/>
                         <div className="grid grid-cols-2 gap-4">
-                            <input value={companyForm.phone} onChange={e => setCompanyForm({...companyForm, phone: e.target.value})} placeholder="Phone" className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"/>
-                            <select value={companyForm.tier} onChange={e => setCompanyForm({...companyForm, tier: e.target.value})} className="w-full p-2.5 border rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <input value={companyForm.phone} onChange={e => setCompanyForm({...companyForm, phone: e.target.value})} placeholder="Phone" className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"/>
+                            <select value={companyForm.tier} onChange={e => setCompanyForm({...companyForm, tier: e.target.value})} className="w-full p-2.5 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500">
                                 <option value="Starter">Starter</option>
                                 <option value="Professional">Professional</option>
                                 <option value="Enterprise">Enterprise</option>
@@ -171,7 +236,105 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
             </div>
         )}
 
-        {/* --- MANAGE COMPANY USERS MODAL --- */}
+        {/* --- SETTINGS MODAL --- */}
+        {settingsCompany && (
+            <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden animate-fade-in flex flex-col">
+                    <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <h3 className="font-bold text-lg">Manage {settingsCompany.name}</h3>
+                        <button onClick={() => setSettingsCompany(null)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                    </div>
+                    
+                    <div className="flex border-b border-slate-100 bg-slate-50">
+                        <button onClick={() => setSettingsTab('Subscription')} className={`flex-1 py-3 text-sm font-bold ${settingsTab === 'Subscription' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}>Subscription</button>
+                        <button onClick={() => setSettingsTab('Billing')} className={`flex-1 py-3 text-sm font-bold ${settingsTab === 'Billing' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}>Billing</button>
+                        <button onClick={() => setSettingsTab('Danger')} className={`flex-1 py-3 text-sm font-bold ${settingsTab === 'Danger' ? 'text-red-600 border-b-2 border-red-600' : 'text-slate-500 hover:text-red-600'}`}>Danger Zone</button>
+                    </div>
+
+                    <div className="p-6 min-h-[250px]">
+                        {settingsTab === 'Subscription' && (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-lg">
+                                    <div className="p-2 bg-white rounded text-indigo-600 shadow-sm"><Activity size={20}/></div>
+                                    <div>
+                                        <p className="text-xs font-bold text-indigo-800 uppercase">Current Plan</p>
+                                        <p className="text-lg font-bold text-indigo-900">{settingsCompany.tier}</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">Change Plan Tier</label>
+                                    <select 
+                                        value={settingsCompany.tier} 
+                                        onChange={(e) => handleUpdateSubscription(e.target.value as SubscriptionTier)}
+                                        className="w-full p-3 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    >
+                                        <option value="Starter">Starter - $99/mo</option>
+                                        <option value="Professional">Professional - $199/mo</option>
+                                        <option value="Enterprise">Enterprise - $499/mo</option>
+                                    </select>
+                                    <p className="text-xs text-slate-500 mt-2">Plan changes apply immediately. Prorated charges will appear on next invoice.</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {settingsTab === 'Billing' && (
+                            <div>
+                                <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><CreditCard size={18}/> Payment History</h4>
+                                <div className="border rounded-lg overflow-hidden">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-slate-50 font-bold text-slate-500">
+                                            <tr><th className="p-3">Date</th><th className="p-3">Amount</th><th className="p-3">Status</th><th className="p-3 text-right">Invoice</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {mockInvoices.map(inv => (
+                                                <tr key={inv.id}>
+                                                    <td className="p-3">{inv.date}</td>
+                                                    <td className="p-3">{inv.amount}</td>
+                                                    <td className="p-3"><span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-bold">{inv.status}</span></td>
+                                                    <td className="p-3 text-right text-indigo-600 hover:underline cursor-pointer"><FileText size={16} className="inline"/></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {settingsTab === 'Danger' && (
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between p-4 border border-amber-200 bg-amber-50 rounded-lg">
+                                    <div>
+                                        <h4 className="font-bold text-amber-800">Suspend Access</h4>
+                                        <p className="text-xs text-amber-600">Temporarily disable all user logins for this company.</p>
+                                    </div>
+                                    <button 
+                                        onClick={handleToggleStatus}
+                                        className={`px-4 py-2 rounded-lg font-bold text-sm ${settingsCompany.status === 'Active' ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}
+                                    >
+                                        {settingsCompany.status === 'Active' ? 'Suspend' : 'Activate'}
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center justify-between p-4 border border-red-200 bg-red-50 rounded-lg">
+                                    <div>
+                                        <h4 className="font-bold text-red-800">Delete Company</h4>
+                                        <p className="text-xs text-red-600">Permanently remove this tenant and all data.</p>
+                                    </div>
+                                    <button 
+                                        onClick={handleDeleteCompany}
+                                        className="px-4 py-2 bg-red-600 text-white rounded-lg font-bold text-sm hover:bg-red-700 flex items-center gap-2"
+                                    >
+                                        <Trash2 size={16}/> Delete
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* --- MANAGE USERS MODAL --- */}
         {selectedCompany && !createdUserCreds && (
             <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden animate-fade-in flex flex-col max-h-[85vh]">
@@ -258,7 +421,7 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                                 value={userForm.email} 
                                 onChange={e => setUserForm({...userForm, email: e.target.value})} 
                                 className={`w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none ${isEditingUser ? 'bg-slate-50 text-slate-500' : ''}`}
-                                readOnly={isEditingUser} // Prevent email edits for now to avoid Auth desync
+                                readOnly={isEditingUser} 
                                 title={isEditingUser ? "Email cannot be changed directly" : ""}
                             />
                         </div>
