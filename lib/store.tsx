@@ -13,7 +13,7 @@ interface StoreContextType {
   companies: Company[];
   users: User[];
   leads: Lead[];
-  softwareLeads: SoftwareLead[]; // NEW
+  softwareLeads: SoftwareLead[];
   events: CalendarEvent[];
   tasks: Task[];
   invoices: Invoice[];
@@ -44,9 +44,9 @@ interface StoreContextType {
   addEvent: (event: Partial<CalendarEvent>) => void;
   createInvoice: (invoice: Invoice) => void;
   updateInvoiceStatus: (id: string, status: Invoice['status']) => void;
-  addUser: (user: Partial<User>) => Promise<void>;
+  // UPDATED: addUser returns the temporary password string or null
+  addUser: (user: Partial<User>) => Promise<string | null>;
   removeUser: (userId: string) => Promise<void>;
-  // NEW SaaS Lead Actions
   addSoftwareLead: (lead: SoftwareLead) => void;
   updateSoftwareLead: (lead: SoftwareLead) => void;
   deleteSoftwareLead: (id: string) => void;
@@ -70,7 +70,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [companies, setCompanies] = useState<Company[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [softwareLeads, setSoftwareLeads] = useState<SoftwareLead[]>([]); // NEW
+  const [softwareLeads, setSoftwareLeads] = useState<SoftwareLead[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -109,9 +109,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         setCurrentUser(user);
 
-        // --- SUPER ADMIN LOGIC ---
         if (user.role === UserRole.SUPER_ADMIN) {
-            // Fetch ALL companies and ALL users for management
             const [companiesRes, usersRes] = await Promise.all([
                 supabase.from('companies').select('*').order('created_at', { ascending: false }),
                 supabase.from('users').select('*').order('created_at', { ascending: false })
@@ -146,7 +144,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 })));
             }
 
-            // Init Mock SaaS Leads (Replace with Supabase fetch when table exists)
             if (softwareLeads.length === 0) {
                 setSoftwareLeads([
                   { id: 'sl-1', companyName: 'Apex Roofing', contactName: 'John Smith', email: 'john@apex.com', phone: '555-0101', status: 'Demo Booked', potentialUsers: 5, assignedTo: user.id, notes: 'Interested in AI', createdAt: new Date().toISOString() },
@@ -155,7 +152,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
 
         } else {
-            // --- STANDARD USER LOGIC ---
             if (data.companies) {
               const company: Company = {
                 id: data.companies.id,
@@ -422,7 +418,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setActiveTab(tab);
   };
 
-  // --- NEW: Create Company (Super Admin) ---
   const createCompany = async (c: Partial<Company>): Promise<string | null> => {
       if (!currentUser || currentUser.role !== UserRole.SUPER_ADMIN) return null;
       
@@ -645,33 +640,40 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!error) setOrders(prev => [...prev, o]);
   };
 
-  // --- UPDATED ADD USER LOGIC (Supports SaaS Reps) ---
-  const addUser = async (u: Partial<User>) => {
+  // --- UPDATED ADD USER LOGIC (Returns temp password) ---
+  const addUser = async (u: Partial<User>): Promise<string | null> => {
     const targetCompanyId = u.companyId || currentUser?.companyId;
 
-    // Allow Super Admin to create SaaS Reps (who have no companyId)
     if (!targetCompanyId && currentUser?.role !== UserRole.SUPER_ADMIN) {
         addToast("Cannot create user without an organization.", "error"); 
-        return; 
+        return null; 
     }
 
-    const tempPassword = Math.random().toString(36).slice(-8);
+    const tempPassword = Math.random().toString(36).slice(-8) + "Aa1!"; // Ensure complexity
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: u.email!,
       password: tempPassword,
       email_confirm: true
     });
-    if (authError) { addToast('Failed to create user auth', 'error'); return; }
+    
+    if (authError) { 
+        addToast(`Failed to create user auth: ${authError.message}`, 'error'); 
+        return null; 
+    }
 
     const { error: userError } = await supabase.from('users').insert({
       id: authData.user.id,
       name: u.name,
       email: u.email,
       role: u.role,
-      company_id: targetCompanyId || null, // Allow null for SaaS Reps
+      company_id: targetCompanyId || null, 
       avatar_initials: u.name?.slice(0, 2).toUpperCase()
     });
-    if (userError) { addToast('Failed to create user profile', 'error'); return; }
+    
+    if (userError) { 
+        addToast('Failed to create user profile', 'error'); 
+        return null; 
+    }
 
     const newUser: User = {
       id: authData.user.id,
@@ -684,6 +686,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     
     setUsers(prev => [newUser, ...prev]);
     addToast('User created successfully', 'success');
+    
+    return tempPassword;
   };
 
   const removeUser = async (uid: string) => {
@@ -691,20 +695,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!error) setUsers(prev => prev.filter(u => u.id !== uid));
   };
 
-  // --- SaaS LEAD CRUD ACTIONS ---
   const addSoftwareLead = (lead: SoftwareLead) => {
-      // In a real app, this would insert into supabase
       setSoftwareLeads(prev => [...prev, lead]);
       addToast('Lead added successfully', 'success');
   };
 
   const updateSoftwareLead = (lead: SoftwareLead) => {
-      // In a real app, this would update supabase
       setSoftwareLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
   };
 
   const deleteSoftwareLead = (id: string) => {
-      // In a real app, this would delete from supabase
       setSoftwareLeads(prev => prev.filter(l => l.id !== id));
   };
 
@@ -716,13 +716,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
   }
 
-  // FORCE SAFE ARRAYS
   const safeValue: StoreContextType = {
       currentUser, activeTab,
       companies: companies || [],
       users: users || [],
       leads: leads || [],
-      softwareLeads: softwareLeads || [], // NEW
+      softwareLeads: softwareLeads || [],
       events: events || [],
       tasks: tasks || [],
       invoices: invoices || [],
@@ -737,7 +736,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       addAutomation, toggleAutomation, deleteAutomation, addOrder,
       addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
       addUser, removeUser,
-      addSoftwareLead, updateSoftwareLead, deleteSoftwareLead // Exported
+      addSoftwareLead, updateSoftwareLead, deleteSoftwareLead
   };
 
   return <StoreContext.Provider value={safeValue}>{children}</StoreContext.Provider>;
