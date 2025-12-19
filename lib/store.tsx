@@ -102,27 +102,67 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         setCurrentUser(user);
 
-        if (data.companies) {
-          const company: Company = {
-            id: data.companies.id,
-            name: data.companies.name,
-            tier: data.companies.tier as SubscriptionTier,
-            userCount: data.companies.user_count,
-            maxUsers: data.companies.max_users,
-            status: data.companies.status,
-            renewalDate: data.companies.renewal_date,
-            address: data.companies.address,
-            logoUrl: data.companies.logo_url,
-            setupComplete: data.companies.setup_complete,
-            phone: data.companies.phone,
-            agentConfig: data.companies.agent_config,
-            integrations: data.companies.integrations
-          };
-          setCompanies([company]);
-        }
+        // --- UPDATED LOGIC START ---
+        // If Super Admin, fetch ALL companies and users for the Dashboard
+        if (user.role === UserRole.SUPER_ADMIN) {
+            const [companiesRes, usersRes] = await Promise.all([
+                supabase.from('companies').select('*').order('created_at', { ascending: false }),
+                supabase.from('users').select('*').order('created_at', { ascending: false })
+            ]);
 
-        if (data.company_id) {
-          await loadCompanyData(data.company_id);
+            if (companiesRes.data) {
+                setCompanies(companiesRes.data.map((c: any) => ({
+                    id: c.id,
+                    name: c.name,
+                    tier: c.tier as SubscriptionTier,
+                    userCount: c.user_count,
+                    maxUsers: c.max_users,
+                    status: c.status,
+                    renewalDate: c.renewal_date,
+                    address: c.address,
+                    logoUrl: c.logo_url,
+                    setupComplete: c.setup_complete,
+                    phone: c.phone,
+                    agentConfig: c.agent_config,
+                    integrations: c.integrations
+                })));
+            }
+
+            if (usersRes.data) {
+                setUsers(usersRes.data.map((u: any) => ({
+                    id: u.id,
+                    name: u.name,
+                    email: u.email,
+                    role: u.role as UserRole,
+                    companyId: u.company_id,
+                    avatarInitials: u.avatar_initials || u.name.slice(0, 2).toUpperCase()
+                })));
+            }
+        // --- UPDATED LOGIC END ---
+        } else {
+            // Normal User: Only load their specific company
+            if (data.companies) {
+              const company: Company = {
+                id: data.companies.id,
+                name: data.companies.name,
+                tier: data.companies.tier as SubscriptionTier,
+                userCount: data.companies.user_count,
+                maxUsers: data.companies.max_users,
+                status: data.companies.status,
+                renewalDate: data.companies.renewal_date,
+                address: data.companies.address,
+                logoUrl: data.companies.logo_url,
+                setupComplete: data.companies.setup_complete,
+                phone: data.companies.phone,
+                agentConfig: data.companies.agent_config,
+                integrations: data.companies.integrations
+              };
+              setCompanies([company]);
+            }
+
+            if (data.company_id) {
+              await loadCompanyData(data.company_id);
+            }
         }
       } else if (retryCount < 3) {
         await new Promise(resolve => setTimeout(resolve, 1000));
