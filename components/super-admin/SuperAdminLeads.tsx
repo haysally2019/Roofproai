@@ -19,12 +19,12 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
   const handleSave = () => {
     if (!form.companyName || !form.contactName) return;
-    
+
     if (form.id) {
         onUpdateLead(form as SoftwareLead);
     } else {
         const newLead: SoftwareLead = {
-            id: `sl-${Date.now()}`,
+            id: crypto.randomUUID(),
             companyName: form.companyName,
             contactName: form.contactName,
             email: form.email || '',
@@ -110,16 +110,23 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                       onChange={e => setForm({...form, contactName: e.target.value})}
                       className="w-full p-2 border rounded-lg"
                    />
+                   <input
+                      placeholder="Email"
+                      type="email"
+                      value={form.email || ''}
+                      onChange={e => setForm({...form, email: e.target.value})}
+                      className="w-full p-2 border rounded-lg"
+                   />
                    <div className="grid grid-cols-2 gap-2">
-                       <input 
-                          placeholder="Phone" 
+                       <input
+                          placeholder="Phone"
                           value={form.phone || ''}
                           onChange={e => setForm({...form, phone: e.target.value})}
                           className="w-full p-2 border rounded-lg"
                        />
-                       <input 
+                       <input
                           type="number"
-                          placeholder="Potential Users" 
+                          placeholder="Potential Users"
                           value={form.potentialUsers || ''}
                           onChange={e => setForm({...form, potentialUsers: parseInt(e.target.value)})}
                           className="w-full p-2 border rounded-lg"

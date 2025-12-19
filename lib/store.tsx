@@ -108,10 +108,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         setCurrentUser(user);
 
-        if (user.role === UserRole.SUPER_ADMIN) {
-            const [companiesRes, usersRes] = await Promise.all([
+        if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.SAAS_REP) {
+            const [companiesRes, usersRes, softwareLeadsRes] = await Promise.all([
                 supabase.from('companies').select('*').order('created_at', { ascending: false }),
-                supabase.from('users').select('*').order('created_at', { ascending: false })
+                supabase.from('users').select('*').order('created_at', { ascending: false }),
+                supabase.from('software_leads').select('*').order('created_at', { ascending: false })
             ]);
 
             if (companiesRes.data) {
@@ -143,11 +144,19 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 })));
             }
 
-            if (softwareLeads.length === 0) {
-                setSoftwareLeads([
-                  { id: 'sl-1', companyName: 'Apex Roofing', contactName: 'John Smith', email: 'john@apex.com', phone: '555-0101', status: 'Demo Booked', potentialUsers: 5, assignedTo: user.id, notes: 'Interested in AI', createdAt: new Date().toISOString() },
-                  { id: 'sl-2', companyName: 'Best Top Roofs', contactName: 'Sarah Lee', email: 'sarah@besttop.com', phone: '555-0102', status: 'Prospect', potentialUsers: 12, assignedTo: user.id, notes: 'Cold outreach', createdAt: new Date().toISOString() },
-                ]);
+            if (softwareLeadsRes.data) {
+                setSoftwareLeads(softwareLeadsRes.data.map((sl: any) => ({
+                    id: sl.id,
+                    companyName: sl.company_name,
+                    contactName: sl.contact_name,
+                    email: sl.email || '',
+                    phone: sl.phone || '',
+                    status: sl.status,
+                    potentialUsers: sl.potential_users || 1,
+                    assignedTo: sl.assigned_to,
+                    notes: sl.notes || '',
+                    createdAt: sl.created_at
+                })));
             }
 
         } else {
@@ -693,17 +702,71 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!error) setUsers(prev => prev.filter(u => u.id !== uid));
   };
 
-  const addSoftwareLead = (lead: SoftwareLead) => {
-      setSoftwareLeads(prev => [...prev, lead]);
-      addToast('Lead added successfully', 'success');
+  const addSoftwareLead = async (lead: SoftwareLead) => {
+      try {
+          const { error } = await supabase.from('software_leads').insert({
+              id: lead.id,
+              company_name: lead.companyName,
+              contact_name: lead.contactName,
+              email: lead.email,
+              phone: lead.phone,
+              status: lead.status,
+              potential_users: lead.potentialUsers,
+              assigned_to: lead.assignedTo,
+              notes: lead.notes
+          });
+
+          if (error) {
+              addToast(`Failed to add lead: ${error.message}`, 'error');
+              return;
+          }
+
+          setSoftwareLeads(prev => [...prev, lead]);
+          addToast('Lead added successfully', 'success');
+      } catch (error: any) {
+          addToast(`Error: ${error.message}`, 'error');
+      }
   };
 
-  const updateSoftwareLead = (lead: SoftwareLead) => {
-      setSoftwareLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
+  const updateSoftwareLead = async (lead: SoftwareLead) => {
+      try {
+          const { error } = await supabase.from('software_leads').update({
+              company_name: lead.companyName,
+              contact_name: lead.contactName,
+              email: lead.email,
+              phone: lead.phone,
+              status: lead.status,
+              potential_users: lead.potentialUsers,
+              assigned_to: lead.assignedTo,
+              notes: lead.notes
+          }).eq('id', lead.id);
+
+          if (error) {
+              addToast(`Failed to update lead: ${error.message}`, 'error');
+              return;
+          }
+
+          setSoftwareLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
+          addToast('Lead updated successfully', 'success');
+      } catch (error: any) {
+          addToast(`Error: ${error.message}`, 'error');
+      }
   };
 
-  const deleteSoftwareLead = (id: string) => {
-      setSoftwareLeads(prev => prev.filter(l => l.id !== id));
+  const deleteSoftwareLead = async (id: string) => {
+      try {
+          const { error } = await supabase.from('software_leads').delete().eq('id', id);
+
+          if (error) {
+              addToast(`Failed to delete lead: ${error.message}`, 'error');
+              return;
+          }
+
+          setSoftwareLeads(prev => prev.filter(l => l.id !== id));
+          addToast('Lead deleted successfully', 'success');
+      } catch (error: any) {
+          addToast(`Error: ${error.message}`, 'error');
+      }
   };
 
   if (loading) {
