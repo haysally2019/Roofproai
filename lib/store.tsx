@@ -33,7 +33,7 @@ interface StoreContextType {
   addLead: (lead: Lead) => void;
   createCompany: (company: Partial<Company>) => Promise<string | null>;
   updateCompany: (company: Partial<Company>) => void;
-  updateUser: (user: Partial<User>) => void;
+  updateUser: (user: Partial<User>) => Promise<void>;
   addAutomation: (rule: AutomationRule) => void;
   toggleAutomation: (id: string) => void;
   deleteAutomation: (id: string) => void;
@@ -108,11 +108,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         setCurrentUser(user);
 
-        if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.SAAS_REP) {
-            const [companiesRes, usersRes, softwareLeadsRes] = await Promise.all([
+        // --- SUPER ADMIN LOGIC ---
+        if (user.role === UserRole.SUPER_ADMIN) {
+            const [companiesRes, usersRes] = await Promise.all([
                 supabase.from('companies').select('*').order('created_at', { ascending: false }),
-                supabase.from('users').select('*').order('created_at', { ascending: false }),
-                supabase.from('software_leads').select('*').order('created_at', { ascending: false })
+                supabase.from('users').select('*').order('created_at', { ascending: false })
             ]);
 
             if (companiesRes.data) {
@@ -144,22 +144,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 })));
             }
 
-            if (softwareLeadsRes.data) {
-                setSoftwareLeads(softwareLeadsRes.data.map((sl: any) => ({
-                    id: sl.id,
-                    companyName: sl.company_name,
-                    contactName: sl.contact_name,
-                    email: sl.email || '',
-                    phone: sl.phone || '',
-                    status: sl.status,
-                    potentialUsers: sl.potential_users || 1,
-                    assignedTo: sl.assigned_to,
-                    notes: sl.notes || '',
-                    createdAt: sl.created_at
-                })));
+            // Init Mock SaaS Leads
+            if (softwareLeads.length === 0) {
+                setSoftwareLeads([
+                  { id: 'sl-1', companyName: 'Apex Roofing', contactName: 'John Smith', email: 'john@apex.com', phone: '555-0101', status: 'Demo Booked', potentialUsers: 5, assignedTo: user.id, notes: 'Interested in AI', createdAt: new Date().toISOString() },
+                  { id: 'sl-2', companyName: 'Best Top Roofs', contactName: 'Sarah Lee', email: 'sarah@besttop.com', phone: '555-0102', status: 'Prospect', potentialUsers: 12, assignedTo: user.id, notes: 'Cold outreach', createdAt: new Date().toISOString() },
+                ]);
             }
 
         } else {
+            // --- STANDARD USER LOGIC ---
             if (data.companies) {
               const company: Company = {
                 id: data.companies.id,
@@ -474,9 +468,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateUser = async (u: Partial<User>) => {
-    if (!currentUser?.id) return;
-    await supabase.from('users').update({ name: u.name, email: u.email, avatar_initials: u.avatarInitials }).eq('id', currentUser.id);
-    setCurrentUser(prev => prev ? {...prev, ...u} : null);
+    const targetId = u.id || currentUser?.id;
+    if (!targetId) return;
+
+    // Allow updating public profile fields
+    const { error } = await supabase.from('users').update({ 
+        name: u.name, 
+        role: u.role, 
+        email: u.email // Note: This only updates public profile, not Auth email
+    }).eq('id', targetId);
+
+    if (error) {
+        addToast(`Failed to update user: ${error.message}`, 'error');
+        return;
+    }
+
+    setUsers(prev => prev.map(user => user.id === targetId ? { ...user, ...u } : user));
+    
+    // If updating self, update local context too
+    if (currentUser && targetId === currentUser.id) {
+        setCurrentUser(prev => prev ? { ...prev, ...u } : null);
+    }
+    addToast('User updated successfully', 'success');
   };
 
   const addLead = async (lead: Lead) => {
@@ -648,7 +661,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!error) setOrders(prev => [...prev, o]);
   };
 
-  // --- UPDATED: Use Edge Function for User Creation ---
+  // --- UPDATED ADD USER LOGIC (Uses Edge Function) ---
   const addUser = async (u: Partial<User>): Promise<string | null> => {
     const targetCompanyId = u.companyId || currentUser?.companyId;
 
@@ -657,7 +670,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return null; 
     }
 
-    const tempPassword = Math.random().toString(36).slice(-8) + "Aa1!"; // Client generated, passed to function
+    const tempPassword = Math.random().toString(36).slice(-8) + "Aa1!"; 
 
     try {
         const { data, error } = await supabase.functions.invoke('create-user', {
@@ -676,8 +689,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             throw new Error(error.message || "Unknown error calling create-user");
         }
 
-        // If successful, the Edge Function returns the user object.
-        // We now update local state manually to reflect the change immediately
         const newUser: User = {
             id: data.user.id,
             name: u.name!,
@@ -702,71 +713,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!error) setUsers(prev => prev.filter(u => u.id !== uid));
   };
 
-  const addSoftwareLead = async (lead: SoftwareLead) => {
-      try {
-          const { error } = await supabase.from('software_leads').insert({
-              id: lead.id,
-              company_name: lead.companyName,
-              contact_name: lead.contactName,
-              email: lead.email,
-              phone: lead.phone,
-              status: lead.status,
-              potential_users: lead.potentialUsers,
-              assigned_to: lead.assignedTo,
-              notes: lead.notes
-          });
-
-          if (error) {
-              addToast(`Failed to add lead: ${error.message}`, 'error');
-              return;
-          }
-
-          setSoftwareLeads(prev => [...prev, lead]);
-          addToast('Lead added successfully', 'success');
-      } catch (error: any) {
-          addToast(`Error: ${error.message}`, 'error');
-      }
+  const addSoftwareLead = (lead: SoftwareLead) => {
+      setSoftwareLeads(prev => [...prev, lead]);
+      addToast('Lead added successfully', 'success');
   };
 
-  const updateSoftwareLead = async (lead: SoftwareLead) => {
-      try {
-          const { error } = await supabase.from('software_leads').update({
-              company_name: lead.companyName,
-              contact_name: lead.contactName,
-              email: lead.email,
-              phone: lead.phone,
-              status: lead.status,
-              potential_users: lead.potentialUsers,
-              assigned_to: lead.assignedTo,
-              notes: lead.notes
-          }).eq('id', lead.id);
-
-          if (error) {
-              addToast(`Failed to update lead: ${error.message}`, 'error');
-              return;
-          }
-
-          setSoftwareLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
-          addToast('Lead updated successfully', 'success');
-      } catch (error: any) {
-          addToast(`Error: ${error.message}`, 'error');
-      }
+  const updateSoftwareLead = (lead: SoftwareLead) => {
+      setSoftwareLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
   };
 
-  const deleteSoftwareLead = async (id: string) => {
-      try {
-          const { error } = await supabase.from('software_leads').delete().eq('id', id);
-
-          if (error) {
-              addToast(`Failed to delete lead: ${error.message}`, 'error');
-              return;
-          }
-
-          setSoftwareLeads(prev => prev.filter(l => l.id !== id));
-          addToast('Lead deleted successfully', 'success');
-      } catch (error: any) {
-          addToast(`Error: ${error.message}`, 'error');
-      }
+  const deleteSoftwareLead = (id: string) => {
+      setSoftwareLeads(prev => prev.filter(l => l.id !== id));
   };
 
   if (loading) {
