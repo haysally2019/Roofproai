@@ -1,6 +1,6 @@
 import React from 'react';
 import { Company, User, SoftwareLead, SubscriptionTier } from '../../types';
-import { TrendingUp, Users, Building2, DollarSign, Activity } from 'lucide-react';
+import { TrendingUp, Users, Building2, DollarSign, Activity, ArrowUpRight } from 'lucide-react';
 
 interface Props {
   companies: Company[];
@@ -20,10 +20,10 @@ const SuperAdminOverview: React.FC<Props> = ({ companies, users, leads }) => {
       : 0;
 
   const cards = [
-    { label: 'Total ARR', value: `$${totalARR.toLocaleString()}`, icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Active Companies', value: activeCompanies, icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Total Users', value: users.length, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { label: 'Lead Conversion', value: `${conversionRate}%`, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Total ARR', value: `$${totalARR.toLocaleString()}`, icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50', trend: '+12%' },
+    { label: 'Active Companies', value: activeCompanies, icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50', trend: '+3' },
+    { label: 'Total Users', value: users.length, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50', trend: '+8%' },
+    { label: 'Lead Conversion', value: `${conversionRate}%`, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50', trend: '+2%' },
   ];
 
   return (
@@ -31,10 +31,15 @@ const SuperAdminOverview: React.FC<Props> = ({ companies, users, leads }) => {
       <h1 className="text-2xl font-extrabold text-slate-900">Platform Overview</h1>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map((card) => (
-          <div key={card.label} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div key={card.label} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
             <div>
               <p className="text-sm font-medium text-slate-500">{card.label}</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{card.value}</p>
+              <div className="flex items-end gap-2 mt-1">
+                  <p className="text-2xl font-bold text-slate-900">{card.value}</p>
+                  <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center mb-1">
+                      <ArrowUpRight size={10} strokeWidth={3}/> {card.trend}
+                  </span>
+              </div>
             </div>
             <div className={`p-3 rounded-lg ${card.bg} ${card.color}`}>
               <card.icon size={24} />
