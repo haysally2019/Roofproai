@@ -3,7 +3,7 @@ import {
   User, Company, Lead, CalendarEvent, Task, Invoice,
   Notification, UserRole, SubscriptionTier, LeadStatus, Tab, Toast,
   CallLog, AgentConfig, AutomationRule,
-  Supplier, MaterialOrder
+  Supplier, MaterialOrder, SoftwareLead
 } from '../types';
 import { supabase } from './supabase';
 
@@ -13,6 +13,7 @@ interface StoreContextType {
   companies: Company[];
   users: User[];
   leads: Lead[];
+  softwareLeads: SoftwareLead[]; // NEW
   events: CalendarEvent[];
   tasks: Task[];
   invoices: Invoice[];
@@ -45,6 +46,10 @@ interface StoreContextType {
   updateInvoiceStatus: (id: string, status: Invoice['status']) => void;
   addUser: (user: Partial<User>) => Promise<void>;
   removeUser: (userId: string) => Promise<void>;
+  // NEW SaaS Lead Actions
+  addSoftwareLead: (lead: SoftwareLead) => void;
+  updateSoftwareLead: (lead: SoftwareLead) => void;
+  deleteSoftwareLead: (id: string) => void;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -65,6 +70,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [companies, setCompanies] = useState<Company[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [softwareLeads, setSoftwareLeads] = useState<SoftwareLead[]>([]); // NEW
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -139,6 +145,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                     avatarInitials: u.avatar_initials || u.name.slice(0, 2).toUpperCase()
                 })));
             }
+
+            // Init Mock SaaS Leads (Replace with Supabase fetch when table exists)
+            if (softwareLeads.length === 0) {
+                setSoftwareLeads([
+                  { id: 'sl-1', companyName: 'Apex Roofing', contactName: 'John Smith', email: 'john@apex.com', phone: '555-0101', status: 'Demo Booked', potentialUsers: 5, assignedTo: user.id, notes: 'Interested in AI', createdAt: new Date().toISOString() },
+                  { id: 'sl-2', companyName: 'Best Top Roofs', contactName: 'Sarah Lee', email: 'sarah@besttop.com', phone: '555-0102', status: 'Prospect', potentialUsers: 12, assignedTo: user.id, notes: 'Cold outreach', createdAt: new Date().toISOString() },
+                ]);
+            }
+
         } else {
             // --- STANDARD USER LOGIC ---
             if (data.companies) {
@@ -400,6 +415,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     // Clear Super Admin data as well
     setCompanies([]);
     setUsers([]);
+    setSoftwareLeads([]);
   };
 
   const setTab = (tab: Tab) => {
@@ -629,7 +645,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!error) setOrders(prev => [...prev, o]);
   };
 
-  // --- UPDATED ADD USER LOGIC ---
+  // --- UPDATED ADD USER LOGIC (Supports SaaS Reps) ---
   const addUser = async (u: Partial<User>) => {
     const targetCompanyId = u.companyId || currentUser?.companyId;
 
@@ -675,6 +691,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!error) setUsers(prev => prev.filter(u => u.id !== uid));
   };
 
+  // --- SaaS LEAD CRUD ACTIONS ---
+  const addSoftwareLead = (lead: SoftwareLead) => {
+      // In a real app, this would insert into supabase
+      setSoftwareLeads(prev => [...prev, lead]);
+      addToast('Lead added successfully', 'success');
+  };
+
+  const updateSoftwareLead = (lead: SoftwareLead) => {
+      // In a real app, this would update supabase
+      setSoftwareLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
+  };
+
+  const deleteSoftwareLead = (id: string) => {
+      // In a real app, this would delete from supabase
+      setSoftwareLeads(prev => prev.filter(l => l.id !== id));
+  };
+
   if (loading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-900">
@@ -689,6 +722,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       companies: companies || [],
       users: users || [],
       leads: leads || [],
+      softwareLeads: softwareLeads || [], // NEW
       events: events || [],
       tasks: tasks || [],
       invoices: invoices || [],
@@ -702,7 +736,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       updateLead, addLead, createCompany, updateCompany, updateUser,
       addAutomation, toggleAutomation, deleteAutomation, addOrder,
       addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
-      addUser, removeUser
+      addUser, removeUser,
+      addSoftwareLead, updateSoftwareLead, deleteSoftwareLead // Exported
   };
 
   return <StoreContext.Provider value={safeValue}>{children}</StoreContext.Provider>;
