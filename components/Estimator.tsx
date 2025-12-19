@@ -3,7 +3,7 @@ import { EstimateItem, Lead, Estimate, EstimateTier } from '../types';
 import { 
   Sparkles, Printer, Save, Trash2, Calculator, 
   MapPin, MousePointer2, Search, RotateCcw,
-  CheckCircle2, Layers, PenTool, Satellite, FileText, Truck
+  CheckCircle2, Layers, PenTool, Satellite, FileText, Truck, AlertTriangle
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import MaterialOrderModal from './MaterialOrderModal';
@@ -27,7 +27,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   const [viewMode, setViewMode] = useState<'proposal' | 'materials'>('proposal');
   
   // --- ESTIMATE DATA ---
-  const [measuredSqFt, setMeasuredSqFt] = useState<number>(0); // Flat area from map
+  const [measuredSqFt, setMeasuredSqFt] = useState<number>(0);
   const [pitch, setPitch] = useState<number>(6); // 6/12 default
   const [wasteFactor, setWasteFactor] = useState<number>(10); // 10% default
   const [selectedTier, setSelectedTier] = useState<EstimateTier>('Better');
@@ -44,6 +44,8 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   const [drawingManager, setDrawingManager] = useState<any>(null);
   const [polygons, setPolygons] = useState<any[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
+  
+  // Robust API Key Loading
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
   // Signature
@@ -55,101 +57,120 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   // --- 1. INITIALIZE MAPS ---
   useEffect(() => {
     if (!apiKey) {
-        addToast("Missing Google Maps API Key in .env file", "error");
-        return;
+        return; // Wait for user to add key
     }
 
-    // Function to load the map
-    const loadMap = () => {
-        if (!mapRef.current || !window.google) return;
-
-        const map = new window.google.maps.Map(mapRef.current, {
-            center: { lat: 39.8283, lng: -98.5795 }, // USA Center
-            zoom: 4,
-            mapTypeId: 'satellite',
-            tilt: 0, // Force top-down view (critical for measuring)
-            fullscreenControl: false,
-            streetViewControl: false,
-            mapTypeControl: false,
-        });
-
-        setMapInstance(map);
-
-        // Setup Drawing Manager
-        const manager = new window.google.maps.drawing.DrawingManager({
-            drawingMode: null, // Start in "Pan" mode
-            drawingControl: false,
-            polygonOptions: {
-                fillColor: '#4f46e5',
-                fillOpacity: 0.3,
-                strokeWeight: 2,
-                strokeColor: '#4f46e5',
-                clickable: true,
-                editable: true,
-                zIndex: 1,
-            },
-        });
-
-        manager.setMap(map);
-        setDrawingManager(manager);
-
-        // Event: Polygon Completed
-        window.google.maps.event.addListener(manager, 'overlaycomplete', (event: any) => {
-            if (event.type === 'polygon') {
-                const newPoly = event.overlay;
-                
-                // Add listener to recalculate area if shape is edited
-                newPoly.getPath().addListener('set_at', () => calculateTotalArea([...polygons, newPoly]));
-                newPoly.getPath().addListener('insert_at', () => calculateTotalArea([...polygons, newPoly]));
-                
-                // Update State
-                const newPolygons = [...polygons, newPoly];
-                setPolygons(newPolygons);
-                calculateTotalArea(newPolygons);
-                
-                // Reset to Pan mode
-                manager.setDrawingMode(null);
-                setIsDrawing(false);
-            }
-        });
-
-        // Setup Search Box
-        if (searchInputRef.current) {
-            const searchBox = new window.google.maps.places.SearchBox(searchInputRef.current);
-            map.addListener("bounds_changed", () => searchBox.setBounds(map.getBounds()));
-            
-            searchBox.addListener("places_changed", () => {
-                const places = searchBox.getPlaces();
-                if (!places || places.length === 0) return;
-                
-                const bounds = new window.google.maps.LatLngBounds();
-                places.forEach((place: any) => {
-                    if (!place.geometry || !place.geometry.location) return;
-                    if (place.geometry.viewport) bounds.union(place.geometry.viewport);
-                    else bounds.extend(place.geometry.location);
-                });
-                map.fitBounds(bounds);
-                map.setZoom(20); // Zoom in close for roof work
-            });
+    const loadMapScript = () => {
+        if (window.google && window.google.maps) {
+            initMap();
+            return;
         }
-    };
 
-    // Load Script if not present
-    if (!window.google) {
+        const scriptId = 'google-maps-script';
+        if (document.getElementById(scriptId)) return;
+
         const script = document.createElement('script');
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=drawing,geometry,places`;
+        script.id = scriptId;
+        // Use v=weekly to avoid deprecation warnings
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&v=weekly&libraries=drawing,geometry,places`;
         script.async = true;
         script.defer = true;
-        script.onload = loadMap;
+        script.onload = () => initMap();
         document.head.appendChild(script);
-    } else {
-        loadMap();
-    }
+    };
+
+    loadMapScript();
+
+    return () => {
+        // Cleanup polygons
+        polygons.forEach(p => p.setMap(null));
+    };
   }, [apiKey]);
 
-  // Use a ref to access latest polygons inside event listeners if needed
-  // But passing array to helper is safer.
-  const calculateTotalArea = (currentPolys: any[]) => {
+  const initMap = () => {
+    if (!mapRef.current || !window.google) return;
+
+    const map = new window.google.maps.Map(mapRef.current, {
+        center: { lat: 39.8283, lng: -98.5795 }, // USA Center
+        zoom: 4,
+        mapTypeId: 'satellite',
+        tilt: 0, // Force top-down view (critical for measuring)
+        fullscreenControl: false,
+        streetViewControl: false,
+        mapTypeControl: false,
+        rotateControl: false,
+    });
+
+    setMapInstance(map);
+
+    // Setup Drawing Manager
+    const manager = new window.google.maps.drawing.DrawingManager({
+        drawingMode: null, // Start in "Pan" mode
+        drawingControl: false,
+        polygonOptions: {
+            fillColor: '#4f46e5',
+            fillOpacity: 0.35,
+            strokeWeight: 2,
+            strokeColor: '#4f46e5',
+            clickable: true,
+            editable: true,
+            zIndex: 1,
+        },
+    });
+
+    manager.setMap(map);
+    setDrawingManager(manager);
+
+    // Event: Polygon Completed
+    window.google.maps.event.addListener(manager, 'overlaycomplete', (event: any) => {
+        if (event.type === 'polygon') {
+            const newPoly = event.overlay;
+            
+            // Add listener to recalculate area if shape is edited
+            const path = newPoly.getPath();
+            window.google.maps.event.addListener(path, 'set_at', () => updateAreaFromPolygons([...polygons, newPoly]));
+            window.google.maps.event.addListener(path, 'insert_at', () => updateAreaFromPolygons([...polygons, newPoly]));
+            window.google.maps.event.addListener(path, 'remove_at', () => updateAreaFromPolygons([...polygons, newPoly]));
+            
+            // Update State
+            const newPolygons = [...polygons, newPoly];
+            setPolygons(newPolygons);
+            updateAreaFromPolygons(newPolygons);
+            
+            // Reset to Pan mode to avoid accidental clicks
+            manager.setDrawingMode(null);
+            setIsDrawing(false);
+        }
+    });
+
+    // Setup Autocomplete (Replaces deprecated SearchBox)
+    if (searchInputRef.current) {
+        const autocomplete = new window.google.maps.places.Autocomplete(searchInputRef.current, {
+            types: ['address'], // Restrict to addresses only
+            fields: ['geometry', 'name']
+        });
+        
+        autocomplete.bindTo('bounds', map);
+
+        autocomplete.addListener('place_changed', () => {
+            const place = autocomplete.getPlace();
+            if (!place.geometry || !place.geometry.location) {
+                addToast("No details available for input: '" + place.name + "'", "error");
+                return;
+            }
+
+            if (place.geometry.viewport) {
+                map.fitBounds(place.geometry.viewport);
+            } else {
+                map.setCenter(place.geometry.location);
+                map.setZoom(20); // Zoom in close for roof work
+            }
+        });
+    }
+  };
+
+  // Helper to calculate area from array of polygons
+  const updateAreaFromPolygons = (currentPolys: any[]) => {
       if (!window.google) return;
       let totalAreaMeters = 0;
       
@@ -313,10 +334,23 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
 
       <div className="flex-1 overflow-auto bg-slate-50 p-4 md:p-6 flex flex-col lg:flex-row gap-6">
           
-          {/* LEFT PANEL */}
+          {/* LEFT: TOOLS */}
           <div className="w-full lg:w-1/3 flex flex-col gap-6 shrink-0 h-full">
               {activeTab === 'map' ? (
                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col h-full">
+                      {/* API ERROR BANNER */}
+                      {!apiKey && (
+                          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 animate-pulse">
+                              <AlertTriangle className="text-red-600 shrink-0" size={20} />
+                              <div>
+                                  <h4 className="font-bold text-red-900 text-sm">Google Maps API Key Missing</h4>
+                                  <p className="text-xs text-red-700 mt-1">
+                                      Add <code>VITE_GOOGLE_MAPS_API_KEY</code> to your .env file and <strong>restart the server</strong>.
+                                  </p>
+                              </div>
+                          </div>
+                      )}
+
                       <div className="relative mb-3">
                           <Search className="absolute left-3 top-2.5 text-slate-400" size={16}/>
                           <input ref={searchInputRef} placeholder="Search Address..." className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500"/>
@@ -331,7 +365,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                           >
                               <PenTool size={16}/> {isDrawing ? 'Finish Drawing' : 'Draw Roof'}
                           </button>
-                          <button onClick={clearMap} className="px-3 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
+                          <button onClick={clearMap} className="px-3 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors" title="Clear All">
                               <RotateCcw size={16}/>
                           </button>
                       </div>
@@ -425,7 +459,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
               )}
           </div>
 
-          {/* RIGHT PANEL: PREVIEW */}
+          {/* RIGHT: PREVIEW */}
           <div className="w-full lg:w-2/3 bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden min-h-[600px]">
               <div className="bg-slate-50 border-b border-slate-200 p-2 flex justify-center">
                   <div className="flex bg-white rounded-lg border border-slate-200 p-1">
@@ -500,6 +534,15 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
               </div>
           </div>
       </div>
+      
+      {/* Material Order Modal */}
+      {showOrderModal && selectedLeadId && (
+          <MaterialOrderModal 
+              items={materialList} 
+              lead={leads.find(l => l.id === selectedLeadId)!} 
+              onClose={() => setShowOrderModal(false)}
+          />
+      )}
     </div>
   );
 };
