@@ -68,12 +68,11 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         />
       )}
 
-      {/* Security Check: Only Render Team for Super Admin */}
-      {view === Tab.ADMIN_TEAM && currentUser.role === UserRole.SUPER_ADMIN && (
-        <SuperAdminTeam 
-          users={users} 
-          onAddUser={onAddUser} 
-          onRemoveUser={onRemoveUser} 
+      {view === Tab.ADMIN_TEAM && (
+        <SuperAdminTeam
+          users={users}
+          onAddUser={onAddUser}
+          onRemoveUser={onRemoveUser}
         />
       )}
 
