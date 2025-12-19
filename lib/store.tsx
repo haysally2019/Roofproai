@@ -33,6 +33,7 @@ interface StoreContextType {
   addLead: (lead: Lead) => void;
   createCompany: (company: Partial<Company>) => Promise<string | null>;
   updateCompany: (company: Partial<Company>) => void;
+  deleteCompany: (companyId: string) => Promise<void>;
   updateUser: (user: Partial<User>) => Promise<void>;
   addAutomation: (rule: AutomationRule) => void;
   toggleAutomation: (id: string) => void;
@@ -144,7 +145,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 })));
             }
 
-            // Init Mock SaaS Leads
+            // Init Mock SaaS Leads (Replace with Supabase fetch when table exists)
             if (softwareLeads.length === 0) {
                 setSoftwareLeads([
                   { id: 'sl-1', companyName: 'Apex Roofing', contactName: 'John Smith', email: 'john@apex.com', phone: '555-0101', status: 'Demo Booked', potentialUsers: 5, assignedTo: user.id, notes: 'Interested in AI', createdAt: new Date().toISOString() },
@@ -462,20 +463,47 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!c.id) return;
     const { error } = await supabase.from('companies').update({
         name: c.name, address: c.address, phone: c.phone, logo_url: c.logoUrl,
-        setup_complete: c.setupComplete, agent_config: c.agentConfig, integrations: c.integrations
+        setup_complete: c.setupComplete, agent_config: c.agentConfig, integrations: c.integrations,
+        status: c.status, tier: c.tier // UPDATED: Included status and tier update logic
     }).eq('id', c.id);
-    if (!error) setCompanies(prev => prev.map(x => x.id === c.id ? {...x, ...c} : x));
+    
+    if (error) {
+        addToast(`Failed to update company: ${error.message}`, 'error');
+        return;
+    }
+    setCompanies(prev => prev.map(x => x.id === c.id ? {...x, ...c} : x));
+  };
+
+  // --- DELETE COMPANY ---
+  const deleteCompany = async (companyId: string) => {
+      if (currentUser?.role !== UserRole.SUPER_ADMIN) {
+          addToast("Permission denied", "error");
+          return;
+      }
+      
+      // Delete from Supabase
+      const { error } = await supabase.from('companies').delete().eq('id', companyId);
+      
+      if (error) {
+          addToast(`Failed to delete company: ${error.message}`, 'error');
+          return;
+      }
+
+      // Update Local State
+      setCompanies(prev => prev.filter(c => c.id !== companyId));
+      setUsers(prev => prev.filter(u => u.companyId !== companyId)); // Remove users of deleted company from view
+      addToast('Company and all associated data deleted', 'success');
   };
 
   const updateUser = async (u: Partial<User>) => {
     const targetId = u.id || currentUser?.id;
     if (!targetId) return;
 
-    // Allow updating public profile fields
+    // Allow Super Admin to update other users
     const { error } = await supabase.from('users').update({ 
         name: u.name, 
         role: u.role, 
-        email: u.email // Note: This only updates public profile, not Auth email
+        email: u.email 
     }).eq('id', targetId);
 
     if (error) {
@@ -750,7 +778,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       suppliers: suppliers || [],
       orders: orders || [],
       login, register, logout, setTab, addToast, removeToast,
-      updateLead, addLead, createCompany, updateCompany, updateUser,
+      updateLead, addLead, createCompany, updateCompany, deleteCompany, updateUser,
       addAutomation, toggleAutomation, deleteAutomation, addOrder,
       addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
       addUser, removeUser,
