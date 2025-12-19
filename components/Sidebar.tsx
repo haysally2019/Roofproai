@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   LayoutDashboard, Users, Umbrella, FileText, Briefcase, CheckSquare, 
@@ -84,7 +83,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-1">Admin</div>
               <NavItem tab={Tab.ADMIN_OVERVIEW} icon={Globe} label="Overview" />
               <NavItem tab={Tab.ADMIN_LEADS} icon={Users} label="SaaS Leads" />
-              <NavItem tab={Tab.ADMIN_TEAM} icon={UserCheck} label="Sales Team" />
+              
+              {/* RESTRICTED: Only Super Admin can see Sales Team (Users Tab) */}
+              {currentUser.role === UserRole.SUPER_ADMIN && (
+                <NavItem tab={Tab.ADMIN_TEAM} icon={UserCheck} label="Sales Team" />
+              )}
+              
               <NavItem tab={Tab.ADMIN_TENANTS} icon={Building2} label="Tenants" />
               <NavItem tab={Tab.ADMIN_AGENTS} icon={Headset} label="AI Configuration" />
               <div className="mt-4 px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">System</div>
