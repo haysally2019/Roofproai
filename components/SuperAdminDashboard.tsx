@@ -1,5 +1,5 @@
-import React from 'react';
-import { Company, User, SoftwareLead, Tab } from '../types';
+import React, { useState } from 'react';
+import { Company, User, SoftwareLead, Tab, UserRole } from '../types';
 import { useStore } from '../lib/store';
 import SuperAdminOverview from './super-admin/SuperAdminOverview';
 import SuperAdminTenants from './super-admin/SuperAdminTenants';
@@ -12,7 +12,7 @@ interface SuperAdminDashboardProps {
   companies: Company[];
   onAddCompany: (company: Partial<Company>) => Promise<string | null>;
   users: User[];
-  onAddUser: (user: Partial<User>) => void;
+  onAddUser: (user: Partial<User>) => Promise<string | null>;
   onRemoveUser: (userId: string) => void;
   currentUser: User;
   softwareLeads: SoftwareLead[];
@@ -24,7 +24,21 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   view, companies, onAddCompany, users, onAddUser, onRemoveUser,
   currentUser, softwareLeads, onAddSoftwareLead, onUpdateSoftwareLead
 }) => {
-  const { updateCompany, addToast, deleteSoftwareLead } = useStore();
+  const { updateCompany, addToast, deleteSoftwareLead, setTab } = useStore();
+  
+  // State to handle converting a lead into a tenant (pre-filling the form)
+  const [onboardingInitialData, setOnboardingInitialData] = useState<Partial<Company> | null>(null);
+
+  const handleConvertLead = (lead: SoftwareLead) => {
+      setOnboardingInitialData({
+          name: lead.companyName,
+          // We can try to parse address/phone if we had them structured, 
+          // for now we pass name and use the contact as admin potentially later
+          phone: lead.phone
+      });
+      setTab(Tab.ADMIN_TENANTS);
+      addToast(`Converting ${lead.companyName} to Tenant...`, 'info');
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -40,17 +54,22 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           onAddLead={onAddSoftwareLead}
           onUpdateLead={onUpdateSoftwareLead}
           onDeleteLead={deleteSoftwareLead}
+          onConvertLead={handleConvertLead} // Pass conversion handler
         />
       )}
 
       {view === Tab.ADMIN_TENANTS && (
         <SuperAdminTenants 
            companies={companies} 
+           users={users}
            onAddCompany={onAddCompany}
+           initialData={onboardingInitialData} // Pass pre-filled data
+           onClearInitialData={() => setOnboardingInitialData(null)}
         />
       )}
 
-      {view === Tab.ADMIN_TEAM && (
+      {/* Security Check: Only Render Team for Super Admin */}
+      {view === Tab.ADMIN_TEAM && currentUser.role === UserRole.SUPER_ADMIN && (
         <SuperAdminTeam 
           users={users} 
           onAddUser={onAddUser} 
