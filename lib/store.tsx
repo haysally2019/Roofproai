@@ -629,22 +629,30 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!error) setOrders(prev => [...prev, o]);
   };
 
+  // --- UPDATED ADD USER LOGIC ---
   const addUser = async (u: Partial<User>) => {
-    if (!currentUser?.companyId) return;
+    const targetCompanyId = u.companyId || currentUser?.companyId;
+
+    // Allow Super Admin to create SaaS Reps (who have no companyId)
+    if (!targetCompanyId && currentUser?.role !== UserRole.SUPER_ADMIN) {
+        addToast("Cannot create user without an organization.", "error"); 
+        return; 
+    }
+
     const tempPassword = Math.random().toString(36).slice(-8);
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: u.email!,
       password: tempPassword,
       email_confirm: true
     });
-    if (authError) { addToast('Failed to create user', 'error'); return; }
+    if (authError) { addToast('Failed to create user auth', 'error'); return; }
 
     const { error: userError } = await supabase.from('users').insert({
       id: authData.user.id,
       name: u.name,
       email: u.email,
       role: u.role,
-      company_id: currentUser.companyId,
+      company_id: targetCompanyId || null, // Allow null for SaaS Reps
       avatar_initials: u.name?.slice(0, 2).toUpperCase()
     });
     if (userError) { addToast('Failed to create user profile', 'error'); return; }
@@ -654,10 +662,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       name: u.name!,
       email: u.email!,
       role: u.role!,
-      companyId: currentUser.companyId,
+      companyId: targetCompanyId || null,
       avatarInitials: u.name?.slice(0, 2).toUpperCase() || 'NA'
     };
-    setUsers(prev => [...prev, newUser]);
+    
+    setUsers(prev => [newUser, ...prev]);
+    addToast('User created successfully', 'success');
   };
 
   const removeUser = async (uid: string) => {
