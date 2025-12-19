@@ -753,7 +753,7 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
                                     <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                                         <tr>
                                             <th className="px-4 py-3 w-1/2">CSV Header ({importSource})</th>
-                                            <th className="px-4 py-3 w-1/2">ALTUS AI Field</th>
+                                            <th className="px-4 py-3 w-1/2">RAFTER AI Field</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">

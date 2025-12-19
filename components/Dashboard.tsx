@@ -145,7 +145,7 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser }) => {
           </div>
           <div className="flex-1 w-full">
             <h2 className="text-lg font-bold text-white mb-2 flex flex-wrap items-center gap-2">
-               ALTUS Intelligence
+               RAFTER Intelligence
                <span className="text-[10px] bg-indigo-500 px-2 py-0.5 rounded text-white/90 whitespace-nowrap">GEMINI 2.5</span>
             </h2>
             <p className="text-indigo-100 text-sm leading-relaxed max-w-3xl opacity-90">

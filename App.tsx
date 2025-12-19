@@ -113,7 +113,7 @@ const AppLayout: React.FC = () => {
                             <Zap className="text-white fill-white" size={28} strokeWidth={2.5} />
                         </div>
                      </div>
-                     <h1 className="text-3xl font-bold text-white tracking-tight">ALTUS AI</h1>
+                     <h1 className="text-3xl font-bold text-white tracking-tight">RAFTER AI</h1>
                      <p className="text-slate-400 mt-2 font-medium">Enterprise Roofing CRM & AI Assistant</p>
                  </div>
 
@@ -145,7 +145,7 @@ const AppLayout: React.FC = () => {
                  </div>
                  
                  <div className="mt-8 text-center text-slate-500 text-xs">
-                     &copy; 2025 Altus AI Inc. • Privacy • Terms
+                     &copy; 2025 Rafter AI Inc. • Privacy • Terms
                  </div>
              </div>
          </div>
@@ -170,7 +170,7 @@ const AppLayout: React.FC = () => {
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 z-10"></div>
         <div className="md:hidden sticky top-0 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-20 shadow-sm">
             <button onClick={() => setIsSidebarOpen(true)} className="text-slate-600 p-2 -ml-2"><Menu size={24} /></button>
-            <span className="font-bold text-slate-800 flex items-center gap-2"><Zap className="text-blue-600 fill-blue-600" size={20} /> Altus AI</span>
+            <span className="font-bold text-slate-800 flex items-center gap-2"><Zap className="text-blue-600 fill-blue-600" size={20} /> Rafter AI</span>
             <button onClick={() => setShowNotifications(!showNotifications)} className="text-slate-600 relative p-2 -mr-2">
                 <Bell size={24} /> {notifications.some(n => !n.read) && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>}
             </button>

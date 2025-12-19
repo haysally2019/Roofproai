@@ -123,7 +123,7 @@ export interface ChatMessage {
 
 export enum UserRole {
   SUPER_ADMIN = 'Super Admin',
-  SAAS_REP = 'Software Sales Rep', // NEW: Sells ALTUS AI to companies
+  SAAS_REP = 'Software Sales Rep', // NEW: Sells RAFTER AI to companies
   COMPANY_ADMIN = 'Company Owner',
   SALES_REP = 'Sales Rep'
 }

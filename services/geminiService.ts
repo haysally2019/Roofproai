@@ -15,7 +15,7 @@ export const getChatResponse = async (history: {role: string, parts: {text: stri
       model: model,
       history: history,
       config: {
-        systemInstruction: "You are ALTUS AI, an AI assistant for a roofing insurance restoration CRM. You help users with claims, Xactimate questions, supplements, and roofing materials. Keep responses short and professional.",
+        systemInstruction: "You are RAFTER AI, an AI assistant for a roofing insurance restoration CRM. You help users with claims, Xactimate questions, supplements, and roofing materials. Keep responses short and professional.",
       }
     });
 
@@ -102,7 +102,7 @@ export const draftClientEmail = async (clientName: string, topic: string, tone: 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-lite', 
-      contents: `Draft a short, ${tone} email to client ${clientName} about: ${topic}. Focus on the insurance claim process. Sign it as 'The ALTUS AI Team'.`,
+      contents: `Draft a short, ${tone} email to client ${clientName} about: ${topic}. Focus on the insurance claim process. Sign it as 'The RAFTER AI Team'.`,
     });
     return response.text || "";
   } catch (error) {

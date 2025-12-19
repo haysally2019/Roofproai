@@ -66,7 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
                <Zap className="text-white fill-white" size={22} strokeWidth={2.5} />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-base text-white tracking-tight leading-tight">Altus AI</span>
+              <span className="font-bold text-base text-white tracking-tight leading-tight">Rafter AI</span>
               <span className="text-[10px] text-indigo-400 font-semibold tracking-wide leading-tight uppercase">Roofing Software</span>
             </div>
           </div>
