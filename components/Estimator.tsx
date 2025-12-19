@@ -8,7 +8,7 @@ import {
 import { useStore } from '../lib/store';
 import MaterialOrderModal from './MaterialOrderModal';
 
-// Declare Google Maps types for TypeScript
+// Declare Google Maps types for TypeScript to avoid build errors
 declare global {
   interface Window {
     google: any;
@@ -56,16 +56,16 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
 
   // --- 1. INITIALIZE MAPS ---
   useEffect(() => {
-    if (!apiKey) {
-        return; // Wait for user to add key
-    }
+    if (!apiKey) return;
 
     const loadMapScript = () => {
+        // If maps is already loaded, just init
         if (window.google && window.google.maps) {
             initMap();
             return;
         }
 
+        // Prevent duplicate script tags
         const scriptId = 'google-maps-script';
         if (document.getElementById(scriptId)) return;
 
@@ -81,8 +81,8 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
 
     loadMapScript();
 
+    // Cleanup function
     return () => {
-        // Cleanup polygons
         polygons.forEach(p => p.setMap(null));
     };
   }, [apiKey]);
@@ -90,6 +90,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   const initMap = () => {
     if (!mapRef.current || !window.google) return;
 
+    // 1. Create Map
     const map = new window.google.maps.Map(mapRef.current, {
         center: { lat: 39.8283, lng: -98.5795 }, // USA Center
         zoom: 4,
@@ -103,10 +104,10 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
 
     setMapInstance(map);
 
-    // Setup Drawing Manager
+    // 2. Setup Drawing Manager (The "QuickMeasure" Tool)
     const manager = new window.google.maps.drawing.DrawingManager({
         drawingMode: null, // Start in "Pan" mode
-        drawingControl: false,
+        drawingControl: false, // We use our own buttons
         polygonOptions: {
             fillColor: '#4f46e5',
             fillOpacity: 0.35,
@@ -121,12 +122,12 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
     manager.setMap(map);
     setDrawingManager(manager);
 
-    // Event: Polygon Completed
+    // 3. Handle Polygon Completion
     window.google.maps.event.addListener(manager, 'overlaycomplete', (event: any) => {
         if (event.type === 'polygon') {
             const newPoly = event.overlay;
             
-            // Add listener to recalculate area if shape is edited
+            // Add listeners to recalculate area if user drags points
             const path = newPoly.getPath();
             window.google.maps.event.addListener(path, 'set_at', () => updateAreaFromPolygons([...polygons, newPoly]));
             window.google.maps.event.addListener(path, 'insert_at', () => updateAreaFromPolygons([...polygons, newPoly]));
@@ -143,7 +144,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
         }
     });
 
-    // Setup Autocomplete (Replaces deprecated SearchBox)
+    // 4. Setup Autocomplete
     if (searchInputRef.current) {
         const autocomplete = new window.google.maps.places.Autocomplete(searchInputRef.current, {
             types: ['address'], // Restrict to addresses only
@@ -169,7 +170,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
     }
   };
 
-  // Helper to calculate area from array of polygons
+  // Helper: Calculate Total Area
   const updateAreaFromPolygons = (currentPolys: any[]) => {
       if (!window.google) return;
       let totalAreaMeters = 0;
@@ -298,6 +299,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   const drawSign = (e: any) => {
       if(isSigning) { const ctx = signCanvasRef.current?.getContext('2d'); if(ctx) { const r = signCanvasRef.current!.getBoundingClientRect(); ctx.lineTo((e.touches?e.touches[0].clientX:e.clientX)-r.left, (e.touches?e.touches[0].clientY:e.clientY)-r.top); ctx.stroke(); } }
   };
+  const endSign = () => setIsSigning(false);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -345,7 +347,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                               <div>
                                   <h4 className="font-bold text-red-900 text-sm">Google Maps API Key Missing</h4>
                                   <p className="text-xs text-red-700 mt-1">
-                                      Add <code>VITE_GOOGLE_MAPS_API_KEY</code> to your .env file and <strong>restart the server</strong>.
+                                      Please check your <code>.env</code> file has <code>VITE_GOOGLE_MAPS_API_KEY</code> and restart the server.
                                   </p>
                               </div>
                           </div>
