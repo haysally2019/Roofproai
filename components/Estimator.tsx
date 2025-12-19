@@ -110,7 +110,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
 
     setMapInstance(map);
 
-    // Track Center for API Lookup
+    // Track Center for Manual API Lookup
     map.addListener('idle', () => {
         const center = map.getCenter();
         if(center) setMapCenter({ lat: center.lat(), lng: center.lng() });
@@ -171,12 +171,21 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                 return;
             }
 
+            // Move map to location
             if (place.geometry.viewport) {
                 map.fitBounds(place.geometry.viewport);
             } else {
                 map.setCenter(place.geometry.location);
                 map.setZoom(20);
             }
+
+            // AUTO-MEASURE TRIGGER
+            // We pass the coordinates directly to the solar function
+            const lat = place.geometry.location.lat();
+            const lng = place.geometry.location.lng();
+            
+            // Trigger Solar API analysis automatically
+            fetchRoofData(lat, lng);
         });
     }
   };
@@ -191,21 +200,29 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
       setMeasuredSqFt(totalSqFt);
   };
 
-  // --- ROOF DATA LOOKUP ---
-  const fetchRoofData = async () => {
-      if (!mapCenter || !apiKey) {
-          addToast("Please center the map on a roof first.", "error");
+  // --- AUTO-MEASURE (ROOF DATA LOOKUP) ---
+  const fetchRoofData = async (lat?: number, lng?: number) => {
+      // Use provided coords or fallback to center
+      const targetLat = lat || mapCenter?.lat;
+      const targetLng = lng || mapCenter?.lng;
+
+      if (!targetLat || !targetLng || !apiKey) {
+          if (!lat) addToast("Please center the map on a roof first.", "error");
           return;
       }
 
       setAnalyzing(true);
+      
       try {
+          // Add a small delay to allow map to settle if triggered by search
+          await new Promise(resolve => setTimeout(resolve, 500));
+
           const response = await fetch(
-              `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${mapCenter.lat}&location.longitude=${mapCenter.lng}&requiredQuality=HIGH&key=${apiKey}`
+              `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${targetLat}&location.longitude=${targetLng}&requiredQuality=HIGH&key=${apiKey}`
           );
 
           if (!response.ok) {
-              if (response.status === 404) throw new Error("Roof not detected at center. Try moving map slightly.");
+              if (response.status === 404) throw new Error("Roof not detected at location. You may need to draw manually.");
               throw new Error("Could not fetch roof data.");
           }
 
@@ -233,18 +250,19 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
               setPitch(Math.max(0, Math.min(18, pitchRise))); 
               setMeasurementType('surface'); // Mark as Surface Area
               
-              // Clear manual drawings
+              // Clear manual drawings since we have auto data
               polygons.forEach(p => p.setMap(null));
               setPolygons([]);
               
-              addToast(`Roof Analyzed: ${areaSqFt.toLocaleString()} sqft at ${pitchRise}/12 pitch`, "success");
+              addToast(`Auto-Measured: ${areaSqFt.toLocaleString()} sqft at ${pitchRise}/12 pitch`, "success");
           } else {
               throw new Error("No roof data found.");
           }
 
       } catch (error: any) {
           console.error("Analysis Error:", error);
-          addToast(error.message, "error");
+          // Only show error toast if it was a manual click, otherwise silent fail for search auto-trigger
+          if (!lat) addToast(error.message, "error");
       } finally {
           setAnalyzing(false);
       }
@@ -421,7 +439,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                       
                       <div className="relative flex-1 bg-slate-100 rounded-lg border border-slate-200 min-h-[400px] mb-3 overflow-hidden">
                           <div ref={mapRef} className="absolute inset-0 w-full h-full"></div>
-                          {/* Crosshair Overlay for Targeting Center */}
+                          {/* Crosshair Overlay */}
                           <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10 opacity-60">
                               <Crosshair size={32} className="text-white drop-shadow-md" strokeWidth={1.5} />
                           </div>
@@ -430,12 +448,12 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                       <div className="flex flex-col gap-2 mb-4">
                           {/* AUTO MEASURE BUTTON */}
                           <button 
-                              onClick={fetchRoofData}
+                              onClick={() => fetchRoofData()}
                               disabled={analyzing || !mapCenter}
                               className="w-full py-3 bg-gradient-to-r from-indigo-500 to-blue-600 text-white rounded-lg font-bold text-sm flex justify-center items-center gap-2 hover:from-indigo-600 hover:to-blue-700 disabled:opacity-50 shadow-md transition-all"
                           >
                               {analyzing ? <span className="animate-spin">🔄</span> : <Scan size={18}/>}
-                              {analyzing ? 'Analyzing Roof...' : 'Auto-Measure Roof'}
+                              {analyzing ? 'Scanning Roof...' : 'Auto-Measure Roof'}
                           </button>
 
                           {/* Drawing Tools */}
