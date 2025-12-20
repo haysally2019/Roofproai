@@ -5,9 +5,8 @@ import { ArrowRight, Building2, User, Mail, Lock, Sparkles, Loader2, ShieldCheck
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 
-// IMPORTANT: Replace with your actual Stripe Public Key
-const STRIPE_PUBLIC_KEY = 'pk_test_...'; 
-const stripePromise = loadStripe(STRIPE_PUBLIC_KEY);
+const STRIPE_PUBLIC_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
+const stripePromise = STRIPE_PUBLIC_KEY ? loadStripe(STRIPE_PUBLIC_KEY) : null;
 
 // Use the price ID from your stripe-config.ts (Starter Plan)
 const STARTER_PRICE_ID = 'price_1SgX3WPi0ycIAEpYb38zmYPK'; 
@@ -182,10 +181,16 @@ export default function TrialFunnel() {
                           <span className="text-xl font-bold text-slate-900">$0.00</span>
                       </div>
                   </div>
-                  
-                  <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
-                      <CheckoutForm onSuccess={() => navigate('/dashboard')} />
-                  </Elements>
+
+                  {stripePromise ? (
+                      <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
+                          <CheckoutForm onSuccess={() => navigate('/dashboard')} />
+                      </Elements>
+                  ) : (
+                      <div className="text-center p-8 bg-red-50 rounded-lg border border-red-200">
+                          <p className="text-red-600 font-medium">Stripe is not configured. Please contact support.</p>
+                      </div>
+                  )}
               </div>
           )}
       </div>

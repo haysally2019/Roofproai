@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, Bell, X, CheckCircle, AlertTriangle, Info, Zap, Loader2 } from 'lucide-react';
+import { BrowserRouter as Router } from 'react-router-dom';
 
 // Context
 import { StoreProvider, useStore } from './lib/store';
@@ -19,8 +20,8 @@ import PriceBook from './components/PriceBook';
 import Settings from './components/Settings';
 import AIReceptionist from './components/AIReceptionist';
 import Automations from './components/Automations';
-import Onboarding from './components/Onboarding'; 
-import TrialFunnel from './components/TrialFunnel'; // <--- Ensure this is imported
+import Onboarding from './components/Onboarding';
+import TrialFunnel from './components/TrialFunnel';
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -80,11 +81,10 @@ const AppLayout: React.FC = () => {
   // --- VIEW: ONBOARDING FUNNEL (UPDATED) ---
   if (!currentUser && isOnboardingRoute) {
       return (
-         <>
+         <Router>
              <ToastContainer />
-             {/* Use the new TrialFunnel without props */}
-             <TrialFunnel /> 
-         </>
+             <TrialFunnel />
+         </Router>
       )
   }
 
