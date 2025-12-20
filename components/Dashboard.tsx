@@ -1,13 +1,33 @@
-
 import React, { useEffect, useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { DollarSign, Users, TrendingUp, Sparkles, RefreshCw, Umbrella, CheckSquare, ArrowUpRight, Activity, CloudRain, Trophy, Map } from 'lucide-react';
+import { 
+    DollarSign, Users, Sparkles, RefreshCw, Umbrella, CheckSquare, 
+    ArrowUpRight, CloudRain, Map, Wind, ThermometerSun, AlertTriangle, Droplets
+} from 'lucide-react';
 import { generateBusinessInsights } from '../services/geminiService';
-import { User, LeadStatus, WeatherAlert } from '../types';
+import { User, LeadStatus } from '../types';
 import AICommandCenter from './AICommandCenter';
 import { useStore } from '../lib/store';
 
 const COLORS = ['#4f46e5', '#818cf8', '#a5b4fc', '#c7d2fe', '#6366f1'];
+
+// --- Weather Types ---
+interface WeatherData {
+    current: {
+        temp: number;
+        windSpeed: number;
+        conditionCode: number;
+    };
+    daily: {
+        date: string;
+        maxTemp: number;
+        minTemp: number;
+        rainChance: number;
+        maxWind: number;
+    }[];
+    loading: boolean;
+    error: string | null;
+}
 
 const StatCard = ({ title, value, sub, icon: Icon, colorClass }: any) => (
   <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
@@ -35,10 +55,18 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser }) => {
   const { leads, tasks, invoices } = useStore();
   const [insight, setInsight] = useState<string>("Analyzing your restoration pipeline...");
   const [loadingInsight, setLoadingInsight] = useState(true);
+  
+  // Weather State
+  const [weather, setWeather] = useState<WeatherData>({
+      current: { temp: 0, windSpeed: 0, conditionCode: 0 },
+      daily: [],
+      loading: true,
+      error: null
+  });
 
   // --- Real-Time Analytics ---
   const stats = useMemo(() => {
-    const insuranceLeads = leads.filter(l => l.projectType === 'Insurance');
+    const insuranceLeads = leads.filter(l => l.projectType === 'Insurance' || l.source === 'Storm');
     const retailLeads = leads.filter(l => l.projectType === 'Retail');
     
     const insuranceVol = insuranceLeads.reduce((acc, curr) => acc + (curr.estimatedValue || 0), 0);
@@ -72,7 +100,6 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser }) => {
             const now = new Date();
             const diffMonths = (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
             if(diffMonths >= 0 && diffMonths < 6) {
-                // index 0 is 5 months ago, index 5 is current month
                 revenueByMonth[5 - diffMonths] += inv.total;
             }
         }
@@ -83,15 +110,60 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser }) => {
         revenue: revenueByMonth[idx]
     }));
 
-
     return { insuranceVol, retailVol, activeClaims, pendingTasks, sourceChartData, revenueChartData, totalLeads: leads.length };
   }, [leads, tasks, invoices]);
 
-  // Mock Weather Data
-  const weatherAlerts: WeatherAlert[] = [
-    { id: '1', type: 'Hail', severity: 'High', location: 'North Springfield (1.5")', date: 'Today' },
-    { id: '2', type: 'Wind', severity: 'Medium', location: 'West End (60mph)', date: 'Yesterday' }
-  ];
+  // --- Fetch Weather ---
+  useEffect(() => {
+      const getCoords = async () => {
+          if (!navigator.geolocation) {
+              setWeather(prev => ({...prev, loading: false, error: "Geolocation not supported"}));
+              return;
+          }
+          navigator.geolocation.getCurrentPosition(async (position) => {
+              try {
+                  const lat = position.coords.latitude;
+                  const lon = position.coords.longitude;
+                  
+                  // Using Open-Meteo for Roofing Data (Wind Gusts & Rain)
+                  const res = await fetch(
+                      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`
+                  );
+                  
+                  if(!res.ok) throw new Error("Failed to fetch weather");
+                  
+                  const data = await res.json();
+                  
+                  const dailyData = data.daily.time.slice(0, 3).map((time: string, index: number) => ({
+                      date: new Date(time).toLocaleDateString('en-US', { weekday: 'short' }),
+                      maxTemp: Math.round(data.daily.temperature_2m_max[index]),
+                      minTemp: Math.round(data.daily.temperature_2m_min[index]),
+                      rainChance: data.daily.precipitation_probability_max[index],
+                      maxWind: Math.round(data.daily.wind_gusts_10m_max[index])
+                  }));
+
+                  setWeather({
+                      current: {
+                          temp: Math.round(data.current.temperature_2m),
+                          windSpeed: Math.round(data.current.wind_speed_10m),
+                          conditionCode: data.current.weather_code
+                      },
+                      daily: dailyData,
+                      loading: false,
+                      error: null
+                  });
+
+              } catch (err) {
+                  console.error(err);
+                  setWeather(prev => ({...prev, loading: false, error: "Weather unavailable"}));
+              }
+          }, (err) => {
+              setWeather(prev => ({...prev, loading: false, error: "Location access denied"}));
+          });
+      };
+
+      getCoords();
+  }, []);
 
   const fetchInsight = async () => {
     setLoadingInsight(true);
@@ -106,7 +178,7 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser }) => {
       setInsight(result);
     } catch (error) {
       console.error('Insight Error:', error);
-      setInsight("AI insights temporarily unavailable. Your business metrics are displayed below.");
+      setInsight("AI insights temporarily unavailable.");
     } finally {
       setLoadingInsight(false);
     }
@@ -114,7 +186,15 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser }) => {
 
   useEffect(() => {
     fetchInsight();
-  }, [leads]); // Re-analyze when leads change
+  }, [leads]);
+
+  // Helper to interpret weather codes
+  const getWeatherIcon = (code: number) => {
+      if(code <= 3) return <ThermometerSun className="text-orange-500" size={20}/>;
+      if(code >= 51 && code <= 67) return <CloudRain className="text-blue-500" size={20}/>;
+      if(code >= 95) return <AlertTriangle className="text-red-500" size={20}/>; // Storm
+      return <Wind className="text-slate-400" size={20}/>;
+  };
 
   return (
     <div className="space-y-8 pb-8">
@@ -224,37 +304,75 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser }) => {
                 </div>
             </div>
 
-            {/* Weather Widget */}
+            {/* REAL-TIME WEATHER WIDGET */}
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 relative z-10 gap-2">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 relative z-10 gap-2">
                     <div>
                         <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                             <CloudRain className="text-blue-500" size={20}/>
-                             Recent Hail Activity
+                             <CloudRain className="text-blue-600" size={20}/>
+                             Roofing Weather Intelligence
                         </h3>
-                        <p className="text-xs text-slate-500">Based on doppler radar in your service area</p>
+                        <p className="text-xs text-slate-500">Live conditions & 3-day risk forecast</p>
                     </div>
-                    <span className="text-xs font-bold text-red-500 bg-red-50 px-2 py-1 rounded animate-pulse whitespace-nowrap">LIVE ALERT</span>
+                    {weather.loading ? (
+                        <span className="text-xs text-slate-400 animate-pulse">Scanning local doppler...</span>
+                    ) : (
+                        <div className="flex items-center gap-3">
+                            <span className="text-3xl font-bold text-slate-900">{weather.current.temp}°</span>
+                            <div className="text-xs text-slate-500 text-right">
+                                <p className="font-bold flex items-center gap-1"><Wind size={10}/> {weather.current.windSpeed} mph</p>
+                                <p>Current Wind</p>
+                            </div>
+                        </div>
+                    )}
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
-                    <div className="space-y-3">
-                         {weatherAlerts.map(alert => (
-                             <div key={alert.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-3">
-                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shrink-0 ${alert.type === 'Hail' ? 'bg-indigo-500' : 'bg-blue-400'}`}>
-                                     {alert.type === 'Hail' ? 'H' : 'W'}
-                                 </div>
-                                 <div>
-                                     <p className="text-sm font-bold text-slate-800">{alert.type} Storm</p>
-                                     <p className="text-xs text-slate-500">{alert.location} • {alert.date}</p>
-                                 </div>
-                             </div>
-                         ))}
+                {/* Weather Grid */}
+                {!weather.loading && !weather.error ? (
+                    <div className="grid grid-cols-3 gap-4 relative z-10">
+                        {weather.daily.map((day, i) => (
+                            <div key={i} className={`p-4 rounded-xl border ${day.maxWind > 35 || day.rainChance > 50 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'} flex flex-col gap-2`}>
+                                <div className="flex justify-between items-center">
+                                    <span className="font-bold text-slate-700 text-sm">{i === 0 ? 'Today' : day.date}</span>
+                                    {getWeatherIcon(weather.current.conditionCode)}
+                                </div>
+                                
+                                {/* Wind Risk */}
+                                <div className="mt-1">
+                                    <div className="flex justify-between text-xs mb-1">
+                                        <span className="text-slate-500 flex items-center gap-1"><Wind size={10}/> Gusts</span>
+                                        <span className={`font-bold ${day.maxWind > 35 ? 'text-red-600' : 'text-slate-700'}`}>{day.maxWind} mph</span>
+                                    </div>
+                                    {/* Progress Bar for Wind (Max 60mph) */}
+                                    <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                        <div 
+                                            className={`h-full rounded-full ${day.maxWind > 40 ? 'bg-red-500' : day.maxWind > 25 ? 'bg-amber-400' : 'bg-emerald-400'}`} 
+                                            style={{width: `${Math.min(day.maxWind / 60 * 100, 100)}%`}}
+                                        ></div>
+                                    </div>
+                                </div>
+
+                                {/* Rain Risk */}
+                                <div>
+                                    <div className="flex justify-between text-xs mb-1">
+                                        <span className="text-slate-500 flex items-center gap-1"><Droplets size={10}/> Precip</span>
+                                        <span className={`font-bold ${day.rainChance > 40 ? 'text-blue-600' : 'text-slate-700'}`}>{day.rainChance}%</span>
+                                    </div>
+                                </div>
+
+                                {day.maxWind > 40 && (
+                                    <div className="mt-2 text-[10px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded flex items-center gap-1 justify-center">
+                                        <AlertTriangle size={10}/> STORM RISK
+                                    </div>
+                                )}
+                            </div>
+                        ))}
                     </div>
-                    <div className="bg-slate-100 rounded-xl min-h-[120px] flex items-center justify-center border-2 border-dashed border-slate-200 text-slate-400 text-xs">
-                         <Map className="mr-2" size={16}/> Simulated Radar Map Area
+                ) : (
+                    <div className="h-32 flex items-center justify-center text-slate-400 text-sm bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                        {weather.error || "Loading Weather Data..."}
                     </div>
-                </div>
+                )}
             </div>
         </div>
 
