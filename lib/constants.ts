@@ -4,7 +4,7 @@ export const SUBSCRIPTION_PLANS = {
     name: 'Starter',
     price: 199,
     maxUsers: 5,
-    stripePriceId: 'price_12345_starter', // Replace with ID from Stripe Dashboard
+    stripePriceId: 'prod_Tdogb5iSgVDyua', // Replace with ID from Stripe Dashboard
     features: ['5 Users', 'Basic Estimator', 'Email Support']
   },
   PROFESSIONAL: {
@@ -12,7 +12,7 @@ export const SUBSCRIPTION_PLANS = {
     name: 'Professional',
     price: 499,
     maxUsers: 15,
-    stripePriceId: 'price_12345_pro', // Replace with ID from Stripe Dashboard
+    stripePriceId: 'prod_TdojAdvpSadlK4', // Replace with ID from Stripe Dashboard
     features: ['15 Users', 'Advanced AI', 'Priority Support']
   },
   ENTERPRISE: {
@@ -20,7 +20,7 @@ export const SUBSCRIPTION_PLANS = {
     name: 'Enterprise',
     price: 999,
     maxUsers: 999,
-    stripePriceId: 'price_12345_ent', // Replace with ID from Stripe Dashboard
+    stripePriceId: 'prod_TdojIz2a7nj6JY', // Replace with ID from Stripe Dashboard
     features: ['Unlimited Users', 'Dedicated Success Manager', 'Custom Integrations']
   }
 };
