@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle } from 'lucide-react';
+import { CircleCheck as CheckCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export function SuccessPage() {
