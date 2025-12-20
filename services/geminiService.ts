@@ -1,7 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { EstimateItem, RoofType, GroundingResult, LogicArgument, RoofMeasurement } from '../types';
 
-const apiKey = process.env.API_KEY || '';
+// CHANGED: Use import.meta.env instead of process.env
+const apiKey = import.meta.env.VITE_GOOGLE_GENAI_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
 
 /**
@@ -9,7 +10,7 @@ const ai = new GoogleGenAI({ apiKey });
  */
 export const getChatResponse = async (history: {role: string, parts: {text: string}[]}[], message: string) => {
   try {
-    const model = 'gemini-2.5-flash-lite';
+    const model = 'gemini-2.0-flash-lite-preview-02-05';
     
     const chat = ai.chats.create({
       model: model,
@@ -40,7 +41,7 @@ export const generateSmartEstimate = async (
     const prompt = `Generate a detailed roofing estimate line item list for a ${sqFt} sq ft ${roofType} roof. Difficulty: ${difficulty}. Additional notes: ${notes}. Include labor, materials, waste, and permits.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -62,7 +63,6 @@ export const generateSmartEstimate = async (
     });
 
     if (response.text) {
-      // PATCH: Strip markdown code blocks if present to prevent JSON parse errors
       const cleanJson = response.text.replace(/```json|```/g, '').trim();
       return JSON.parse(cleanJson) as EstimateItem[];
     }
@@ -79,7 +79,7 @@ export const generateSmartEstimate = async (
 export const analyzeRoofImage = async (base64Image: string): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
@@ -101,7 +101,7 @@ export const analyzeRoofImage = async (base64Image: string): Promise<string> => 
 export const draftClientEmail = async (clientName: string, topic: string, tone: 'professional' | 'friendly' | 'urgent'): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-lite', 
+      model: 'gemini-2.0-flash-lite-preview-02-05', 
       contents: `Draft a short, ${tone} email to client ${clientName} about: ${topic}. Focus on the insurance claim process. Sign it as 'The RAFTER AI Team'.`,
     });
     return response.text || "";
@@ -116,7 +116,7 @@ export const draftClientEmail = async (clientName: string, topic: string, tone: 
 export const generateBusinessInsights = async (stats: any): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: `You are a restoration business analyst. Stats: ${JSON.stringify(stats)}. 
       Identify 1 key positive trend in the claims pipeline and 1 bottleneck (e.g. supplements, approvals). 
       Keep it brief.`,
@@ -134,7 +134,7 @@ export const generateBusinessInsights = async (stats: any): Promise<string> => {
 export const suggestTasksForLead = async (leadStatus: string, projectType: string): Promise<string[]> => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-lite',
+      model: 'gemini-2.0-flash-lite-preview-02-05',
       contents: `Generate a JSON array of 3-5 short actionable tasks for a roofing salesperson handling a ${projectType} lead in status: ${leadStatus}. Strings only.`,
       config: {
         responseMimeType: 'application/json',
@@ -152,7 +152,7 @@ export const suggestTasksForLead = async (leadStatus: string, projectType: strin
 export const analyzeScopeOfLoss = async (scopeText: string): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: `Analyze this insurance scope of loss text and identify missing items commonly overlooked (like code upgrades, ice & water shield, O&P). Provide a bulleted list of potential supplements.\n\nText: ${scopeText}`,
     });
     return response.text || "No analysis available.";
@@ -165,11 +165,9 @@ export const analyzeScopeOfLoss = async (scopeText: string): Promise<string> => 
  * Simulates Solar API roof measurement using Gemini estimation.
  */
 export const getRoofDataFromAddress = async (address: string): Promise<RoofMeasurement> => {
-    // In production, this would call [https://solar.googleapis.com/v1/buildingInsights:findClosest](https://solar.googleapis.com/v1/buildingInsights:findClosest)
-    // Here we use Gemini to "Estimate" plausible geometry based on the address context (e.g. mansion vs cottage).
     try {
         const response = await ai.models.generateContent({
-             model: 'gemini-2.5-flash',
+             model: 'gemini-2.0-flash',
              contents: `Estimate the detailed roof geometry for a typical residential property at: ${address}. 
              Infer the likely size and style based on the address (e.g. city density, state).
              Return valid JSON only.
@@ -205,13 +203,11 @@ export const getRoofDataFromAddress = async (address: string): Promise<RoofMeasu
              }
         });
         if(response.text) return JSON.parse(response.text);
-        // Fallback
         return { 
             totalAreaSqFt: 2800, pitch: '6/12', solarPotential: 'High', segments: 8, maxSunlightHours: 1400,
             ridgeLen: 60, hipLen: 40, valleyLen: 30, rakeLen: 80, eaveLen: 120
         };
     } catch (e) {
-        // Fallback mock data
         return { 
             totalAreaSqFt: 2450, pitch: '7/12', solarPotential: 'Good', segments: 6, maxSunlightHours: 1250,
             ridgeLen: 45, hipLen: 30, valleyLen: 20, rakeLen: 70, eaveLen: 100
@@ -227,7 +223,7 @@ export const getRoofDataFromAddress = async (address: string): Promise<RoofMeasu
 export const searchMarketInfo = async (query: string): Promise<GroundingResult> => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: query,
       config: {
         tools: [{ googleSearch: {} }]
@@ -237,7 +233,6 @@ export const searchMarketInfo = async (query: string): Promise<GroundingResult> 
     const text = response.text || "No results found.";
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     
-    // Extract sources
     const sources = chunks
       .filter((c: any) => c.web?.uri && c.web?.title)
       .map((c: any) => ({ title: c.web.title, uri: c.web.uri }));
@@ -255,7 +250,7 @@ export const searchMarketInfo = async (query: string): Promise<GroundingResult> 
 export const findLocalSuppliers = async (location: string): Promise<GroundingResult> => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: `Find roofing supply distributors near ${location}.`,
       config: {
         tools: [{ googleMaps: {} }]
@@ -265,9 +260,8 @@ export const findLocalSuppliers = async (location: string): Promise<GroundingRes
     const text = response.text || "No suppliers found.";
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     
-    // Extract map links if available (structure varies, usually in text but chunks help verification)
     const sources = chunks
-      .filter((c: any) => c.web?.uri) // Maps sometimes returns web uris for places
+      .filter((c: any) => c.web?.uri)
       .map((c: any) => ({ title: c.web?.title || 'Map Result', uri: c.web?.uri }));
 
     return { text, sources };
@@ -289,7 +283,7 @@ export const generateSupplementArgument = async (denialReason: string, itemInQue
     Create a logical argument to overturn this denial based on construction standards and Xactimate logic.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash', 
+      model: 'gemini-2.0-flash-thinking-exp-01-21', 
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -306,7 +300,6 @@ export const generateSupplementArgument = async (denialReason: string, itemInQue
     });
 
     if (response.text) {
-      // PATCH: Strip markdown code blocks
       const cleanJson = response.text.replace(/```json|```/g, '').trim();
       return JSON.parse(cleanJson) as LogicArgument;
     }
