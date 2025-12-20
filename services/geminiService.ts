@@ -1,14 +1,22 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { EstimateItem, RoofType, GroundingResult, LogicArgument, RoofMeasurement } from '../types';
 
-// CHANGED: Use import.meta.env instead of process.env
-const apiKey = import.meta.env.VITE_GOOGLE_GENAI_KEY || '';
+// The vite config now injects this value
+const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
+
+// Add a safety check so the app doesn't crash on load
+if (!apiKey) {
+  console.warn("Gemini API Key is missing. AI features will not work.");
+}
+
 const ai = new GoogleGenAI({ apiKey });
 
 /**
  * Uses Gemini Flash Lite for ultra-fast chat responses.
  */
 export const getChatResponse = async (history: {role: string, parts: {text: string}[]}[], message: string) => {
+  if (!apiKey) return "AI Configuration Error: API Key missing.";
+  
   try {
     const model = 'gemini-2.0-flash-lite-preview-02-05';
     
@@ -24,7 +32,7 @@ export const getChatResponse = async (history: {role: string, parts: {text: stri
     return result.text;
   } catch (error) {
     console.error("Chat Error:", error);
-    return "I'm having trouble connecting to the roof satellites. Please try again.";
+    return "I'm having trouble connecting. Please check your internet or API limits.";
   }
 };
 
@@ -37,6 +45,8 @@ export const generateSmartEstimate = async (
   difficulty: string,
   notes: string
 ): Promise<EstimateItem[]> => {
+  if (!apiKey) return [];
+
   try {
     const prompt = `Generate a detailed roofing estimate line item list for a ${sqFt} sq ft ${roofType} roof. Difficulty: ${difficulty}. Additional notes: ${notes}. Include labor, materials, waste, and permits.`;
 
@@ -63,13 +73,14 @@ export const generateSmartEstimate = async (
     });
 
     if (response.text) {
+      // PATCH: Strip markdown code blocks if present to prevent JSON parse errors
       const cleanJson = response.text.replace(/```json|```/g, '').trim();
       return JSON.parse(cleanJson) as EstimateItem[];
     }
     return [];
   } catch (error) {
     console.error("Estimate Error:", error);
-    throw new Error("Failed to generate estimate.");
+    return [];
   }
 };
 
@@ -77,6 +88,8 @@ export const generateSmartEstimate = async (
  * Uses Gemini Flash Vision to analyze roof images for damage.
  */
 export const analyzeRoofImage = async (base64Image: string): Promise<string> => {
+  if (!apiKey) return "API Key missing.";
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.0-flash',
@@ -123,7 +136,6 @@ export const generateBusinessInsights = async (stats: any): Promise<string> => {
     });
     return response.text || "Pipeline looks steady. Focus on moving claims from filed to approved.";
   } catch (error) {
-    console.error("Insight Error:", error);
     return "Unable to generate insights at this moment.";
   }
 };
