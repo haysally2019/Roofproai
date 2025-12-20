@@ -25,6 +25,15 @@ const TrialFunnel: React.FC<TrialFunnelProps> = ({ onSwitchToLogin }) => {
   useEffect(() => {
       if (currentUser) window.location.href = '/';
   }, [currentUser]);
+
+  // CAPTURE REFERRAL CODE
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref');
+    if (refCode) {
+        localStorage.setItem('rafter_referral', refCode);
+    }
+  }, []);
   
   // Auto-focus logic
   useEffect(() => {
@@ -50,7 +59,16 @@ const TrialFunnel: React.FC<TrialFunnelProps> = ({ onSwitchToLogin }) => {
     
     setLoading(true);
     try {
-      await register(formData.companyName, formData.name, formData.email, formData.password);
+      // Retrieve referral code from storage
+      const referralCode = localStorage.getItem('rafter_referral');
+
+      await register(
+        formData.companyName, 
+        formData.name, 
+        formData.email, 
+        formData.password, 
+        referralCode // Pass the tracked code
+      );
       // App.tsx takes over from here once currentUser is set
     } catch (error) {
       console.error(error);
