@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { EstimateItem, Lead, Estimate, EstimateTier } from '../types';
 import { 
-  Sparkles, Printer, Save, Trash2, Calculator, 
-  MapPin, MousePointer2, Search, RotateCcw,
-  CheckCircle2, Layers, PenTool, Satellite, FileText, Truck, AlertTriangle, Scan, Crosshair
+  Sparkles, Save, Calculator, MapPin, Search, RotateCcw,
+  CheckCircle2, Layers, PenTool, Satellite, FileText, Truck, AlertTriangle, Scan, Crosshair, MousePointer2
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import MaterialOrderModal from './MaterialOrderModal';
 
-// Declare Google Maps types for TypeScript
 declare global {
   interface Window {
     google: any;
@@ -28,10 +26,9 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   
   // --- ESTIMATE DATA ---
   const [measuredSqFt, setMeasuredSqFt] = useState<number>(0);
-  const [pitch, setPitch] = useState<number>(6); // 6/12 default
+  const [pitch, setPitch] = useState<number>(6); 
   const [wasteFactor, setWasteFactor] = useState<number>(10);
   const [selectedTier, setSelectedTier] = useState<EstimateTier>('Better');
-  // Track if measurements are Flat (Draw) or Surface (3D Data)
   const [measurementType, setMeasurementType] = useState<'flat' | 'surface'>('flat'); 
   
   const [items, setItems] = useState<EstimateItem[]>([]);
@@ -47,9 +44,10 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   const [polygons, setPolygons] = useState<any[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   
-  // Track map center for Data Lookup
+  // Track map center
   const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -59,133 +57,152 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   const [signature, setSignature] = useState<string | null>(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
 
-  // --- INITIALIZATION ---
+  // --- 1. ROBUST SCRIPT LOADER ---
   useEffect(() => {
-    if (!apiKey) return;
+    if (!apiKey) {
+        setMapError("API Key is missing in .env file");
+        return;
+    }
 
-    const loadMapScript = () => {
-        if (window.google && window.google.maps) {
+    const scriptId = 'google-maps-script';
+
+    // Function to initialize map once script is loaded
+    const onScriptLoad = () => {
+        if (!mapRef.current) return;
+        try {
             initMap();
-            return;
+        } catch (e) {
+            console.error("Map Init Error:", e);
+            setMapError("Failed to initialize map. Check API Console.");
         }
-        
-        // Check if script is already present to avoid duplicates
-        if (document.querySelector('script[src*="maps.googleapis.com"]')) {
-            const interval = setInterval(() => {
-                if (window.google && window.google.maps) {
-                    clearInterval(interval);
-                    initMap();
-                }
-            }, 100);
-            return; 
-        }
-
-        const script = document.createElement('script');
-        script.id = 'google-maps-script';
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&v=weekly&libraries=drawing,geometry,places`;
-        script.async = true;
-        script.defer = true;
-        script.onload = () => initMap();
-        document.head.appendChild(script);
     };
 
-    loadMapScript();
+    // If script is already on page
+    if (window.google && window.google.maps) {
+        onScriptLoad();
+        return;
+    }
+
+    // Check if we are already loading it
+    if (document.getElementById(scriptId)) {
+        const script = document.getElementById(scriptId) as HTMLScriptElement;
+        script.addEventListener('load', onScriptLoad);
+        return;
+    }
+
+    // Create Script
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=drawing,geometry,places`;
+    script.async = true;
+    script.defer = true;
+    script.addEventListener('load', onScriptLoad);
+    script.addEventListener('error', () => setMapError("Failed to load Google Maps script."));
     
+    document.head.appendChild(script);
+
     return () => {
-        if (polygons.length) polygons.forEach(p => p.setMap(null));
+        // Cleanup listener if component unmounts before load
+        script.removeEventListener('load', onScriptLoad);
     };
   }, [apiKey]);
 
   const initMap = () => {
     if (!mapRef.current || !window.google) return;
 
-    const map = new window.google.maps.Map(mapRef.current, {
-        center: { lat: 39.8283, lng: -98.5795 }, // USA Center
-        zoom: 4,
-        mapTypeId: 'satellite',
-        tilt: 0, // Top-down view
-        fullscreenControl: false,
-        streetViewControl: false,
-        mapTypeControl: false,
-        rotateControl: false,
-        zoomControl: true,
-    });
+    try {
+        const map = new window.google.maps.Map(mapRef.current, {
+            center: { lat: 39.8283, lng: -98.5795 }, // USA Center
+            zoom: 4,
+            mapTypeId: 'satellite',
+            tilt: 0, 
+            fullscreenControl: false,
+            streetViewControl: false,
+            mapTypeControl: false,
+            rotateControl: false,
+            zoomControl: true,
+        });
 
-    setMapInstance(map);
+        setMapInstance(map);
+        setMapError(null); // Clear errors if successful
 
-    // Track Center for API Lookup
-    map.addListener('idle', () => {
-        const center = map.getCenter();
-        if(center) setMapCenter({ lat: center.lat(), lng: center.lng() });
-    });
+        // Track Center for API Lookup
+        map.addListener('idle', () => {
+            const center = map.getCenter();
+            if(center) setMapCenter({ lat: center.lat(), lng: center.lng() });
+        });
 
-    // Drawing Manager
-    const manager = new window.google.maps.drawing.DrawingManager({
-        drawingMode: null,
-        drawingControl: false,
-        polygonOptions: {
-            fillColor: '#4f46e5',
-            fillOpacity: 0.35,
-            strokeWeight: 2,
-            strokeColor: '#4f46e5',
-            clickable: true,
-            editable: true,
-            draggable: false, 
-            zIndex: 1,
-        },
-    });
+        // Setup Drawing Manager
+        const manager = new window.google.maps.drawing.DrawingManager({
+            drawingMode: null,
+            drawingControl: false,
+            polygonOptions: {
+                fillColor: '#4f46e5',
+                fillOpacity: 0.35,
+                strokeWeight: 2,
+                strokeColor: '#4f46e5',
+                clickable: true,
+                editable: true,
+                draggable: false, 
+                zIndex: 1,
+            },
+        });
 
-    manager.setMap(map);
-    setDrawingManager(manager);
+        manager.setMap(map);
+        setDrawingManager(manager);
 
-    // Polygon Complete Event
-    window.google.maps.event.addListener(manager, 'overlaycomplete', (event: any) => {
-        if (event.type === 'polygon') {
-            const newPoly = event.overlay;
-            
-            const path = newPoly.getPath();
-            ['set_at', 'insert_at', 'remove_at'].forEach(evt => {
-                window.google.maps.event.addListener(path, evt, () => updateAreaFromPolygons([...polygons, newPoly]));
+        // Polygon Complete Event
+        window.google.maps.event.addListener(manager, 'overlaycomplete', (event: any) => {
+            if (event.type === 'polygon') {
+                const newPoly = event.overlay;
+                
+                const path = newPoly.getPath();
+                ['set_at', 'insert_at', 'remove_at'].forEach(evt => {
+                    window.google.maps.event.addListener(path, evt, () => updateAreaFromPolygons([...polygons, newPoly]));
+                });
+                
+                const newPolygons = [...polygons, newPoly];
+                setPolygons(newPolygons);
+                updateAreaFromPolygons(newPolygons);
+                
+                manager.setDrawingMode(null);
+                setIsDrawing(false);
+                setMeasurementType('flat'); 
+            }
+        });
+
+        // Search Box
+        if (searchInputRef.current) {
+            const autocomplete = new window.google.maps.places.Autocomplete(searchInputRef.current, {
+                types: ['address'],
+                fields: ['geometry', 'name']
             });
             
-            const newPolygons = [...polygons, newPoly];
-            setPolygons(newPolygons);
-            updateAreaFromPolygons(newPolygons);
-            
-            manager.setDrawingMode(null);
-            setIsDrawing(false);
-            setMeasurementType('flat'); // Drawn measurements are always flat
+            autocomplete.bindTo('bounds', map);
+
+            autocomplete.addListener('place_changed', () => {
+                const place = autocomplete.getPlace();
+                if (!place.geometry || !place.geometry.location) {
+                    addToast(`No details available for: ${place.name}`, "error");
+                    return;
+                }
+
+                if (place.geometry.viewport) {
+                    map.fitBounds(place.geometry.viewport);
+                } else {
+                    map.setCenter(place.geometry.location);
+                    map.setZoom(20);
+                }
+                
+                // Auto-trigger data lookup
+                const lat = place.geometry.location.lat();
+                const lng = place.geometry.location.lng();
+                fetchRoofData(lat, lng);
+            });
         }
-    });
-
-    // Search Box
-    if (searchInputRef.current) {
-        const autocomplete = new window.google.maps.places.Autocomplete(searchInputRef.current, {
-            types: ['address'],
-            fields: ['geometry', 'name']
-        });
-        
-        autocomplete.bindTo('bounds', map);
-
-        autocomplete.addListener('place_changed', () => {
-            const place = autocomplete.getPlace();
-            if (!place.geometry || !place.geometry.location) {
-                addToast(`No details available for: ${place.name}`, "error");
-                return;
-            }
-
-            if (place.geometry.viewport) {
-                map.fitBounds(place.geometry.viewport);
-            } else {
-                map.setCenter(place.geometry.location);
-                map.setZoom(20);
-            }
-            
-            // Auto-trigger data lookup when address found
-            const lat = place.geometry.location.lat();
-            const lng = place.geometry.location.lng();
-            fetchRoofData(lat, lng);
-        });
+    } catch (err: any) {
+        console.error("Map Load Error:", err);
+        setMapError("Map failed to load. Ensure 'Maps JavaScript API' is enabled in Google Console.");
     }
   };
 
@@ -199,7 +216,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
       setMeasuredSqFt(totalSqFt);
   };
 
-  // --- ROOF DATA LOOKUP (SOLAR API) ---
+  // --- ROOF DATA LOOKUP ---
   const fetchRoofData = async (lat?: number, lng?: number) => {
       const targetLat = lat || mapCenter?.lat;
       const targetLng = lng || mapCenter?.lng;
@@ -211,8 +228,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
 
       setAnalyzing(true);
       try {
-          // Small delay to let map settle
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise(r => setTimeout(r, 500)); // Delay for smoothness
 
           const response = await fetch(
               `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${targetLat}&location.longitude=${targetLng}&requiredQuality=HIGH&key=${apiKey}`
@@ -221,9 +237,9 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
           if (!response.ok) {
               if (response.status === 404) {
                   if (!lat) throw new Error("Roof not detected at center. Try moving map slightly.");
-                  // Silent fail on auto-search if no roof found immediately
                   return; 
               }
+              if (response.status === 403) throw new Error("Solar API not enabled. Enable it in Google Cloud Console.");
               throw new Error("Could not fetch roof data.");
           }
 
@@ -232,26 +248,23 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
           if (data.solarPotential && data.solarPotential.wholeRoofStats) {
               const stats = data.solarPotential.wholeRoofStats;
               
-              // Get Surface Area (This includes pitch!)
+              // Get Surface Area
               const areaSqFt = Math.round(stats.areaMeters2 * 10.7639);
               
-              // Calculate Pitch from dominant segment
+              // Calculate Pitch
               let dominantPitchDegrees = 0;
               if (data.solarPotential.roofSegmentStats) {
                   const segments = data.solarPotential.roofSegmentStats;
-                  // Sort by size to get dominant pitch
                   segments.sort((a: any, b: any) => b.stats.areaMeters2 - a.stats.areaMeters2);
                   if (segments.length > 0) dominantPitchDegrees = segments[0].pitchDegrees;
               }
 
-              // Convert degrees to x/12 pitch
               const pitchRise = Math.round(12 * Math.tan(dominantPitchDegrees * (Math.PI / 180)));
 
               setMeasuredSqFt(areaSqFt);
               setPitch(Math.max(0, Math.min(18, pitchRise))); 
-              setMeasurementType('surface'); // Mark as Surface Area
+              setMeasurementType('surface'); 
               
-              // Clear manual drawings
               polygons.forEach(p => p.setMap(null));
               setPolygons([]);
               
@@ -294,7 +307,6 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
           return;
       }
 
-      // Calculate True Surface Area
       let trueSqFt = measuredSqFt;
       
       // Only apply pitch multiplier if measurement was Flat (Manual Draw)
@@ -313,7 +325,6 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   };
 
   const generateLineItems = (sqFt: number, squares: number) => {
-      // Pricing Logic
       let pricePerSq = 380; 
       let systemName = "3-Tab System";
       let warrantyName = "25-Year Warranty";
@@ -373,7 +384,6 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
       addToast("Saved to CRM", "success");
   };
 
-  // Signature
   const startSign = (e: any) => {
       const ctx = signCanvasRef.current?.getContext('2d');
       if(ctx) { setIsSigning(true); ctx.beginPath(); const r = signCanvasRef.current!.getBoundingClientRect(); ctx.moveTo((e.touches?e.touches[0].clientX:e.clientX)-r.left, (e.touches?e.touches[0].clientY:e.clientY)-r.top); }
@@ -385,7 +395,6 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      
       {/* TOP CONTROLS */}
       <div className="bg-white border-b border-slate-200 p-4 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
           <div className="flex bg-slate-100 rounded-lg p-1">
@@ -422,12 +431,12 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
           <div className="w-full lg:w-1/3 flex flex-col gap-6 shrink-0 h-full">
               {activeTab === 'map' ? (
                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col h-full">
-                      {!apiKey && (
+                      {mapError && (
                           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
                               <AlertTriangle className="text-red-600 shrink-0" size={20} />
                               <div>
-                                  <h4 className="font-bold text-red-900 text-sm">Google API Key Missing</h4>
-                                  <p className="text-xs text-red-700 mt-1">Add <code>VITE_GOOGLE_MAPS_API_KEY</code> to <code>.env</code>.</p>
+                                  <h4 className="font-bold text-red-900 text-sm">Map Error</h4>
+                                  <p className="text-xs text-red-700 mt-1">{mapError}</p>
                               </div>
                           </div>
                       )}
@@ -439,14 +448,12 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                       
                       <div className="relative flex-1 bg-slate-100 rounded-lg border border-slate-200 min-h-[400px] mb-3 overflow-hidden">
                           <div ref={mapRef} className="absolute inset-0 w-full h-full"></div>
-                          {/* Crosshair Overlay */}
                           <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10 opacity-60">
                               <Crosshair size={32} className="text-white drop-shadow-md" strokeWidth={1.5} />
                           </div>
                       </div>
 
                       <div className="flex flex-col gap-2 mb-4">
-                          {/* AUTO MEASURE BUTTON */}
                           <button 
                               onClick={() => fetchRoofData()}
                               disabled={analyzing || !mapCenter}
@@ -456,7 +463,6 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                               {analyzing ? 'Scanning Roof...' : 'Auto-Measure Roof'}
                           </button>
 
-                          {/* Drawing Tools */}
                           <div className="flex gap-2">
                               <button 
                                   onClick={toggleDrawingMode}
@@ -470,7 +476,6 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                           </div>
                       </div>
                       
-                      {/* Stats Display */}
                       <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100 mb-4">
                           <div className="flex justify-between items-center mb-1">
                               <span className="text-xs font-bold text-indigo-400 uppercase">Measured Area</span>
@@ -492,7 +497,6 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                       <h2 className="font-bold text-lg mb-6 flex items-center gap-2"><Calculator size={20} className="text-indigo-600"/> Estimator Settings</h2>
                       
-                      {/* Tier Selector */}
                       <div className="mb-6">
                           <label className="block text-xs font-bold text-slate-500 uppercase mb-2">System Quality</label>
                           <div className="grid grid-cols-3 gap-2">
