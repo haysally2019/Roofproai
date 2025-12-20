@@ -1,8 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { EstimateItem, RoofType, GroundingResult, LogicArgument, RoofMeasurement } from '../types';
 
-// The vite config now injects this value
-const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
+// Access Vite environment variable correctly
+const apiKey = import.meta.env.VITE_GOOGLE_GENAI_KEY || '';
 
 // Add a safety check so the app doesn't crash on load
 if (!apiKey) {
