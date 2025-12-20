@@ -1,8 +1,8 @@
-
 import React, { useState } from 'react';
 import { User, Company, UserRole } from '../types';
 import { Save, User as UserIcon, Building2, CreditCard, Camera, RefreshCw, Link2, CheckCircle, ExternalLink, Activity } from 'lucide-react';
 import { useStore } from '../lib/store';
+import { SUBSCRIPTION_PLANS } from '../lib/constants';
 
 interface SettingsProps {
   currentUser: User;
@@ -20,10 +20,6 @@ const Settings: React.FC<SettingsProps> = ({ currentUser, company, onUpdateUser,
     address: company?.address || '123 Roofer Lane, Dallas, TX' 
   });
   
-  // Fake Card State
-  const [cardName, setCardName] = useState('John Doe');
-  const [cardNumber, setCardNumber] = useState('•••• •••• •••• 4242');
-
   // Integration State
   const [isSyncingQB, setIsSyncingQB] = useState(false);
 
@@ -275,54 +271,74 @@ const Settings: React.FC<SettingsProps> = ({ currentUser, company, onUpdateUser,
                 </div>
             )}
 
+            {/* BILLING TAB */}
             {activeTab === 'billing' && company && (
-                 <div className="space-y-6">
-                    <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex justify-between items-center">
+                <div className="space-y-8 animate-fade-in">
+                    {/* Current Subscription Card */}
+                    <div className="p-6 bg-indigo-50 border border-indigo-100 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
                         <div>
-                            <p className="text-sm font-bold text-indigo-900 uppercase">Current Plan</p>
-                            <h3 className="text-2xl font-bold text-indigo-700">{company.tier} Plan</h3>
-                            <p className="text-xs text-indigo-600">Renews on {company.renewalDate}</p>
+                            <p className="text-sm font-bold text-indigo-900 uppercase tracking-wider">Current Subscription</p>
+                            <h3 className="text-3xl font-extrabold text-indigo-700 mt-1">{company.tier}</h3>
+                            <p className="text-sm text-indigo-600">
+                                {company.tier === 'Enterprise' ? '$999/mo' : company.tier === 'Professional' ? '$499/mo' : '$199/mo'} 
+                                • Renews on {company.renewalDate || new Date().toLocaleDateString()}
+                            </p>
                         </div>
-                        <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Upgrade</button>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => addToast("Redirecting to Stripe Portal...", "info")}
+                                className="bg-white text-indigo-600 border border-indigo-200 px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-50 shadow-sm"
+                            >
+                                View Invoices
+                            </button>
+                            <button 
+                                onClick={() => addToast("Redirecting to Stripe Portal...", "info")}
+                                className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-md flex items-center gap-2"
+                            >
+                                Manage Subscription
+                            </button>
+                        </div>
                     </div>
 
-                    <div className="border-t border-slate-200 pt-6">
-                        <h3 className="font-bold text-slate-800 mb-4">Payment Method</h3>
-                        
-                        <div className="max-w-md space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Cardholder Name</label>
-                                <input 
-                                    value={cardName}
-                                    onChange={e => setCardName(e.target.value)}
-                                    className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Card Number</label>
-                                    <input 
-                                        value={cardNumber}
-                                        onChange={e => setCardNumber(e.target.value)}
-                                        className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                                    />
+                    {/* Plan Options */}
+                    <div>
+                        <h3 className="font-bold text-slate-800 mb-4 text-lg">Available Plans</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {Object.values(SUBSCRIPTION_PLANS).map((plan) => (
+                                <div 
+                                    key={plan.id} 
+                                    className={`border rounded-xl p-5 relative ${company.tier === plan.name ? 'border-indigo-500 ring-1 ring-indigo-500 bg-white' : 'border-slate-200 bg-slate-50/50'}`}
+                                >
+                                    {company.tier === plan.name && (
+                                        <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg rounded-tr-lg">
+                                            CURRENT PLAN
+                                        </div>
+                                    )}
+                                    <h4 className="font-bold text-slate-900">{plan.name}</h4>
+                                    <div className="mt-2 mb-4">
+                                        <span className="text-2xl font-bold text-slate-900">${plan.price}</span>
+                                        <span className="text-slate-500 text-sm">/mo</span>
+                                    </div>
+                                    <ul className="space-y-2 mb-6">
+                                        {plan.features.map((f, i) => (
+                                            <li key={i} className="text-xs text-slate-600 flex items-center gap-2">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> {f}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    {company.tier !== plan.name && (
+                                        <button 
+                                            onClick={() => addToast(`In production, this starts Stripe Checkout for ${plan.name}`, "info")}
+                                            className="w-full py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-600 hover:bg-white hover:border-indigo-600 hover:text-indigo-600 transition-colors"
+                                        >
+                                            Switch to {plan.name}
+                                        </button>
+                                    )}
                                 </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Exp</label>
-                                        <input className="w-full p-2 border border-slate-300 rounded-lg" placeholder="MM/YY" defaultValue="12/25"/>
-                                     </div>
-                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">CVC</label>
-                                        <input className="w-full p-2 border border-slate-300 rounded-lg" placeholder="123"/>
-                                     </div>
-                                </div>
-                            </div>
+                            ))}
                         </div>
-
-                        <button className="text-indigo-600 text-sm font-bold mt-4 hover:underline">Update Payment Method</button>
                     </div>
-                 </div>
+                </div>
             )}
         </div>
       </div>
