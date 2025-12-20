@@ -92,7 +92,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('*, companies(*)')
+        .select('*, companies!users_company_id_fkey(*)')
         .eq('id', userId)
         .maybeSingle();
 
