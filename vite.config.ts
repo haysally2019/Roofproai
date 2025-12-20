@@ -16,11 +16,11 @@ export default defineConfig(({ mode }) => {
     // THIS IS THE CRITICAL FIX:
     define: {
       // This injects your key into the browser build
-      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'process.env.API_KEY': JSON.stringify(env.VITE_GOOGLE_GENAI_KEY),
       // Also injects it if you reference it by the specific name
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_GOOGLE_GENAI_KEY),
       // Fixes potential "process is not defined" errors from the Google library
-      'process.env': JSON.stringify({}), 
+      'process.env': JSON.stringify({}),
     },
     resolve: {
       alias: {
