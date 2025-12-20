@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { EstimateItem, Lead, Estimate, EstimateTier } from '../types';
 import { 
-  Sparkles, Save, Calculator, MapPin, Search, RotateCcw,
-  CheckCircle2, Layers, PenTool, Satellite, FileText, Truck, AlertTriangle, Scan, Crosshair, MousePointer2
+  Sparkles, Printer, Save, Trash2, Calculator, 
+  MapPin, MousePointer2, Search, RotateCcw,
+  CheckCircle2, Layers, PenTool, Satellite, FileText, Truck, AlertTriangle, Scan, Crosshair
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import MaterialOrderModal from './MaterialOrderModal';
 
+// Declare Google Maps types for TypeScript
 declare global {
   interface Window {
     google: any;
@@ -67,6 +69,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
             return;
         }
         
+        // Check if script is already present to avoid duplicates
         if (document.querySelector('script[src*="maps.googleapis.com"]')) {
             const interval = setInterval(() => {
                 if (window.google && window.google.maps) {
@@ -110,7 +113,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
 
     setMapInstance(map);
 
-    // Track Center for Manual API Lookup
+    // Track Center for API Lookup
     map.addListener('idle', () => {
         const center = map.getCenter();
         if(center) setMapCenter({ lat: center.lat(), lng: center.lng() });
@@ -171,20 +174,16 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                 return;
             }
 
-            // Move map to location
             if (place.geometry.viewport) {
                 map.fitBounds(place.geometry.viewport);
             } else {
                 map.setCenter(place.geometry.location);
                 map.setZoom(20);
             }
-
-            // AUTO-MEASURE TRIGGER
-            // We pass the coordinates directly to the solar function
+            
+            // Auto-trigger data lookup when address found
             const lat = place.geometry.location.lat();
             const lng = place.geometry.location.lng();
-            
-            // Trigger Solar API analysis automatically
             fetchRoofData(lat, lng);
         });
     }
@@ -200,9 +199,8 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
       setMeasuredSqFt(totalSqFt);
   };
 
-  // --- AUTO-MEASURE (ROOF DATA LOOKUP) ---
+  // --- ROOF DATA LOOKUP (SOLAR API) ---
   const fetchRoofData = async (lat?: number, lng?: number) => {
-      // Use provided coords or fallback to center
       const targetLat = lat || mapCenter?.lat;
       const targetLng = lng || mapCenter?.lng;
 
@@ -212,17 +210,20 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
       }
 
       setAnalyzing(true);
-      
       try {
-          // Add a small delay to allow map to settle if triggered by search
-          await new Promise(resolve => setTimeout(resolve, 500));
+          // Small delay to let map settle
+          await new Promise(r => setTimeout(r, 500));
 
           const response = await fetch(
               `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${targetLat}&location.longitude=${targetLng}&requiredQuality=HIGH&key=${apiKey}`
           );
 
           if (!response.ok) {
-              if (response.status === 404) throw new Error("Roof not detected at location. You may need to draw manually.");
+              if (response.status === 404) {
+                  if (!lat) throw new Error("Roof not detected at center. Try moving map slightly.");
+                  // Silent fail on auto-search if no roof found immediately
+                  return; 
+              }
               throw new Error("Could not fetch roof data.");
           }
 
@@ -250,18 +251,17 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
               setPitch(Math.max(0, Math.min(18, pitchRise))); 
               setMeasurementType('surface'); // Mark as Surface Area
               
-              // Clear manual drawings since we have auto data
+              // Clear manual drawings
               polygons.forEach(p => p.setMap(null));
               setPolygons([]);
               
-              addToast(`Auto-Measured: ${areaSqFt.toLocaleString()} sqft at ${pitchRise}/12 pitch`, "success");
+              addToast(`Roof Analyzed: ${areaSqFt.toLocaleString()} sqft at ${pitchRise}/12 pitch`, "success");
           } else {
               throw new Error("No roof data found.");
           }
 
       } catch (error: any) {
           console.error("Analysis Error:", error);
-          // Only show error toast if it was a manual click, otherwise silent fail for search auto-trigger
           if (!lat) addToast(error.message, "error");
       } finally {
           setAnalyzing(false);
