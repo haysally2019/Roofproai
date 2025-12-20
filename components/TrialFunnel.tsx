@@ -4,11 +4,9 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 import { ArrowRight, Building2, User, Mail, Lock, Sparkles, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
-import { stripeProducts } from '../stripe-config'; // <--- Uses your existing config
+import { stripeProducts } from '../src/stripe-config';
 
-// 1. CONFIGURATION
-const STRIPE_PUBLIC_KEY = 'pk_test_YOUR_PUBLISHABLE_KEY_HERE'; 
-const stripePromise = loadStripe(STRIPE_PUBLIC_KEY);
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
 const CheckoutForm = ({ onSuccess }: { onSuccess: () => void }) => {
     const stripe = useStripe();
