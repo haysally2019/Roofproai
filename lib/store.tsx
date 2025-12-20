@@ -24,7 +24,7 @@ interface StoreContextType {
   suppliers: Supplier[];
   orders: MaterialOrder[];
   login: (email: string, password: string) => Promise<boolean>;
-  register: (companyName: string, name: string, email: string, password: string) => Promise<boolean>;
+  register: (companyName: string, name: string, email: string, password: string, referralCode?: string | null) => Promise<boolean>;
   logout: () => void;
   setTab: (tab: Tab) => void;
   addToast: (message: string, type: Toast['type']) => void;
@@ -376,18 +376,36 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
-  const register = async (companyName: string, name: string, email: string, password: string): Promise<boolean> => {
+const register = async (companyName: string, name: string, email: string, password: string, referralCode?: string | null): Promise<boolean> => {
     try {
       if (password.length < 6) { addToast('Password must be at least 6 characters long', "error"); return false; }
+      
+      // 1. Resolve Referral Code (if provided)
+      let referrerId = null;
+      if (referralCode) {
+        const { data: resolvedId, error: resolveError } = await supabase.rpc('resolve_referral_code', { code: referralCode });
+        if (!resolveError && resolvedId) {
+            referrerId = resolvedId;
+        }
+      }
+
+      // 2. Create Auth User
       const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
       if (authError) { addToast(`Registration failed: ${authError.message}`, "error"); return false; }
       if (!authData.user) return false;
 
+      // 3. Create Company (Linked to Referrer)
       const { data: companyData, error: companyError } = await supabase.from('companies').insert({
-          name: companyName, tier: 'Starter', status: 'Active', setup_complete: false
+          name: companyName, 
+          tier: 'Starter', 
+          status: 'Active', 
+          setup_complete: false,
+          referred_by_user_id: referrerId // <--- The Invisible Stamp
         }).select().single();
+      
       if (companyError) { addToast(companyError.message, "error"); return false; }
 
+      // 4. Create User Profile
       const { error: userError } = await supabase.from('users').insert({
           id: authData.user.id, name, email, role: 'Company Owner', company_id: companyData.id,
           avatar_initials: name.slice(0, 2).toUpperCase()
