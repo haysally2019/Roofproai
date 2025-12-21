@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Check } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { StripeProduct } from '../../stripe-config';
 import { createCheckoutSession } from '../../lib/supabase';
+import { useAuth } from '../auth/AuthProvider';
 
 interface PricingCardProps {
   product: StripeProduct;
@@ -10,14 +12,30 @@ interface PricingCardProps {
 
 export function PricingCard({ product, isPopular }: PricingCardProps) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubscribe = async () => {
     setLoading(true);
+    setError(null);
+
+    if (!user) {
+      const currentUrl = encodeURIComponent(window.location.pathname);
+      navigate(`/login?redirect=${currentUrl}&priceId=${product.priceId}`);
+      return;
+    }
+
     try {
       const checkoutUrl = await createCheckoutSession(product.priceId, product.mode);
-      window.location.href = checkoutUrl;
-    } catch (error) {
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl;
+      } else {
+        setError('Failed to create checkout session');
+      }
+    } catch (error: any) {
       console.error('Error creating checkout session:', error);
+      setError(error.message || 'An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -59,8 +77,11 @@ export function PricingCard({ product, isPopular }: PricingCardProps) {
               : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
-          {loading ? 'Loading...' : 'Get Started'}
+          {loading ? 'Loading...' : user ? 'Get Started' : 'Sign Up to Continue'}
         </button>
+        {error && (
+          <p className="mt-2 text-sm text-red-600 text-center">{error}</p>
+        )}
       </div>
 
       <div className="mt-8">
