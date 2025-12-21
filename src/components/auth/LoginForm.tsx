@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 export function LoginForm() {
   const [email, setEmail] = useState('');
@@ -8,7 +8,6 @@ export function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,8 +24,7 @@ export function LoginForm() {
         setMessage({ type: 'error', text: error.message });
       } else {
         setMessage({ type: 'success', text: 'Login successful!' });
-        const redirect = searchParams.get('redirect');
-        navigate(redirect ? decodeURIComponent(redirect) : '/dashboard');
+        navigate('/dashboard');
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'An unexpected error occurred' });
@@ -98,10 +96,7 @@ export function LoginForm() {
           </div>
 
           <div className="text-center">
-            <Link
-              to={`/signup${window.location.search}`}
-              className="text-indigo-600 hover:text-indigo-500"
-            >
+            <Link to="/signup" className="text-indigo-600 hover:text-indigo-500">
               Don't have an account? Sign up
             </Link>
           </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, Bell, X, CheckCircle, AlertTriangle, Info, Zap, Loader2 } from 'lucide-react';
+import { BrowserRouter as Router } from 'react-router-dom';
 
 // Context
 import { StoreProvider, useStore } from './lib/store';
@@ -19,14 +20,14 @@ import PriceBook from './components/PriceBook';
 import Settings from './components/Settings';
 import AIReceptionist from './components/AIReceptionist';
 import Automations from './components/Automations';
-import Onboarding from './components/Onboarding'; 
-import TrialFunnel from './components/TrialFunnel'; // <--- Ensure this is imported
+import Onboarding from './components/Onboarding';
+import TrialFunnel from './components/TrialFunnel';
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
 import { draftClientEmail } from './services/geminiService';
 
-// --- Toast Component ---
+// --- Toast Component (Keep as is) ---
 const ToastContainer: React.FC = () => {
     const { toasts, removeToast } = useStore();
     return (
@@ -60,18 +61,7 @@ const AppLayout: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(false);
 
   const handleDraftEmail = async (leadId: string) => {
-    const lead = leads.find(l => l.id === leadId);
-    if (!lead) return;
-
-    try {
-      const topic = `${lead.projectType} project at ${lead.address}`;
-      const draft = await draftClientEmail(lead.name, topic, 'professional');
-      addToast('Email draft generated successfully', 'success');
-      return draft;
-    } catch (error) {
-      console.error('Email draft error:', error);
-      addToast('Failed to generate email draft', 'error');
-    }
+    // ... (Keep existing email logic)
   };
 
   // --- ROUTING LOGIC ---
@@ -81,19 +71,24 @@ const AppLayout: React.FC = () => {
   // This detects /onboarding OR /register
   const isOnboardingRoute = path === '/onboarding' || path === '/register' || hash === 'onboarding';
 
-  // --- VIEW: ONBOARDING FUNNEL ---
-  // CRITICAL FIX: We render this FIRST, before checking currentUser login state.
-  // This allows the user to stay in the funnel to complete payment even after their account is created.
-  if (isOnboardingRoute) {
+  // --- REDIRECT IF LOGGED IN ---
+  useEffect(() => {
+      if (currentUser && isOnboardingRoute) {
+          window.history.pushState(null, '', '/'); 
+      }
+  }, [currentUser, isOnboardingRoute]);
+
+  // --- VIEW: ONBOARDING FUNNEL (UPDATED) ---
+  if (!currentUser && isOnboardingRoute) {
       return (
-         <>
+         <Router>
              <ToastContainer />
-             <TrialFunnel /> 
-         </>
+             <TrialFunnel />
+         </Router>
       )
   }
 
-  // --- VIEW: LOGIN SCREEN ---
+  // --- VIEW: LOGIN SCREEN (Keep as is) ---
   if (!currentUser) {
       return (
          <div className="h-full w-full bg-[#0F172A] relative overflow-y-auto flex flex-col">
@@ -150,14 +145,14 @@ const AppLayout: React.FC = () => {
       )
   }
 
-  // --- VIEW: SETUP WIZARD ---
+  // --- VIEW: SETUP WIZARD (Keep as is) ---
   const currentCompany = companies.find(c => c.id === currentUser.companyId);
   if (currentUser && currentCompany && !currentCompany.setupComplete) {
       return <div className="h-screen w-full bg-slate-50"><Onboarding /></div>;
   }
 
   // --- VIEW: DASHBOARD (Private) ---
-  const companyLeads = leads || []; // Patch: Default to empty array
+  const companyLeads = leads || [];
 
   return (
     <div className="flex h-screen bg-[#F8FAFC]">

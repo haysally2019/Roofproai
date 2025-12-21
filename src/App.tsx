@@ -6,7 +6,6 @@ import { SignupForm } from './components/auth/SignupForm';
 import { PricingPage } from './components/pricing/PricingPage';
 import { SuccessPage } from './pages/SuccessPage';
 import { Dashboard } from './components/dashboard/Dashboard';
-import TrialFunnel from '../components/TrialFunnel';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -50,8 +49,6 @@ function App() {
       <Router>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/onboarding" element={<TrialFunnel />} />
-          <Route path="/register" element={<TrialFunnel />} />
           <Route
             path="/login"
             element={

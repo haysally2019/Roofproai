@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 export function SignupForm() {
   const [email, setEmail] = useState('');
@@ -9,7 +9,6 @@ export function SignupForm() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,6 +29,7 @@ export function SignupForm() {
       if (error) {
         setMessage({ type: 'error', text: error.message });
       } else if (data.user) {
+        // Create user profile
         const { error: profileError } = await supabase
           .from('users')
           .insert([
@@ -45,8 +45,7 @@ export function SignupForm() {
           setMessage({ type: 'error', text: 'Failed to create user profile' });
         } else {
           setMessage({ type: 'success', text: 'Account created successfully!' });
-          const redirect = searchParams.get('redirect');
-          navigate(redirect ? decodeURIComponent(redirect) : '/dashboard');
+          navigate('/dashboard');
         }
       }
     } catch (error) {
@@ -134,10 +133,7 @@ export function SignupForm() {
           </div>
 
           <div className="text-center">
-            <Link
-              to={`/login${window.location.search}`}
-              className="text-indigo-600 hover:text-indigo-500"
-            >
+            <Link to="/login" className="text-indigo-600 hover:text-indigo-500">
               Already have an account? Sign in
             </Link>
           </div>
