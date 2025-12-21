@@ -111,7 +111,7 @@ export default function TrialFunnel() {
                 name: formData.companyName,
                 status: 'Trial',
                 tier: plan.name,
-                setupComplete: false
+                setup_complete: false
             })
             .select()
             .single();
@@ -128,7 +128,7 @@ export default function TrialFunnel() {
                 name: formData.name,
                 email: formData.email,
                 role: 'Company Owner',
-                companyId: companyData.id
+                company_id: companyData.id
             });
 
         if (userError) {

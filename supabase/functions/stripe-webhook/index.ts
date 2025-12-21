@@ -96,20 +96,20 @@ async function handleSubscriptionChange(subscription: any) {
     if (customer?.user_id) {
       const { data: user } = await supabase
         .from('users')
-        .select('companyId')
+        .select('company_id')
         .eq('id', customer.user_id)
         .maybeSingle();
 
-      if (user?.companyId) {
+      if (user?.company_id) {
         await supabase
           .from('companies')
           .update({
             status: subscription.status === 'trialing' ? 'Trial' : 'Active',
-            setupComplete: true
+            setup_complete: true
           })
-          .eq('id', user.companyId);
+          .eq('id', user.company_id);
 
-        console.info(`Updated company ${user.companyId} status to ${subscription.status}`);
+        console.info(`Updated company ${user.company_id} status to ${subscription.status}`);
       }
     }
   }
