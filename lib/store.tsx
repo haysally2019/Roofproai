@@ -95,7 +95,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
   const removeToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
 
-  // ... (Load User Profile Logic remains the same) ...
   const loadUserProfile = async (userId: string, retryCount = 0) => {
     try {
       const { data, error } = await supabase
@@ -421,6 +420,32 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const setTab = (tab: Tab) => {
     setActiveTab(tab);
   };
+
+  useEffect(() => {
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await loadUserProfile(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        await loadUserProfile(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const createCompany = async (c: Partial<Company>): Promise<string | null> => {
       if (!currentUser || currentUser.role !== UserRole.SUPER_ADMIN) return null;
