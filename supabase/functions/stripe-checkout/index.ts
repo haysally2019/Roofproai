@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) throw new Error('Missing Authorization');
 
-    // 1. Get the User from Supabase Auth
+    // 1. Verify User
     const { data: { user }, error: userError } = await supabase.auth.getUser(
       authHeader.replace('Bearer ', '')
     );
@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 3. Create Checkout Session (Hosted Page)
+    // 3. Create Checkout Session
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
@@ -62,10 +62,13 @@ Deno.serve(async (req) => {
       success_url: `${redirectUrl}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${redirectUrl}/onboarding`,
       subscription_data: {
-        trial_period_days: 7, // 7-Day Free Trial
+        trial_period_days: 7,
         metadata: { userId: user.id }
       },
-      payment_method_collection: 'if_required',
+      // *** CRITICAL FIX HERE ***
+      // 'always' forces Stripe to ask for a card even if the trial is $0
+      payment_method_collection: 'always', 
+      allow_promotion_codes: true, // Optional: Enable promo codes
     });
 
     return new Response(
