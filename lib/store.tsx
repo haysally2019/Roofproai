@@ -6,7 +6,7 @@ import {
   Supplier, MaterialOrder, SoftwareLead
 } from '../types';
 import { supabase } from './supabase';
-import { SUBSCRIPTION_PLANS } from './constants'; // Import constants
+import { SUBSCRIPTION_PLANS } from './constants'; 
 
 interface StoreContextType {
   currentUser: User | null;
@@ -64,7 +64,7 @@ export const useStore = () => {
 // Helper to get max users from tier name
 const getMaxUsersForTier = (tierName: string): number => {
   const plan = Object.values(SUBSCRIPTION_PLANS).find(p => p.name === tierName);
-  return plan ? plan.maxUsers : 3; // Default to 3 if unknown
+  return plan ? plan.maxUsers : 3; 
 };
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -97,9 +97,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const loadUserProfile = async (userId: string, retryCount = 0) => {
     try {
+      // PATCH: Replaced 'companies!users_company_id_fkey(*)' with 'companies(*)' to avoid FK naming errors
       const { data, error } = await supabase
         .from('users')
-        .select('*, companies!users_company_id_fkey(*)')
+        .select('*, companies(*)')
         .eq('id', userId)
         .maybeSingle();
 
@@ -112,7 +113,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           email: data.email,
           role: data.role as UserRole,
           companyId: data.company_id,
-          avatarInitials: data.avatar_initials || data.name.slice(0, 2).toUpperCase()
+          avatarInitials: data.avatar_initials || (data.name ? data.name.slice(0, 2).toUpperCase() : '??')
         };
         setCurrentUser(user);
 
@@ -147,11 +148,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                     email: u.email,
                     role: u.role as UserRole,
                     companyId: u.company_id,
-                    avatarInitials: u.avatar_initials || u.name.slice(0, 2).toUpperCase()
+                    avatarInitials: u.avatar_initials || (u.name ? u.name.slice(0, 2).toUpperCase() : '??')
                 })));
             }
             
-            // ... (Mock SaaS Leads logic) ...
              if (softwareLeads.length === 0) {
                 setSoftwareLeads([
                   { id: 'sl-1', companyName: 'Apex Roofing', contactName: 'John Smith', email: 'john@apex.com', phone: '555-0101', status: 'Demo Booked', potentialUsers: 5, assignedTo: user.id, notes: 'Interested in AI', createdAt: new Date().toISOString() },
@@ -183,21 +183,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               await loadCompanyData(data.company_id);
             }
         }
+        // Success - turn off loading
+        setLoading(false);
       } else if (retryCount < 3) {
+        // Retry logic if user not found (race condition on signup)
         await new Promise(resolve => setTimeout(resolve, 1000));
         return loadUserProfile(userId, retryCount + 1);
+      } else {
+        // Retries exhausted
+        console.warn('User profile not found after retries.');
+        setLoading(false);
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
       addToast('Error loading profile', 'error');
-    } finally {
       setLoading(false);
     }
   };
 
-  // ... (loadCompanyData logic remains the same) ...
   const loadCompanyData = async (companyId: string) => {
     try {
+      // ... (Same data loading logic as before) ...
       const [
         usersRes,
         leadsRes,
@@ -225,11 +231,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           email: user.email,
           role: user.role as UserRole,
           companyId: user.company_id,
-          avatarInitials: user.avatar_initials || user.name.slice(0, 2).toUpperCase()
+          avatarInitials: user.avatar_initials || (user.name ? user.name.slice(0, 2).toUpperCase() : '??')
         })));
       }
-      
-      // ... (Other data loading logic remains the same) ...
+
       if (leadsRes.data) {
         setLeads(leadsRes.data.map((lead: any) => ({
           id: lead.id,
@@ -349,7 +354,43 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
-  // ... (Login Logic) ...
+  useEffect(() => {
+    // FIX: Safety timeout to ensure loading screen doesn't hang forever
+    const safetyTimer = setTimeout(() => {
+        setLoading(prev => {
+            if(prev) {
+                console.warn("Forcing loading state off after timeout");
+                return false;
+            }
+            return prev;
+        });
+    }, 8000);
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        loadUserProfile(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      (async () => {
+        if (session?.user) {
+          await loadUserProfile(session.user.id);
+        } else {
+          setCurrentUser(null);
+          setLoading(false);
+        }
+      })();
+    });
+
+    return () => {
+        subscription.unsubscribe();
+        clearTimeout(safetyTimer);
+    };
+  }, []);
+
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -377,13 +418,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (authError) { addToast(`Registration failed: ${authError.message}`, "error"); return false; }
       if (!authData.user) return false;
 
-      // Ensure max_users is set correctly based on 'Starter' tier default
       const { data: companyData, error: companyError } = await supabase.from('companies').insert({
           name: companyName, 
           tier: 'Starter', 
           status: 'Active', 
           setup_complete: false,
-          max_users: getMaxUsersForTier('Starter'), // Set correct limit
+          max_users: getMaxUsersForTier('Starter'), 
           referred_by_user_id: referrerId
         }).select().single();
       
@@ -421,46 +461,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setActiveTab(tab);
   };
 
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        console.log('Initializing auth...');
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error('Session error:', error);
-          setLoading(false);
-          return;
-        }
-        if (session?.user) {
-          console.log('User session found, loading profile...');
-          await loadUserProfile(session.user.id);
-        } else {
-          console.log('No user session, showing login');
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-        setLoading(false);
-      }
-    };
-
-    initAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event);
-      if (event === 'SIGNED_IN' && session?.user) {
-        await loadUserProfile(session.user.id);
-      } else if (event === 'SIGNED_OUT') {
-        setCurrentUser(null);
-        setLoading(false);
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
   const createCompany = async (c: Partial<Company>): Promise<string | null> => {
       if (!currentUser || currentUser.role !== UserRole.SUPER_ADMIN) return null;
       
@@ -470,7 +470,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const { data, error } = await supabase.from('companies').insert({
           name: c.name,
           tier: tier,
-          max_users: maxUsers, // Set correct limit
+          max_users: maxUsers,
           address: c.address,
           phone: c.phone,
           status: 'Active',
@@ -506,14 +506,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const updateCompany = async (c: Partial<Company>) => {
     if (!c.id) return;
     
-    // Prepare update object
     const updates: any = {
         name: c.name, address: c.address, phone: c.phone, logo_url: c.logoUrl,
         setup_complete: c.setupComplete, agent_config: c.agentConfig, integrations: c.integrations,
         status: c.status, tier: c.tier
     };
 
-    // If tier is changing, update max_users
     if (c.tier) {
         updates.max_users = getMaxUsersForTier(c.tier);
     }
@@ -525,11 +523,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return;
     }
     
-    // Update local state, including new maxUsers if derived from tier
     setCompanies(prev => prev.map(x => x.id === c.id ? {...x, ...c, maxUsers: c.tier ? updates.max_users : x.maxUsers } : x));
   };
 
-  // ... (Delete Company, Update User, Add Lead, etc. remain the same) ...
   const deleteCompany = async (companyId: string) => {
       if (currentUser?.role !== UserRole.SUPER_ADMIN) {
           addToast("Permission denied", "error");
@@ -664,7 +660,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!error) setOrders(prev => [...prev, o]);
   };
 
-  // --- UPDATED ADD USER LOGIC (Uses Edge Function + Checks Limit) ---
   const addUser = async (u: Partial<User>): Promise<string | null> => {
     const targetCompanyId = u.companyId || currentUser?.companyId;
 
@@ -673,7 +668,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return null; 
     }
 
-    // 1. Check Limits (if not Super Admin adding a super admin)
     if (currentUser?.role !== UserRole.SUPER_ADMIN || (u.role !== UserRole.SUPER_ADMIN && u.role !== UserRole.SAAS_REP)) {
         const company = companies.find(c => c.id === targetCompanyId);
         if (company) {
@@ -714,7 +708,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         
         setUsers(prev => [newUser, ...prev]);
-        // Update user count in local company state to reflect new addition immediately
         if (targetCompanyId) {
             setCompanies(prev => prev.map(c => c.id === targetCompanyId ? { ...c, userCount: c.userCount + 1 } : c));
         }
@@ -729,12 +722,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const removeUser = async (uid: string) => {
-    // Find user to get company ID before deletion
     const userToRemove = users.find(u => u.id === uid);
     const { error } = await supabase.from('users').delete().eq('id', uid);
     if (!error) {
         setUsers(prev => prev.filter(u => u.id !== uid));
-        // Update local company user count
         if (userToRemove?.companyId) {
             setCompanies(prev => prev.map(c => c.id === userToRemove.companyId ? { ...c, userCount: Math.max(0, c.userCount - 1) } : c));
         }
