@@ -40,15 +40,44 @@ export async function createCheckoutSession(priceId: string, mode: 'subscription
 }
 
 export async function getUserSubscription() {
-  const { data, error } = await supabase
-    .from('stripe_user_subscriptions')
-    .select('*')
-    .maybeSingle()
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
 
-  if (error) {
-    console.error('Error fetching subscription:', error)
-    return null
+    if (!user) {
+      console.log('No authenticated user');
+      return null;
+    }
+
+    const { data: customer, error: customerError } = await supabase
+      .from('stripe_customers')
+      .select('customer_id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (customerError) {
+      console.error('Error fetching customer:', customerError);
+      return null;
+    }
+
+    if (!customer) {
+      console.log('No Stripe customer found for user');
+      return null;
+    }
+
+    const { data: subscription, error: subscriptionError } = await supabase
+      .from('stripe_subscriptions')
+      .select('*')
+      .eq('customer_id', customer.customer_id)
+      .maybeSingle();
+
+    if (subscriptionError) {
+      console.error('Error fetching subscription:', subscriptionError);
+      return null;
+    }
+
+    return subscription;
+  } catch (error) {
+    console.error('Unexpected error in getUserSubscription:', error);
+    return null;
   }
-
-  return data
 }

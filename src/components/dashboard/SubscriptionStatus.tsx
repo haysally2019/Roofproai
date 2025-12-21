@@ -9,11 +9,14 @@ export function SubscriptionStatus() {
   useEffect(() => {
     async function fetchSubscription() {
       try {
+        console.log('SubscriptionStatus: Fetching subscription...');
         const data = await getUserSubscription();
+        console.log('SubscriptionStatus: Got data:', data);
         setSubscription(data);
       } catch (error) {
-        console.error('Error fetching subscription:', error);
+        console.error('SubscriptionStatus: Error fetching subscription:', error);
       } finally {
+        console.log('SubscriptionStatus: Loading complete');
         setLoading(false);
       }
     }
