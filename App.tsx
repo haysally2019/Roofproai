@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter } from 'react-router-dom'; // <--- Added Router
 import { Menu, Bell, X, CheckCircle, AlertTriangle, Info, Zap, Loader2 } from 'lucide-react';
-import { BrowserRouter as Router } from 'react-router-dom';
 
 // Context
 import { StoreProvider, useStore } from './lib/store';
@@ -20,14 +20,14 @@ import PriceBook from './components/PriceBook';
 import Settings from './components/Settings';
 import AIReceptionist from './components/AIReceptionist';
 import Automations from './components/Automations';
-import Onboarding from './components/Onboarding';
-import TrialFunnel from './components/TrialFunnel';
+import Onboarding from './components/Onboarding'; 
+import TrialFunnel from './components/TrialFunnel'; 
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
 import { draftClientEmail } from './services/geminiService';
 
-// --- Toast Component (Keep as is) ---
+// --- Toast Component ---
 const ToastContainer: React.FC = () => {
     const { toasts, removeToast } = useStore();
     return (
@@ -61,34 +61,35 @@ const AppLayout: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(false);
 
   const handleDraftEmail = async (leadId: string) => {
-    // ... (Keep existing email logic)
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+    try {
+      const topic = `${lead.projectType} project at ${lead.address}`;
+      const draft = await draftClientEmail(lead.name, topic, 'professional');
+      addToast('Email draft generated successfully', 'success');
+      return draft;
+    } catch (error) {
+      console.error('Email draft error:', error);
+      addToast('Failed to generate email draft', 'error');
+    }
   };
 
   // --- ROUTING LOGIC ---
   const path = window.location.pathname.toLowerCase().replace(/\/$/, ''); 
   const hash = window.location.hash.toLowerCase().replace('#', '').replace(/\/$/, ''); 
-  
-  // This detects /onboarding OR /register
   const isOnboardingRoute = path === '/onboarding' || path === '/register' || hash === 'onboarding';
 
-  // --- REDIRECT IF LOGGED IN ---
-  useEffect(() => {
-      if (currentUser && isOnboardingRoute) {
-          window.history.pushState(null, '', '/'); 
-      }
-  }, [currentUser, isOnboardingRoute]);
-
-  // --- VIEW: ONBOARDING FUNNEL (UPDATED) ---
-  if (!currentUser && isOnboardingRoute) {
+  // --- VIEW: ONBOARDING FUNNEL ---
+  if (isOnboardingRoute) {
       return (
-         <Router>
+         <>
              <ToastContainer />
-             <TrialFunnel />
-         </Router>
+             <TrialFunnel /> 
+         </>
       )
   }
 
-  // --- VIEW: LOGIN SCREEN (Keep as is) ---
+  // --- VIEW: LOGIN SCREEN ---
   if (!currentUser) {
       return (
          <div className="h-full w-full bg-[#0F172A] relative overflow-y-auto flex flex-col">
@@ -131,7 +132,6 @@ const AppLayout: React.FC = () => {
                      <div className="mt-6 pt-6 border-t border-slate-100 text-center">
                          <p className="text-sm text-slate-500">
                              New Roofing Company? 
-                             {/* Updated to link to the correct route */}
                              <button onClick={() => window.location.href = '/onboarding'} className="ml-1 text-indigo-600 font-bold hover:underline">Start Free Trial</button>
                          </p>
                      </div>
@@ -145,14 +145,14 @@ const AppLayout: React.FC = () => {
       )
   }
 
-  // --- VIEW: SETUP WIZARD (Keep as is) ---
+  // --- VIEW: SETUP WIZARD ---
   const currentCompany = companies.find(c => c.id === currentUser.companyId);
   if (currentUser && currentCompany && !currentCompany.setupComplete) {
       return <div className="h-screen w-full bg-slate-50"><Onboarding /></div>;
   }
 
   // --- VIEW: DASHBOARD (Private) ---
-  const companyLeads = leads || [];
+  const companyLeads = leads || []; 
 
   return (
     <div className="flex h-screen bg-[#F8FAFC]">
@@ -160,7 +160,7 @@ const AppLayout: React.FC = () => {
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 z-10"></div>
+        {/* Mobile Header */}
         <div className="md:hidden sticky top-0 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-20 shadow-sm">
             <button onClick={() => setIsSidebarOpen(true)} className="text-slate-600 p-2 -ml-2"><Menu size={24} /></button>
             <span className="font-bold text-slate-800 flex items-center gap-2"><Zap className="text-blue-600 fill-blue-600" size={20} /> Rafter AI</span>
@@ -204,16 +204,13 @@ const AppLayout: React.FC = () => {
               return (
                 <div className="max-w-7xl mx-auto h-full flex flex-col">
                   {activeTab === Tab.DASHBOARD && <Dashboard currentUser={currentUser} />}
-
                   {activeTab === Tab.LEADS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.NEW, LeadStatus.INSPECTION].includes(l.status))} viewMode="leads" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
                   {activeTab === Tab.CLAIMS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.CLAIM_FILED, LeadStatus.ADJUSTER_MEETING, LeadStatus.APPROVED, LeadStatus.SUPPLEMENTING].includes(l.status))} viewMode="claims" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
                   {activeTab === Tab.JOBS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.PRODUCTION, LeadStatus.CLOSED].includes(l.status))} viewMode="jobs" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
-
                   {activeTab === Tab.ESTIMATES && <Estimator leads={companyLeads} onSaveEstimate={(id, est) => { const lead = companyLeads.find(l => l.id === id); if(lead) updateLead({ ...lead, estimates: [...(lead.estimates||[]), est] }); }} />}
                   {activeTab === Tab.CALENDAR && <CalendarView events={events || []} currentUser={currentUser} onAddEvent={addEvent} />}
                   {activeTab === Tab.TASKS && <TaskBoard tasks={tasks || []} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
                   {activeTab === Tab.INVOICES && <InvoiceSystem invoices={invoices || []} leads={companyLeads} currentUser={currentUser} onCreateInvoice={createInvoice} onUpdateStatus={updateInvoiceStatus} />}
-
                   {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}
                   {activeTab === Tab.AI_RECEPTIONIST && <AIReceptionist />}
                   {activeTab === Tab.AUTOMATIONS && <Automations />}
@@ -246,10 +243,13 @@ const AppLayout: React.FC = () => {
   );
 };
 
+// FIX: Wrapped App in BrowserRouter
 const App: React.FC = () => (
-    <StoreProvider>
-        <AppLayout />
-    </StoreProvider>
+    <BrowserRouter>
+        <StoreProvider>
+            <AppLayout />
+        </StoreProvider>
+    </BrowserRouter>
 )
 
 export default App;
