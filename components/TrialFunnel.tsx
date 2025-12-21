@@ -1,48 +1,88 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { ArrowRight, Building2, User, Mail, Lock, Sparkles, Loader2, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
+import { ArrowRight, Building2, User, Mail, Lock, Sparkles, Loader2, ShieldCheck, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { stripeProducts } from '../stripe-config'; // Adjust path if needed
+import { useNavigate } from 'react-router-dom';
+// FIX: Updated import path to point to src folder
+import { stripeProducts } from '../src/stripe-config'; 
 
+// Load Stripe using Vite env var
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
+// --- CHECKOUT FORM ---
 const CheckoutForm = ({ onSuccess, clientSecret }: { onSuccess: () => void, clientSecret: string }) => {
     const stripe = useStripe();
     const elements = useElements();
     const [message, setMessage] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isReady, setIsReady] = useState(false);
+
+    useEffect(() => {
+        if (stripe && elements) {
+            setIsReady(true);
+        }
+    }, [stripe, elements]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!stripe || !elements) return;
+        if (!stripe || !elements) {
+            setMessage("Payment system not ready. Please wait or refresh the page.");
+            return;
+        }
 
         setIsProcessing(true);
+        setMessage(null);
 
-        const { error } = await stripe.confirmSetup({
-            elements,
-            confirmParams: { return_url: window.location.origin + '/dashboard' },
-            redirect: 'if_required'
-        });
+        try {
+            let result;
+            // Detect if this is a Trial (Setup) or Payment (Payment Intent)
+            if (clientSecret.startsWith('seti_')) {
+                result = await stripe.confirmSetup({
+                    elements,
+                    confirmParams: { return_url: window.location.origin + '/dashboard' },
+                    redirect: 'if_required'
+                });
+            } else if (clientSecret.startsWith('pi_')) {
+                result = await stripe.confirmPayment({
+                    elements,
+                    confirmParams: { return_url: window.location.origin + '/dashboard' },
+                    redirect: 'if_required'
+                });
+            } else {
+                throw new Error("Invalid payment setup");
+            }
 
-        if (error) {
-            setMessage(error.message || "An unexpected error occurred.");
+            if (result.error) {
+                setMessage(result.error.message || "An unexpected error occurred.");
+                setIsProcessing(false);
+            } else {
+                onSuccess();
+            }
+        } catch (err: any) {
+            setMessage(err.message || "Payment processing failed");
             setIsProcessing(false);
-        } else {
-            onSuccess();
         }
     };
 
     return (
         <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-            <PaymentElement />
+            {!isReady && (
+                <div className="flex items-center justify-center py-8">
+                    <Loader2 className="animate-spin text-indigo-600" size={32} />
+                    <span className="ml-3 text-slate-600">Loading payment form...</span>
+                </div>
+            )}
+            <div className={!isReady ? 'opacity-0 h-0 overflow-hidden' : ''}>
+                <PaymentElement onReady={() => setIsReady(true)} />
+            </div>
             {message && (
                 <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-100">
                     <AlertCircle size={16} /> {message}
                 </div>
             )}
-            <button 
-                disabled={isProcessing || !stripe || !elements} 
+            <button
+                disabled={isProcessing || !isReady}
                 className="w-full bg-indigo-600 text-white py-4 rounded-xl text-lg font-bold hover:bg-indigo-700 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 transition-all"
             >
                 {isProcessing ? <Loader2 className="animate-spin" /> : 'Start 7-Day Free Trial'}
@@ -54,17 +94,31 @@ const CheckoutForm = ({ onSuccess, clientSecret }: { onSuccess: () => void, clie
     );
 };
 
+// --- MAIN FUNNEL ---
 export default function TrialFunnel() {
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [clientSecret, setClientSecret] = useState('');
-  const [selectedPlan, setSelectedPlan] = useState(stripeProducts[0]); 
+  
+  // Sort plans by price
+  const sortedProducts = [...stripeProducts].sort((a, b) => a.price_per_unit - b.price_per_unit);
+  const [selectedPlan, setSelectedPlan] = useState(sortedProducts[0]); 
+
   const [formData, setFormData] = useState({ companyName: '', name: '', email: '', password: '' });
 
-  const handlePlanSelection = async (plan: typeof stripeProducts[0]) => {
+  // Step 1 -> 2
+  const handleIdentitySubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if(!formData.companyName || !formData.email || !formData.password || !formData.name) return;
+      setStep(2);
+  };
+
+  // Step 2 -> 3 (Create Account & Initialize Stripe)
+  const handlePlanSelection = async (plan: typeof sortedProducts[0]) => {
     setSelectedPlan(plan);
     setLoading(true);
-    
+
     try {
         // 1. Create Auth User
         const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -140,7 +194,7 @@ export default function TrialFunnel() {
           </div>
 
           {step === 1 && (
-              <form onSubmit={(e) => { e.preventDefault(); setStep(2); }} className="space-y-5 animate-fade-in">
+              <form onSubmit={handleIdentitySubmit} className="space-y-5 animate-fade-in">
                   <div className="space-y-4">
                       <div className="relative group">
                           <Building2 className="absolute left-3 top-3.5 text-slate-400" size={20} />
@@ -168,7 +222,7 @@ export default function TrialFunnel() {
           {step === 2 && (
               <div className="animate-fade-in">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {stripeProducts.map((plan) => (
+                      {sortedProducts.map((plan) => (
                           <div key={plan.id} className="relative p-6 rounded-xl border-2 hover:border-indigo-300 hover:shadow-lg bg-white flex flex-col text-center transition-all">
                               <h3 className="font-bold text-slate-800 text-lg">{plan.name}</h3>
                               <div className="my-4">
