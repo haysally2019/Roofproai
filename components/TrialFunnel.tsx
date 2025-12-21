@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { ArrowRight, Building2, User, Mail, Lock, Sparkles, Loader2, ShieldCheck, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
@@ -6,10 +6,10 @@ import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { stripeProducts } from '../src/stripe-config';
 
-// Load Stripe
+// Load Stripe using Vite env var
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
-// --- CHECKOUT FORM COMPONENT ---
+// --- CHECKOUT FORM ---
 const CheckoutForm = ({ onSuccess, clientSecret }: { onSuccess: () => void, clientSecret: string }) => {
     const stripe = useStripe();
     const elements = useElements();
@@ -22,27 +22,24 @@ const CheckoutForm = ({ onSuccess, clientSecret }: { onSuccess: () => void, clie
 
         setIsProcessing(true);
 
-        let error;
-        // Fix: Detect if this is a Trial (Setup Intent) or Payment (Payment Intent)
-        // Setup Intents always start with 'seti_', Payment Intents start with 'pi_'
+        let result;
+        // Fix: Detect if this is a Trial (Setup) or Payment (Payment Intent)
         if (clientSecret.startsWith('seti_')) {
-            const result = await stripe.confirmSetup({
+            result = await stripe.confirmSetup({
                 elements,
                 confirmParams: { return_url: window.location.origin + '/dashboard' },
                 redirect: 'if_required'
             });
-            error = result.error;
         } else {
-            const result = await stripe.confirmPayment({
+            result = await stripe.confirmPayment({
                 elements,
                 confirmParams: { return_url: window.location.origin + '/dashboard' },
                 redirect: 'if_required'
             });
-            error = result.error;
         }
 
-        if (error) {
-            setMessage(error.message || "An unexpected error occurred.");
+        if (result.error) {
+            setMessage(result.error.message || "An unexpected error occurred.");
             setIsProcessing(false);
         } else {
             onSuccess();
@@ -51,7 +48,7 @@ const CheckoutForm = ({ onSuccess, clientSecret }: { onSuccess: () => void, clie
 
     return (
         <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-            <PaymentElement options={{layout: 'tabs'}} />
+            <PaymentElement />
             {message && (
                 <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-100">
                     <AlertCircle size={16} /> {message}
