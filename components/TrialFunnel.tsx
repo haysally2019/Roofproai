@@ -16,47 +16,73 @@ const CheckoutForm = ({ onSuccess, clientSecret }: { onSuccess: () => void, clie
     const elements = useElements();
     const [message, setMessage] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isReady, setIsReady] = useState(false);
+
+    useEffect(() => {
+        if (stripe && elements) {
+            setIsReady(true);
+        }
+    }, [stripe, elements]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!stripe || !elements) return;
-
-        setIsProcessing(true);
-
-        let result;
-        // Fix: Detect if this is a Trial (Setup) or Payment (Payment Intent)
-        if (clientSecret.startsWith('seti_')) {
-            result = await stripe.confirmSetup({
-                elements,
-                confirmParams: { return_url: window.location.origin + '/dashboard' },
-                redirect: 'if_required'
-            });
-        } else {
-            result = await stripe.confirmPayment({
-                elements,
-                confirmParams: { return_url: window.location.origin + '/dashboard' },
-                redirect: 'if_required'
-            });
+        if (!stripe || !elements) {
+            setMessage("Payment system not ready. Please wait or refresh the page.");
+            return;
         }
 
-        if (result.error) {
-            setMessage(result.error.message || "An unexpected error occurred.");
+        setIsProcessing(true);
+        setMessage(null);
+
+        try {
+            let result;
+            // Detect if this is a Trial (Setup) or Payment (Payment Intent)
+            if (clientSecret.startsWith('seti_')) {
+                result = await stripe.confirmSetup({
+                    elements,
+                    confirmParams: { return_url: window.location.origin + '/dashboard' },
+                    redirect: 'if_required'
+                });
+            } else if (clientSecret.startsWith('pi_')) {
+                result = await stripe.confirmPayment({
+                    elements,
+                    confirmParams: { return_url: window.location.origin + '/dashboard' },
+                    redirect: 'if_required'
+                });
+            } else {
+                throw new Error("Invalid payment setup");
+            }
+
+            if (result.error) {
+                setMessage(result.error.message || "An unexpected error occurred.");
+                setIsProcessing(false);
+            } else {
+                onSuccess();
+            }
+        } catch (err: any) {
+            setMessage(err.message || "Payment processing failed");
             setIsProcessing(false);
-        } else {
-            onSuccess();
         }
     };
 
     return (
         <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-            <PaymentElement />
+            {!isReady && (
+                <div className="flex items-center justify-center py-8">
+                    <Loader2 className="animate-spin text-indigo-600" size={32} />
+                    <span className="ml-3 text-slate-600">Loading payment form...</span>
+                </div>
+            )}
+            <div className={!isReady ? 'opacity-0 h-0 overflow-hidden' : ''}>
+                <PaymentElement onReady={() => setIsReady(true)} />
+            </div>
             {message && (
                 <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-100">
                     <AlertCircle size={16} /> {message}
                 </div>
             )}
-            <button 
-                disabled={isProcessing || !stripe || !elements} 
+            <button
+                disabled={isProcessing || !isReady}
                 className="w-full bg-indigo-600 text-white py-4 rounded-xl text-lg font-bold hover:bg-indigo-700 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 transition-all"
             >
                 {isProcessing ? <Loader2 className="animate-spin" /> : 'Start 7-Day Free Trial'}
@@ -143,13 +169,20 @@ export default function TrialFunnel() {
             }
         });
 
+        console.log('Stripe function response:', response);
+
         if (response.error) {
-            const errBody = await response.error.context.json().catch(() => ({}));
+            console.error('Stripe function error:', response.error);
+            const errBody = await response.error.context?.json().catch(() => ({}));
             throw new Error(errBody.error || "Payment service unavailable");
         }
 
-        if (!response.data?.clientSecret) throw new Error("Failed to initialize payment");
+        if (!response.data?.clientSecret) {
+            console.error('No client secret in response:', response.data);
+            throw new Error("Failed to initialize payment");
+        }
 
+        console.log('Client secret received:', response.data.clientSecret.substring(0, 10) + '...');
         setClientSecret(response.data.clientSecret);
         setLoading(false);
         setStep(3);
