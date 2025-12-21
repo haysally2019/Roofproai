@@ -1,49 +1,68 @@
-export const stripeProducts = [
+export interface StripeProduct {
+  id: string;
+  priceId: string;
+  name: string;
+  description: string;
+  price_per_unit: number;
+  currency_symbol: string;
+  mode: 'subscription' | 'payment';
+  features: string[]; // Added this
+  popular?: boolean;  // Added this
+}
+
+export const stripeProducts: StripeProduct[] = [
   {
-    id: 'price_1QVL36Gj4L7Wq3yVqX9X9X9X', // Replace with your actual live price IDs
-    priceId: 'price_1QVL36Gj4L7Wq3yVqX9X9X9X',
+    id: 'prod_starter',
+    priceId: 'price_1QVL36Gj4L7Wq3yVqX9X9X9X', // Replace with real ID
     name: 'Starter',
-    description: 'Perfect for independent contractors starting out.',
+    description: 'For independent contractors.',
     price_per_unit: 99,
+    currency_symbol: '$',
+    mode: 'subscription',
     features: [
-      "AI Lead Capture (up to 50/mo)",
-      "Basic Storm Damage Analysis",
-      "Automated Email Follow-ups",
-      "1 User Seat",
-      "Standard Support"
+      "50 AI Leads / mo",
+      "Basic Estimates",
+      "Email Support",
+      "1 User"
     ],
     popular: false
   },
   {
-    id: 'price_1QVL3nGj4L7Wq3yVrBrBrBrB', // Replace with your actual live price IDs
-    priceId: 'price_1QVL3nGj4L7Wq3yVrBrBrBrB',
+    id: 'prod_pro',
+    priceId: 'price_1QVL3nGj4L7Wq3yVrBrBrBrB', // Replace with real ID
     name: 'Pro',
-    description: 'For growing teams needing advanced automation.',
+    description: 'For growing roofing teams.',
     price_per_unit: 199,
+    currency_symbol: '$',
+    mode: 'subscription',
     features: [
-      "Unlimited AI Lead Capture",
+      "Unlimited AI Leads",
       "Advanced Damage Detection",
-      "Full CRM Integration",
-      "Team Management (5 Seats)",
-      "Priority 24/7 Support",
-      "Custom Contract Generation"
+      "CRM & Calendar",
+      "5 Users",
+      "Priority Support"
     ],
     popular: true
   },
   {
-    id: 'price_1QVL4CGj4L7Wq3yVsCsCsCsC', // Replace with your actual live price IDs
-    priceId: 'price_1QVL4CGj4L7Wq3yVsCsCsCsC',
+    id: 'prod_enterprise',
+    priceId: 'price_1QVL4CGj4L7Wq3yVsCsCsCsC', // Replace with real ID
     name: 'Enterprise',
-    description: 'Full-scale solution for multi-location roofing co.',
+    description: 'For multi-location companies.',
     price_per_unit: 399,
+    currency_symbol: '$',
+    mode: 'subscription',
     features: [
-      "Everything in Pro",
-      "Dedicated Account Manager",
+      "All Pro Features",
       "API Access",
-      "White-label Reports",
-      "Unlimited Seats",
-      "On-site Training Options"
+      "White-labeling",
+      "Unlimited Users",
+      "Dedicated Manager"
     ],
     popular: false
   }
 ];
+
+export function getProductByPriceId(priceId: string): StripeProduct | undefined {
+  return stripeProducts.find(product => product.priceId === priceId);
+}
