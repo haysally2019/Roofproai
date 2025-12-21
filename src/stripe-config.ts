@@ -1,43 +1,49 @@
-export interface StripeProduct {
-  id: string;
-  priceId: string;
-  name: string;
-  description: string;
-  price_per_unit: number;
-  currency_symbol: string;
-  mode: 'subscription' | 'payment';
-}
-
-export const stripeProducts: StripeProduct[] = [
+export const stripeProducts = [
   {
-    id: 'prod_TdojIz2a7nj6JY',
-    priceId: 'price_1SgX6FPi0ycIAEpYUM5UikDS',
-    name: 'Enterprise',
-    description: 'unlimited users',
-    price_per_unit: 999.00,
-    currency_symbol: '$',
-    mode: 'subscription'
-  },
-  {
-    id: 'prod_TdojAdvpSadlK4',
-    priceId: 'price_1SgX5hPi0ycIAEpYimplJjy5',
-    name: 'Professional',
-    description: '15 user max',
-    price_per_unit: 499.00,
-    currency_symbol: '$',
-    mode: 'subscription'
-  },
-  {
-    id: 'prod_Tdogb5iSgVDyua',
-    priceId: 'price_1SgX3WPi0ycIAEpYb38zmYPK',
+    id: 'price_1QVL36Gj4L7Wq3yVqX9X9X9X', // Replace with your actual live price IDs
+    priceId: 'price_1QVL36Gj4L7Wq3yVqX9X9X9X',
     name: 'Starter',
-    description: '5 user max',
-    price_per_unit: 199.00,
-    currency_symbol: '$',
-    mode: 'subscription'
+    description: 'Perfect for independent contractors starting out.',
+    price_per_unit: 99,
+    features: [
+      "AI Lead Capture (up to 50/mo)",
+      "Basic Storm Damage Analysis",
+      "Automated Email Follow-ups",
+      "1 User Seat",
+      "Standard Support"
+    ],
+    popular: false
+  },
+  {
+    id: 'price_1QVL3nGj4L7Wq3yVrBrBrBrB', // Replace with your actual live price IDs
+    priceId: 'price_1QVL3nGj4L7Wq3yVrBrBrBrB',
+    name: 'Pro',
+    description: 'For growing teams needing advanced automation.',
+    price_per_unit: 199,
+    features: [
+      "Unlimited AI Lead Capture",
+      "Advanced Damage Detection",
+      "Full CRM Integration",
+      "Team Management (5 Seats)",
+      "Priority 24/7 Support",
+      "Custom Contract Generation"
+    ],
+    popular: true
+  },
+  {
+    id: 'price_1QVL4CGj4L7Wq3yVsCsCsCsC', // Replace with your actual live price IDs
+    priceId: 'price_1QVL4CGj4L7Wq3yVsCsCsCsC',
+    name: 'Enterprise',
+    description: 'Full-scale solution for multi-location roofing co.',
+    price_per_unit: 399,
+    features: [
+      "Everything in Pro",
+      "Dedicated Account Manager",
+      "API Access",
+      "White-label Reports",
+      "Unlimited Seats",
+      "On-site Training Options"
+    ],
+    popular: false
   }
 ];
-
-export function getProductByPriceId(priceId: string): StripeProduct | undefined {
-  return stripeProducts.find(product => product.priceId === priceId);
-}
