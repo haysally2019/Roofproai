@@ -15,18 +15,22 @@ export function LoginForm() {
     setMessage(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log('Attempting login for:', email);
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
+        console.error('Login error:', error);
         setMessage({ type: 'error', text: error.message });
       } else {
+        console.log('Login successful:', data.user?.email);
         setMessage({ type: 'success', text: 'Login successful!' });
-        navigate('/dashboard');
+        setTimeout(() => navigate('/dashboard'), 500);
       }
     } catch (error) {
+      console.error('Unexpected login error:', error);
       setMessage({ type: 'error', text: 'An unexpected error occurred' });
     } finally {
       setLoading(false);
