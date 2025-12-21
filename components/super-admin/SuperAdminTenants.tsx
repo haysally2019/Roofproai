@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Company, User, UserRole, SubscriptionTier } from '../../types';
 import { Plus, Users, Zap, Search, Mail, User as UserIcon, X, Trash2, Edit2, CheckCircle, Copy, Key, Settings, CreditCard, ShieldAlert, Activity, FileText } from 'lucide-react';
 import { useStore } from '../../lib/store';
+import { SUBSCRIPTION_PLANS } from '../../lib/constants'; // [!code ++]
 
 interface Props {
   companies: Company[];
@@ -28,7 +29,7 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
   const [userForm, setUserForm] = useState<Partial<User>>({ name: '', email: '', role: 'Staff' });
   const [isEditingUser, setIsEditingUser] = useState(false);
   
-  // Settings Management State (New)
+  // Settings Management State
   const [settingsCompany, setSettingsCompany] = useState<Company | null>(null);
   const [settingsTab, setSettingsTab] = useState<'Subscription' | 'Billing' | 'Danger'>('Subscription');
 
@@ -59,8 +60,14 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
   // --- SETTINGS ACTIONS ---
   const handleUpdateSubscription = (tier: SubscriptionTier) => {
       if (settingsCompany) {
-          updateCompany({ id: settingsCompany.id, tier });
-          setSettingsCompany({ ...settingsCompany, tier }); // Optimistic update for modal
+          // Calculate new max users based on the selected tier
+          const plan = Object.values(SUBSCRIPTION_PLANS).find(p => p.name === tier);
+          const newMaxUsers = plan ? plan.maxUsers : 3; // Default fallback
+
+          updateCompany({ id: settingsCompany.id, tier, maxUsers: newMaxUsers });
+          
+          // Optimistically update local state for immediate feedback in the modal
+          setSettingsCompany({ ...settingsCompany, tier, maxUsers: newMaxUsers });
       }
   };
 
@@ -259,6 +266,7 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                                     <div>
                                         <p className="text-xs font-bold text-indigo-800 uppercase">Current Plan</p>
                                         <p className="text-lg font-bold text-indigo-900">{settingsCompany.tier}</p>
+                                        <p className="text-xs text-indigo-700 mt-1">User Limit: {settingsCompany.maxUsers === 999 ? 'Unlimited' : settingsCompany.maxUsers} Seats</p>
                                     </div>
                                 </div>
                                 <div>
@@ -268,9 +276,9 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                                         onChange={(e) => handleUpdateSubscription(e.target.value as SubscriptionTier)}
                                         className="w-full p-3 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                                     >
-                                        <option value="Starter">Starter - $99/mo</option>
-                                        <option value="Professional">Professional - $199/mo</option>
-                                        <option value="Enterprise">Enterprise - $499/mo</option>
+                                        <option value="Starter">Starter - $99/mo (5 Users)</option>
+                                        <option value="Professional">Professional - $199/mo (15 Users)</option>
+                                        <option value="Enterprise">Enterprise - $499/mo (Unlimited)</option>
                                     </select>
                                     <p className="text-xs text-slate-500 mt-2">Plan changes apply immediately. Prorated charges will appear on next invoice.</p>
                                 </div>
