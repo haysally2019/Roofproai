@@ -4,7 +4,8 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 import { ArrowRight, Building2, User, Mail, Lock, Sparkles, Loader2, ShieldCheck, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
-import { stripeProducts } from '../stripe-config'; // <--- FIX: Corrected Import Path
+// FIX: Point to 'src' folder explicitly
+import { stripeProducts } from '../src/stripe-config'; 
 
 // Load Stripe using Vite env var
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
