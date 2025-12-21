@@ -6,58 +6,61 @@ export interface StripeProduct {
   price_per_unit: number;
   currency_symbol: string;
   mode: 'subscription' | 'payment';
-  features: string[]; // Added this
-  popular?: boolean;  // Added this
+  features: string[]; 
+  popular?: boolean;
 }
 
 export const stripeProducts: StripeProduct[] = [
   {
-    id: 'prod_starter',
-    priceId: 'price_1QVL36Gj4L7Wq3yVqX9X9X9X', // Replace with real ID
+    id: 'prod_Tdogb5iSgVDyua',
+    priceId: 'price_1SgX3WPi0ycIAEpYb38zmYPK', // Real ID from your dashboard
     name: 'Starter',
-    description: 'For independent contractors.',
-    price_per_unit: 99,
+    description: '5 user max',
+    price_per_unit: 199.00,
     currency_symbol: '$',
     mode: 'subscription',
     features: [
-      "50 AI Leads / mo",
-      "Basic Estimates",
+      "5 User Seats",
+      "Basic AI Estimator",
       "Email Support",
-      "1 User"
+      "Lead Management",
+      "Task Tracking"
     ],
     popular: false
   },
   {
-    id: 'prod_pro',
-    priceId: 'price_1QVL3nGj4L7Wq3yVrBrBrBrB', // Replace with real ID
-    name: 'Pro',
-    description: 'For growing roofing teams.',
-    price_per_unit: 199,
+    id: 'prod_TdojAdvpSadlK4',
+    priceId: 'price_1SgX5hPi0ycIAEpYimplJjy5', // Real ID from your dashboard
+    name: 'Professional',
+    description: '15 user max',
+    price_per_unit: 499.00,
     currency_symbol: '$',
     mode: 'subscription',
     features: [
-      "Unlimited AI Leads",
-      "Advanced Damage Detection",
-      "CRM & Calendar",
-      "5 Users",
-      "Priority Support"
+      "15 User Seats",
+      "Advanced AI Vision",
+      "Priority 24/7 Support",
+      "Full CRM Automation",
+      "QuickBooks Integration",
+      "Advanced Reporting"
     ],
     popular: true
   },
   {
-    id: 'prod_enterprise',
-    priceId: 'price_1QVL4CGj4L7Wq3yVsCsCsCsC', // Replace with real ID
+    id: 'prod_TdojIz2a7nj6JY',
+    priceId: 'price_1SgX6FPi0ycIAEpYUM5UikDS', // Real ID from your dashboard
     name: 'Enterprise',
-    description: 'For multi-location companies.',
-    price_per_unit: 399,
+    description: 'unlimited users',
+    price_per_unit: 999.00,
     currency_symbol: '$',
     mode: 'subscription',
     features: [
-      "All Pro Features",
-      "API Access",
-      "White-labeling",
       "Unlimited Users",
-      "Dedicated Manager"
+      "Dedicated Success Manager",
+      "Custom API Access",
+      "White-label Reports",
+      "On-site Training",
+      "Multi-location Support"
     ],
     popular: false
   }
