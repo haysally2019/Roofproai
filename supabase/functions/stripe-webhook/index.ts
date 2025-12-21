@@ -40,7 +40,6 @@ Deno.serve(async (req) => {
         break;
         
       case 'invoice.payment_succeeded':
-        // Optional: Update subscription status immediately on payment success if needed
         const invoice = event.data.object;
         if (invoice.subscription) {
            await handleSubscriptionChange(await stripe.subscriptions.retrieve(invoice.subscription as string));
@@ -59,7 +58,7 @@ Deno.serve(async (req) => {
 
 async function handleSubscriptionChange(subscription: any) {
   const customerId = subscription.customer;
-  
+
   const { error } = await supabase.from('stripe_subscriptions').upsert(
     {
       customer_id: customerId,
@@ -69,23 +68,54 @@ async function handleSubscriptionChange(subscription: any) {
       current_period_start: subscription.current_period_start,
       current_period_end: subscription.current_period_end,
       cancel_at_period_end: subscription.cancel_at_period_end,
-      // Handle payment method details if available
-      ...(subscription.default_payment_method && typeof subscription.default_payment_method !== 'string' 
+      ...(subscription.default_payment_method && typeof subscription.default_payment_method !== 'string'
           ? {
               payment_method_brand: subscription.default_payment_method.card?.brand,
               payment_method_last4: subscription.default_payment_method.card?.last4
-            } 
+            }
           : {})
     },
     { onConflict: 'customer_id' }
   );
 
-  if (error) console.error('Error syncing subscription:', error);
-  else console.info(`Synced subscription ${subscription.id} for customer ${customerId}`);
+  if (error) {
+    console.error('Error syncing subscription:', error);
+    return;
+  }
+
+  console.info(`Synced subscription ${subscription.id} for customer ${customerId}`);
+
+  // Update company status when subscription becomes active or trialing
+  if (subscription.status === 'trialing' || subscription.status === 'active') {
+    const { data: customer } = await supabase
+      .from('stripe_customers')
+      .select('user_id')
+      .eq('customer_id', customerId)
+      .maybeSingle();
+
+    if (customer?.user_id) {
+      const { data: user } = await supabase
+        .from('users')
+        .select('companyId')
+        .eq('id', customer.user_id)
+        .maybeSingle();
+
+      if (user?.companyId) {
+        await supabase
+          .from('companies')
+          .update({
+            status: subscription.status === 'trialing' ? 'Trial' : 'Active',
+            setupComplete: true
+          })
+          .eq('id', user.companyId);
+
+        console.info(`Updated company ${user.companyId} status to ${subscription.status}`);
+      }
+    }
+  }
 }
 
 async function syncCustomerFromStripe(customerId: string) {
-  // Same logic as before, retrieves fresh data from Stripe
   const subscriptions = await stripe.subscriptions.list({
     customer: customerId,
     limit: 1,

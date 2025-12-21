@@ -92,7 +92,7 @@ export default function TrialFunnel() {
   const handlePlanSelection = async (plan: typeof sortedProducts[0]) => {
     setSelectedPlan(plan);
     setLoading(true);
-    
+
     try {
         // 1. Create User
         const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -102,28 +102,44 @@ export default function TrialFunnel() {
         });
 
         if (authError) throw authError;
+        if (!authData.user) throw new Error("Failed to create user");
 
-        // 2. Create DB Records (User & Company)
-        if (authData.user) {
-             await supabase.from('users').insert({
+        // 2. Create Company First
+        const { data: companyData, error: companyError } = await supabase
+            .from('companies')
+            .insert({
+                name: formData.companyName,
+                status: 'Trial',
+                tier: plan.name,
+                setupComplete: false
+            })
+            .select()
+            .single();
+
+        if (companyError || !companyData) {
+            throw new Error("Failed to create company: " + (companyError?.message || "Unknown error"));
+        }
+
+        // 3. Create User Record with Company Link
+        const { error: userError } = await supabase
+            .from('users')
+            .insert({
                 id: authData.user.id,
                 name: formData.name,
                 email: formData.email,
-                role: 'Company Owner'
+                role: 'Company Owner',
+                companyId: companyData.id
             });
-            
-            await supabase.from('companies').insert({
-                name: formData.companyName,
-                status: 'Pending', 
-                tier: plan.name
-            });
+
+        if (userError) {
+            throw new Error("Failed to create user profile: " + userError.message);
         }
 
-        // 3. Get Stripe Secret
+        // 4. Get Stripe Client Secret
         const response = await supabase.functions.invoke('create-embedded-subscription', {
-            body: { 
+            body: {
                 priceId: plan.priceId,
-                email: formData.email 
+                email: formData.email
             }
         });
 
@@ -136,7 +152,7 @@ export default function TrialFunnel() {
 
         setClientSecret(response.data.clientSecret);
         setLoading(false);
-        setStep(3); // Go to Payment
+        setStep(3);
 
     } catch (error: any) {
         console.error("Setup Error:", error);
@@ -248,7 +264,9 @@ export default function TrialFunnel() {
                   
                   <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe', variables: { colorPrimary: '#4f46e5', borderRadius: '12px' } } }}>
                       {/* Pass clientSecret to form so it knows which confirm method to use */}
-                      <CheckoutForm clientSecret={clientSecret} onSuccess={() => window.location.href = '/'} />
+                      <CheckoutForm clientSecret={clientSecret} onSuccess={() => {
+                        window.location.href = '/';
+                      }} />
                   </Elements>
               </div>
           )}
