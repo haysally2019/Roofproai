@@ -71,7 +71,7 @@ serve(async (req) => {
         subscription.pending_setup_intent?.client_secret || 
         subscription.latest_invoice?.payment_intent?.client_secret;
 
-    if (!clientSecret) throw new Error("Stripe failed to generate a secret. Check if Price ID is correct.");
+    if (!clientSecret) throw new Error("Stripe failed to generate a payment secret.");
 
     return new Response(
       JSON.stringify({ 
