@@ -64,7 +64,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Generate Link & Create User
-    const origin = req.headers.get("origin") || "https://your-app-url.com";
+    const origin = req.headers.get("origin") || "https://rafterai.online";
     
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: "invite",
@@ -96,16 +96,21 @@ Deno.serve(async (req: Request) => {
       throw new Error("Failed to create user profile: " + insertError.message);
     }
 
-    // Try to send email via Resend (non-blocking)
+    // Try to send email via Resend
     let emailSent = false;
     let emailError = null;
     
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    console.log("Resend API Key exists:", !!resendApiKey);
+    
     if (resendApiKey) {
       try {
         const resend = new Resend(resendApiKey);
+        console.log("Attempting to send email to:", email);
+        console.log("From address: invites@rafterai.online");
+        
         const emailResponse = await resend.emails.send({
-          from: "Rafter AI <onboarding@resend.dev>",
+          from: "Rafter AI <invites@rafterai.online>",
           to: email,
           subject: "You have been invited to join Rafter AI",
           html: `
@@ -121,17 +126,24 @@ Deno.serve(async (req: Request) => {
           `
         });
 
+        console.log("Resend API response:", JSON.stringify(emailResponse));
+
         if (emailResponse.error) {
           console.error("Resend Error:", emailResponse.error);
           emailError = JSON.stringify(emailResponse.error);
-        } else {
+        } else if (emailResponse.data) {
+          console.log("Email sent successfully! ID:", emailResponse.data.id);
           emailSent = true;
+        } else {
+          emailError = "No data or error in response";
         }
       } catch (error: any) {
-        console.error("Email sending error:", error);
-        emailError = error.message;
+        console.error("Email sending exception:", error);
+        console.error("Error details:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+        emailError = error.message || error.toString();
       }
     } else {
+      console.error("RESEND_API_KEY environment variable not found");
       emailError = "RESEND_API_KEY not configured";
     }
 
