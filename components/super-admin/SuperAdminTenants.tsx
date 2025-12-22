@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Company, User, UserRole, SubscriptionTier } from '../../types';
 import { Plus, Users, Zap, Search, Mail, User as UserIcon, X, Trash2, Edit2, CheckCircle, Copy, Key, Settings, CreditCard, ShieldAlert, Activity, FileText } from 'lucide-react';
 import { useStore } from '../../lib/store';
-import { SUBSCRIPTION_PLANS } from '../../lib/constants'; // [!code ++]
+import { SUBSCRIPTION_PLANS } from '../../lib/constants'; // <--- IMPORT THIS
 
 interface Props {
   companies: Company[];
@@ -24,8 +24,8 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
   const [searchQuery, setSearchQuery] = useState('');
 
   // User Management State
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null); // For viewing users
-  const [showUserModal, setShowUserModal] = useState(false); // To add/edit user
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null); 
+  const [showUserModal, setShowUserModal] = useState(false);
   const [userForm, setUserForm] = useState<Partial<User>>({ name: '', email: '', role: 'Staff' });
   const [isEditingUser, setIsEditingUser] = useState(false);
   
@@ -33,7 +33,7 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
   const [settingsCompany, setSettingsCompany] = useState<Company | null>(null);
   const [settingsTab, setSettingsTab] = useState<'Subscription' | 'Billing' | 'Danger'>('Subscription');
 
-  // Success State (New User Credentials)
+  // Success State
   const [createdUserCreds, setCreatedUserCreds] = useState<{email: string, password: string} | null>(null);
 
   useEffect(() => {
@@ -60,14 +60,8 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
   // --- SETTINGS ACTIONS ---
   const handleUpdateSubscription = (tier: SubscriptionTier) => {
       if (settingsCompany) {
-          // Calculate new max users based on the selected tier
-          const plan = Object.values(SUBSCRIPTION_PLANS).find(p => p.name === tier);
-          const newMaxUsers = plan ? plan.maxUsers : 3; // Default fallback
-
-          updateCompany({ id: settingsCompany.id, tier, maxUsers: newMaxUsers });
-          
-          // Optimistically update local state for immediate feedback in the modal
-          setSettingsCompany({ ...settingsCompany, tier, maxUsers: newMaxUsers });
+          updateCompany({ id: settingsCompany.id, tier });
+          setSettingsCompany({ ...settingsCompany, tier });
       }
   };
 
@@ -75,7 +69,7 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
       if (settingsCompany) {
           const newStatus = settingsCompany.status === 'Active' ? 'Suspended' : 'Active';
           updateCompany({ id: settingsCompany.id, status: newStatus });
-          setSettingsCompany(null); // Close modal on status change
+          setSettingsCompany(null);
       }
   };
 
@@ -121,13 +115,6 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
   };
 
   const copyToClipboard = (text: string) => navigator.clipboard.writeText(text);
-
-  // Mock Billing History
-  const mockInvoices = [
-      { id: 'inv-001', date: '2024-12-01', amount: '$199.00', status: 'Paid' },
-      { id: 'inv-002', date: '2024-11-01', amount: '$199.00', status: 'Paid' },
-      { id: 'inv-003', date: '2024-10-01', amount: '$199.00', status: 'Paid' },
-  ];
 
   return (
     <div>
@@ -228,10 +215,16 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                         <input value={companyForm.address} onChange={e => setCompanyForm({...companyForm, address: e.target.value})} placeholder="Address" className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"/>
                         <div className="grid grid-cols-2 gap-4">
                             <input value={companyForm.phone} onChange={e => setCompanyForm({...companyForm, phone: e.target.value})} placeholder="Phone" className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"/>
-                            <select value={companyForm.tier} onChange={e => setCompanyForm({...companyForm, tier: e.target.value})} className="w-full p-2.5 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500">
-                                <option value="Starter">Starter</option>
-                                <option value="Professional">Professional</option>
-                                <option value="Enterprise">Enterprise</option>
+                            
+                            {/* DYNAMIC PLAN SELECTION */}
+                            <select 
+                                value={companyForm.tier} 
+                                onChange={e => setCompanyForm({...companyForm, tier: e.target.value})} 
+                                className="w-full p-2.5 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                            >
+                                {Object.values(SUBSCRIPTION_PLANS).map(plan => (
+                                    <option key={plan.id} value={plan.name}>{plan.name}</option>
+                                ))}
                             </select>
                         </div>
                     </div>
@@ -266,19 +259,22 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                                     <div>
                                         <p className="text-xs font-bold text-indigo-800 uppercase">Current Plan</p>
                                         <p className="text-lg font-bold text-indigo-900">{settingsCompany.tier}</p>
-                                        <p className="text-xs text-indigo-700 mt-1">User Limit: {settingsCompany.maxUsers === 999 ? 'Unlimited' : settingsCompany.maxUsers} Seats</p>
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-2">Change Plan Tier</label>
+                                    
+                                    {/* DYNAMIC PLAN UPDATER */}
                                     <select 
                                         value={settingsCompany.tier} 
                                         onChange={(e) => handleUpdateSubscription(e.target.value as SubscriptionTier)}
                                         className="w-full p-3 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                                     >
-                                        <option value="Starter">Starter - $99/mo (5 Users)</option>
-                                        <option value="Professional">Professional - $199/mo (15 Users)</option>
-                                        <option value="Enterprise">Enterprise - $499/mo (Unlimited)</option>
+                                        {Object.values(SUBSCRIPTION_PLANS).map(plan => (
+                                            <option key={plan.id} value={plan.name}>
+                                                {plan.name} - ${plan.price}/mo
+                                            </option>
+                                        ))}
                                     </select>
                                     <p className="text-xs text-slate-500 mt-2">Plan changes apply immediately. Prorated charges will appear on next invoice.</p>
                                 </div>
@@ -286,25 +282,9 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                         )}
 
                         {settingsTab === 'Billing' && (
-                            <div>
-                                <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><CreditCard size={18}/> Payment History</h4>
-                                <div className="border rounded-lg overflow-hidden">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-slate-50 font-bold text-slate-500">
-                                            <tr><th className="p-3">Date</th><th className="p-3">Amount</th><th className="p-3">Status</th><th className="p-3 text-right">Invoice</th></tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {mockInvoices.map(inv => (
-                                                <tr key={inv.id}>
-                                                    <td className="p-3">{inv.date}</td>
-                                                    <td className="p-3">{inv.amount}</td>
-                                                    <td className="p-3"><span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-bold">{inv.status}</span></td>
-                                                    <td className="p-3 text-right text-indigo-600 hover:underline cursor-pointer"><FileText size={16} className="inline"/></td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                            <div className="text-center py-8 text-slate-400">
+                                <CreditCard size={48} className="mx-auto mb-3 opacity-20"/>
+                                <p>No billing history available.</p>
                             </div>
                         )}
 
