@@ -97,10 +97,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const loadUserProfile = async (userId: string, retryCount = 0) => {
     try {
-      // PATCH: Replaced 'companies!users_company_id_fkey(*)' with 'companies(*)' to avoid FK naming errors
+      // Improved Query: Explicitly load users first, then handle company relation
       const { data, error } = await supabase
         .from('users')
-        .select('*, companies(*)')
+        .select(`
+            *,
+            companies:company_id (*)
+        `)
         .eq('id', userId)
         .maybeSingle();
 
@@ -117,93 +120,99 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         setCurrentUser(user);
 
+        // Load specific data based on role
         if (user.role === UserRole.SUPER_ADMIN) {
-            const [companiesRes, usersRes] = await Promise.all([
-                supabase.from('companies').select('*').order('created_at', { ascending: false }),
-                supabase.from('users').select('*').order('created_at', { ascending: false })
-            ]);
-
-            if (companiesRes.data) {
-                setCompanies(companiesRes.data.map((c: any) => ({
-                    id: c.id,
-                    name: c.name,
-                    tier: c.tier as SubscriptionTier,
-                    userCount: c.user_count,
-                    maxUsers: c.max_users,
-                    status: c.status,
-                    renewalDate: c.renewal_date,
-                    address: c.address,
-                    logoUrl: c.logo_url,
-                    setupComplete: c.setup_complete,
-                    phone: c.phone,
-                    agentConfig: c.agent_config,
-                    integrations: c.integrations
-                })));
-            }
-
-            if (usersRes.data) {
-                setUsers(usersRes.data.map((u: any) => ({
-                    id: u.id,
-                    name: u.name,
-                    email: u.email,
-                    role: u.role as UserRole,
-                    companyId: u.company_id,
-                    avatarInitials: u.avatar_initials || (u.name ? u.name.slice(0, 2).toUpperCase() : '??')
-                })));
-            }
+            await loadSuperAdminData(user.id);
+        } else if (data.company_id) {
+            // Handle the case where companies might be returned as an object or array
+            const companyData = Array.isArray(data.companies) ? data.companies[0] : data.companies;
             
-             if (softwareLeads.length === 0) {
-                setSoftwareLeads([
-                  { id: 'sl-1', companyName: 'Apex Roofing', contactName: 'John Smith', email: 'john@apex.com', phone: '555-0101', status: 'Demo Booked', potentialUsers: 5, assignedTo: user.id, notes: 'Interested in AI', createdAt: new Date().toISOString() },
-                  { id: 'sl-2', companyName: 'Best Top Roofs', contactName: 'Sarah Lee', email: 'sarah@besttop.com', phone: '555-0102', status: 'Prospect', potentialUsers: 12, assignedTo: user.id, notes: 'Cold outreach', createdAt: new Date().toISOString() },
-                ]);
-            }
-
-        } else {
-            if (data.companies) {
-              const company: Company = {
-                id: data.companies.id,
-                name: data.companies.name,
-                tier: data.companies.tier as SubscriptionTier,
-                userCount: data.companies.user_count,
-                maxUsers: data.companies.max_users,
-                status: data.companies.status,
-                renewalDate: data.companies.renewal_date,
-                address: data.companies.address,
-                logoUrl: data.companies.logo_url,
-                setupComplete: data.companies.setup_complete,
-                phone: data.companies.phone,
-                agentConfig: data.companies.agent_config,
-                integrations: data.companies.integrations
-              };
-              setCompanies([company]);
-            }
-
-            if (data.company_id) {
-              await loadCompanyData(data.company_id);
+            if (companyData) {
+                const company: Company = {
+                    id: companyData.id,
+                    name: companyData.name,
+                    tier: companyData.tier as SubscriptionTier,
+                    userCount: companyData.user_count,
+                    maxUsers: companyData.max_users,
+                    status: companyData.status,
+                    renewalDate: companyData.renewal_date,
+                    address: companyData.address,
+                    logoUrl: companyData.logo_url,
+                    setupComplete: companyData.setup_complete,
+                    phone: companyData.phone,
+                    agentConfig: companyData.agent_config,
+                    integrations: companyData.integrations
+                };
+                setCompanies([company]);
+                await loadCompanyData(data.company_id);
+            } else {
+                // User has company_id but company record not found/accessible
+                console.warn("Company record not found for user");
             }
         }
-        // Success - turn off loading
+        
         setLoading(false);
       } else if (retryCount < 3) {
-        // Retry logic if user not found (race condition on signup)
+        // Retry logic if user not found immediately (race condition)
+        console.log(`User profile not found, retrying... (${retryCount + 1}/3)`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return loadUserProfile(userId, retryCount + 1);
       } else {
-        // Retries exhausted
         console.warn('User profile not found after retries.');
         setLoading(false);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading user profile:', error);
-      addToast('Error loading profile', 'error');
+      addToast(`Error loading profile: ${error.message}`, 'error');
       setLoading(false);
     }
   };
 
+  const loadSuperAdminData = async (userId: string) => {
+        const [companiesRes, usersRes] = await Promise.all([
+            supabase.from('companies').select('*').order('created_at', { ascending: false }),
+            supabase.from('users').select('*').order('created_at', { ascending: false })
+        ]);
+
+        if (companiesRes.data) {
+            setCompanies(companiesRes.data.map((c: any) => ({
+                id: c.id,
+                name: c.name,
+                tier: c.tier as SubscriptionTier,
+                userCount: c.user_count,
+                maxUsers: c.max_users,
+                status: c.status,
+                renewalDate: c.renewal_date,
+                address: c.address,
+                logoUrl: c.logo_url,
+                setupComplete: c.setup_complete,
+                phone: c.phone,
+                agentConfig: c.agent_config,
+                integrations: c.integrations
+            })));
+        }
+
+        if (usersRes.data) {
+            setUsers(usersRes.data.map((u: any) => ({
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                role: u.role as UserRole,
+                companyId: u.company_id,
+                avatarInitials: u.avatar_initials || (u.name ? u.name.slice(0, 2).toUpperCase() : '??')
+            })));
+        }
+        
+        if (softwareLeads.length === 0) {
+            setSoftwareLeads([
+                { id: 'sl-1', companyName: 'Apex Roofing', contactName: 'John Smith', email: 'john@apex.com', phone: '555-0101', status: 'Demo Booked', potentialUsers: 5, assignedTo: userId, notes: 'Interested in AI', createdAt: new Date().toISOString() },
+                { id: 'sl-2', companyName: 'Best Top Roofs', contactName: 'Sarah Lee', email: 'sarah@besttop.com', phone: '555-0102', status: 'Prospect', potentialUsers: 12, assignedTo: userId, notes: 'Cold outreach', createdAt: new Date().toISOString() },
+            ]);
+        }
+  };
+
   const loadCompanyData = async (companyId: string) => {
     try {
-      // ... (Same data loading logic as before) ...
       const [
         usersRes,
         leadsRes,
@@ -350,21 +359,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     } catch (error) {
       console.error('Error loading company data:', error);
-      addToast('Error loading data', 'error');
+      addToast('Error loading company data', 'error');
     }
   };
 
   useEffect(() => {
-    // FIX: Safety timeout to ensure loading screen doesn't hang forever
-    const safetyTimer = setTimeout(() => {
+    // Safety timeout: If loading takes more than 5s, force stop it.
+    const timer = setTimeout(() => {
         setLoading(prev => {
-            if(prev) {
-                console.warn("Forcing loading state off after timeout");
+            if (prev) {
+                console.warn("Loading timeout reached. Forcing UI render.");
                 return false;
             }
             return prev;
         });
-    }, 8000);
+    }, 5000);
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -375,19 +384,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        if (session?.user) {
-          await loadUserProfile(session.user.id);
-        } else {
-          setCurrentUser(null);
-          setLoading(false);
-        }
-      })();
+      if (session?.user) {
+        loadUserProfile(session.user.id);
+      } else {
+        setCurrentUser(null);
+        setLoading(false);
+      }
     });
 
     return () => {
         subscription.unsubscribe();
-        clearTimeout(safetyTimer);
+        clearTimeout(timer);
     };
   }, []);
 
