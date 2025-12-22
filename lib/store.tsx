@@ -723,12 +723,14 @@ const register = async (companyName: string, name: string, email: string, passwo
 
 // --- REVISED ADD USER LOGIC ---
   const addUser = async (u: Partial<User>): Promise<boolean> => {
-    const targetCompanyId = u.companyId || currentUser?.companyId;
+    // For SaaS Reps and Super Admins, companyId should be null
+    // Only use currentUser's companyId if u.companyId is undefined (not explicitly set)
+    const targetCompanyId = u.companyId !== undefined ? u.companyId : currentUser?.companyId;
 
     // Validation
     if (!targetCompanyId && currentUser?.role !== UserRole.SUPER_ADMIN) {
-        addToast("Cannot create user without an organization.", "error"); 
-        return false; 
+        addToast("Cannot create user without an organization.", "error");
+        return false;
     }
 
     try {
