@@ -107,10 +107,10 @@ Deno.serve(async (req: Request) => {
       try {
         const resend = new Resend(resendApiKey);
         console.log("Attempting to send email to:", email);
-        console.log("From address: invites@rafterai.online");
+        console.log("From address: hayden@rafterai.online");
         
         const emailResponse = await resend.emails.send({
-          from: "Rafter AI <invites@rafterai.online>",
+          from: "Rafter AI <hayden@rafterai.online>", // <--- UPDATED HERE
           to: email,
           subject: "You have been invited to join Rafter AI",
           html: `
