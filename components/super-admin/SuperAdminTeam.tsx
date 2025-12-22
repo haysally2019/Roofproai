@@ -4,7 +4,7 @@ import { Plus, Search, Mail, User as UserIcon, Trash2, X } from 'lucide-react';
 
 interface Props {
   users: User[];
-  onAddUser: (user: Partial<User>) => Promise<string | null>;
+  onAddUser: (user: Partial<User>) => Promise<any>; // Updated return type
   onRemoveUser: (userId: string) => void;
 }
 
@@ -12,8 +12,7 @@ const SuperAdminTeam: React.FC<Props> = ({ users, onAddUser, onRemoveUser }) => 
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', role: 'SaaS Rep' });
   const [searchQuery, setSearchQuery] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [tempPassword, setTempPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const filteredUsers = users.filter(u =>
     (u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -23,24 +22,18 @@ const SuperAdminTeam: React.FC<Props> = ({ users, onAddUser, onRemoveUser }) => 
 
   const handleCreate = async () => {
     if (!form.name || !form.email) return;
-    const password = await onAddUser({
+    setIsSubmitting(true);
+    
+    await onAddUser({
       name: form.name,
       email: form.email,
       role: form.role as UserRole,
       companyId: null
     });
 
-    if (password) {
-      setTempPassword(password);
-      setShowPassword(true);
-      setForm({ name: '', email: '', role: 'SaaS Rep' });
-    }
-  };
-
-  const handleClosePasswordModal = () => {
-    setShowPassword(false);
-    setTempPassword('');
+    setIsSubmitting(false);
     setShowModal(false);
+    setForm({ name: '', email: '', role: 'SaaS Rep' });
   };
 
   return (
@@ -129,13 +122,14 @@ const SuperAdminTeam: React.FC<Props> = ({ users, onAddUser, onRemoveUser }) => 
         </table>
       </div>
 
-      {showModal && !showPassword && (
+      {showModal && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-fade-in relative">
             <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
               <X size={20}/>
             </button>
             <h3 className="font-bold text-lg mb-4">Add Team Member</h3>
+            <p className="text-sm text-slate-500 mb-4">The user will receive an email invite to set their password.</p>
             <div className="space-y-4">
               <input
                 value={form.name}
@@ -168,33 +162,12 @@ const SuperAdminTeam: React.FC<Props> = ({ users, onAddUser, onRemoveUser }) => 
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!form.name || !form.email}
+                disabled={!form.name || !form.email || isSubmitting}
                 className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Create
+                {isSubmitting ? 'Sending Invite...' : 'Send Invite'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {showPassword && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-fade-in relative">
-            <h3 className="font-bold text-lg mb-4">User Created Successfully</h3>
-            <p className="text-sm text-slate-600 mb-4">
-              Please share this temporary password with the new team member. They should change it after first login.
-            </p>
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-4">
-              <p className="text-xs text-slate-500 mb-1">Temporary Password:</p>
-              <p className="text-lg font-mono font-bold text-slate-900 break-all">{tempPassword}</p>
-            </div>
-            <button
-              onClick={handleClosePasswordModal}
-              className="w-full px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700"
-            >
-              Done
-            </button>
           </div>
         </div>
       )}
