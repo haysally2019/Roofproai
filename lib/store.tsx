@@ -6,7 +6,6 @@ import {
   Supplier, MaterialOrder, SoftwareLead
 } from '../types';
 import { supabase } from './supabase';
-import { SUBSCRIPTION_PLANS } from './constants'; 
 
 interface StoreContextType {
   currentUser: User | null;
@@ -46,7 +45,7 @@ interface StoreContextType {
   addEvent: (event: Partial<CalendarEvent>) => void;
   createInvoice: (invoice: Invoice) => void;
   updateInvoiceStatus: (id: string, status: Invoice['status']) => void;
-  addUser: (user: Partial<User>) => Promise<string | null>;
+  addUser: (user: Partial<User>) => Promise<boolean>; // FIX: Changed return type to boolean (success/fail)
   removeUser: (userId: string) => Promise<void>;
   addSoftwareLead: (lead: SoftwareLead) => void;
   updateSoftwareLead: (lead: SoftwareLead) => void;
@@ -59,12 +58,6 @@ export const useStore = () => {
   const context = useContext(StoreContext);
   if (!context) throw new Error("useStore must be used within a StoreProvider");
   return context;
-};
-
-// Helper to get max users from tier name
-const getMaxUsersForTier = (tierName: string): number => {
-  const plan = Object.values(SUBSCRIPTION_PLANS).find(p => p.name === tierName);
-  return plan ? plan.maxUsers : 3; 
 };
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -97,13 +90,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const loadUserProfile = async (userId: string, retryCount = 0) => {
     try {
-      // Improved Query: Explicitly load users first, then handle company relation
       const { data, error } = await supabase
         .from('users')
-        .select(`
-            *,
-            companies:company_id (*)
-        `)
+        .select('*, companies!users_company_id_fkey(*)')
         .eq('id', userId)
         .maybeSingle();
 
@@ -116,99 +105,89 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           email: data.email,
           role: data.role as UserRole,
           companyId: data.company_id,
-          avatarInitials: data.avatar_initials || (data.name ? data.name.slice(0, 2).toUpperCase() : '??')
+          avatarInitials: data.avatar_initials || data.name.slice(0, 2).toUpperCase()
         };
         setCurrentUser(user);
 
-        // Load specific data based on role
+        // --- SUPER ADMIN LOGIC ---
         if (user.role === UserRole.SUPER_ADMIN) {
-            await loadSuperAdminData(user.id);
-        } else if (data.company_id) {
-            // Handle the case where companies might be returned as an object or array
-            const companyData = Array.isArray(data.companies) ? data.companies[0] : data.companies;
-            
-            if (companyData) {
-                const company: Company = {
-                    id: companyData.id,
-                    name: companyData.name,
-                    tier: companyData.tier as SubscriptionTier,
-                    userCount: companyData.user_count,
-                    maxUsers: companyData.max_users,
-                    status: companyData.status,
-                    renewalDate: companyData.renewal_date,
-                    address: companyData.address,
-                    logoUrl: companyData.logo_url,
-                    setupComplete: companyData.setup_complete,
-                    phone: companyData.phone,
-                    agentConfig: companyData.agent_config,
-                    integrations: companyData.integrations
-                };
-                setCompanies([company]);
-                await loadCompanyData(data.company_id);
-            } else {
-                // User has company_id but company record not found/accessible
-                console.warn("Company record not found for user");
+            const [companiesRes, usersRes] = await Promise.all([
+                supabase.from('companies').select('*').order('created_at', { ascending: false }),
+                supabase.from('users').select('*').order('created_at', { ascending: false })
+            ]);
+
+            if (companiesRes.data) {
+                setCompanies(companiesRes.data.map((c: any) => ({
+                    id: c.id,
+                    name: c.name,
+                    tier: c.tier as SubscriptionTier,
+                    userCount: c.user_count,
+                    maxUsers: c.max_users,
+                    status: c.status,
+                    renewalDate: c.renewal_date,
+                    address: c.address,
+                    logoUrl: c.logo_url,
+                    setupComplete: c.setup_complete,
+                    phone: c.phone,
+                    agentConfig: c.agent_config,
+                    integrations: c.integrations
+                })));
+            }
+
+            if (usersRes.data) {
+                setUsers(usersRes.data.map((u: any) => ({
+                    id: u.id,
+                    name: u.name,
+                    email: u.email,
+                    role: u.role as UserRole,
+                    companyId: u.company_id,
+                    avatarInitials: u.avatar_initials || u.name.slice(0, 2).toUpperCase()
+                })));
+            }
+
+            // Init Mock SaaS Leads (Replace with Supabase fetch when table exists)
+            if (softwareLeads.length === 0) {
+                setSoftwareLeads([
+                  { id: 'sl-1', companyName: 'Apex Roofing', contactName: 'John Smith', email: 'john@apex.com', phone: '555-0101', status: 'Demo Booked', potentialUsers: 5, assignedTo: user.id, notes: 'Interested in AI', createdAt: new Date().toISOString() },
+                  { id: 'sl-2', companyName: 'Best Top Roofs', contactName: 'Sarah Lee', email: 'sarah@besttop.com', phone: '555-0102', status: 'Prospect', potentialUsers: 12, assignedTo: user.id, notes: 'Cold outreach', createdAt: new Date().toISOString() },
+                ]);
+            }
+
+        } else {
+            // --- STANDARD USER LOGIC ---
+            if (data.companies) {
+              const company: Company = {
+                id: data.companies.id,
+                name: data.companies.name,
+                tier: data.companies.tier as SubscriptionTier,
+                userCount: data.companies.user_count,
+                maxUsers: data.companies.max_users,
+                status: data.companies.status,
+                renewalDate: data.companies.renewal_date,
+                address: data.companies.address,
+                logoUrl: data.companies.logo_url,
+                setupComplete: data.companies.setup_complete,
+                phone: data.companies.phone,
+                agentConfig: data.companies.agent_config,
+                integrations: data.companies.integrations
+              };
+              setCompanies([company]);
+            }
+
+            if (data.company_id) {
+              await loadCompanyData(data.company_id);
             }
         }
-        
-        setLoading(false);
       } else if (retryCount < 3) {
-        // Retry logic if user not found immediately (race condition)
-        console.log(`User profile not found, retrying... (${retryCount + 1}/3)`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return loadUserProfile(userId, retryCount + 1);
-      } else {
-        console.warn('User profile not found after retries.');
-        setLoading(false);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error loading user profile:', error);
-      addToast(`Error loading profile: ${error.message}`, 'error');
+      addToast('Error loading profile', 'error');
+    } finally {
       setLoading(false);
     }
-  };
-
-  const loadSuperAdminData = async (userId: string) => {
-        const [companiesRes, usersRes] = await Promise.all([
-            supabase.from('companies').select('*').order('created_at', { ascending: false }),
-            supabase.from('users').select('*').order('created_at', { ascending: false })
-        ]);
-
-        if (companiesRes.data) {
-            setCompanies(companiesRes.data.map((c: any) => ({
-                id: c.id,
-                name: c.name,
-                tier: c.tier as SubscriptionTier,
-                userCount: c.user_count,
-                maxUsers: c.max_users,
-                status: c.status,
-                renewalDate: c.renewal_date,
-                address: c.address,
-                logoUrl: c.logo_url,
-                setupComplete: c.setup_complete,
-                phone: c.phone,
-                agentConfig: c.agent_config,
-                integrations: c.integrations
-            })));
-        }
-
-        if (usersRes.data) {
-            setUsers(usersRes.data.map((u: any) => ({
-                id: u.id,
-                name: u.name,
-                email: u.email,
-                role: u.role as UserRole,
-                companyId: u.company_id,
-                avatarInitials: u.avatar_initials || (u.name ? u.name.slice(0, 2).toUpperCase() : '??')
-            })));
-        }
-        
-        if (softwareLeads.length === 0) {
-            setSoftwareLeads([
-                { id: 'sl-1', companyName: 'Apex Roofing', contactName: 'John Smith', email: 'john@apex.com', phone: '555-0101', status: 'Demo Booked', potentialUsers: 5, assignedTo: userId, notes: 'Interested in AI', createdAt: new Date().toISOString() },
-                { id: 'sl-2', companyName: 'Best Top Roofs', contactName: 'Sarah Lee', email: 'sarah@besttop.com', phone: '555-0102', status: 'Prospect', potentialUsers: 12, assignedTo: userId, notes: 'Cold outreach', createdAt: new Date().toISOString() },
-            ]);
-        }
   };
 
   const loadCompanyData = async (companyId: string) => {
@@ -240,7 +219,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           email: user.email,
           role: user.role as UserRole,
           companyId: user.company_id,
-          avatarInitials: user.avatar_initials || (user.name ? user.name.slice(0, 2).toUpperCase() : '??')
+          avatarInitials: user.avatar_initials || user.name.slice(0, 2).toUpperCase()
         })));
       }
 
@@ -312,10 +291,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           status: invoice.status,
           dateIssued: invoice.date_issued,
           dateDue: invoice.date_due,
-          items: invoice.items || [],
-          subtotal: invoice.subtotal || 0,
-          tax: invoice.tax || 0,
-          total: invoice.total || 0
+          items: invoice.items,
+          subtotal: invoice.subtotal,
+          tax: invoice.tax,
+          total: invoice.total,
+          company_id: currentUser.companyId
         })));
       }
 
@@ -351,30 +331,19 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           supplierId: order.supplier_id || '',
           leadId: order.lead_id,
           status: order.status,
-          dateOrdered: order.created_at,
-          deliveryDate: order.delivery_date,
-          items: order.items || [],
-          instructions: order.instructions || ''
+          delivery_date: order.delivery_date,
+          items: order.items,
+          instructions: order.instructions,
+          company_id: currentUser.companyId
         })));
       }
     } catch (error) {
       console.error('Error loading company data:', error);
-      addToast('Error loading company data', 'error');
+      addToast('Error loading data', 'error');
     }
   };
 
   useEffect(() => {
-    // Safety timeout: If loading takes more than 5s, force stop it.
-    const timer = setTimeout(() => {
-        setLoading(prev => {
-            if (prev) {
-                console.warn("Loading timeout reached. Forcing UI render.");
-                return false;
-            }
-            return prev;
-        });
-    }, 5000);
-
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         loadUserProfile(session.user.id);
@@ -384,18 +353,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        loadUserProfile(session.user.id);
-      } else {
-        setCurrentUser(null);
-        setLoading(false);
-      }
+      (async () => {
+        if (session?.user) {
+          await loadUserProfile(session.user.id);
+        } else {
+          setCurrentUser(null);
+          setLoading(false);
+        }
+      })();
     });
 
-    return () => {
-        subscription.unsubscribe();
-        clearTimeout(timer);
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
@@ -409,10 +377,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
-  const register = async (companyName: string, name: string, email: string, password: string, referralCode?: string | null): Promise<boolean> => {
+const register = async (companyName: string, name: string, email: string, password: string, referralCode?: string | null): Promise<boolean> => {
     try {
       if (password.length < 6) { addToast('Password must be at least 6 characters long', "error"); return false; }
       
+      // 1. Resolve Referral Code (if provided)
       let referrerId = null;
       if (referralCode) {
         const { data: resolvedId, error: resolveError } = await supabase.rpc('resolve_referral_code', { code: referralCode });
@@ -421,21 +390,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
       }
 
+      // 2. Create Auth User
       const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
       if (authError) { addToast(`Registration failed: ${authError.message}`, "error"); return false; }
       if (!authData.user) return false;
 
+      // 3. Create Company (Linked to Referrer)
       const { data: companyData, error: companyError } = await supabase.from('companies').insert({
           name: companyName, 
           tier: 'Starter', 
           status: 'Active', 
           setup_complete: false,
-          max_users: getMaxUsersForTier('Starter'), 
-          referred_by_user_id: referrerId
+          referred_by_user_id: referrerId // <--- The Invisible Stamp
         }).select().single();
       
       if (companyError) { addToast(companyError.message, "error"); return false; }
 
+      // 4. Create User Profile
       const { error: userError } = await supabase.from('users').insert({
           id: authData.user.id, name, email, role: 'Company Owner', company_id: companyData.id,
           avatar_initials: name.slice(0, 2).toUpperCase()
@@ -459,6 +430,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setCallLogs([]);
     setAutomations([]);
     setOrders([]);
+    // Clear Super Admin data as well
     setCompanies([]);
     setUsers([]);
     setSoftwareLeads([]);
@@ -471,13 +443,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const createCompany = async (c: Partial<Company>): Promise<string | null> => {
       if (!currentUser || currentUser.role !== UserRole.SUPER_ADMIN) return null;
       
-      const tier = c.tier || 'Starter';
-      const maxUsers = getMaxUsersForTier(tier as string);
-
       const { data, error } = await supabase.from('companies').insert({
           name: c.name,
-          tier: tier,
-          max_users: maxUsers,
+          tier: c.tier || 'Starter',
           address: c.address,
           phone: c.phone,
           status: 'Active',
@@ -512,51 +480,59 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const updateCompany = async (c: Partial<Company>) => {
     if (!c.id) return;
-    
-    const updates: any = {
+    const { error } = await supabase.from('companies').update({
         name: c.name, address: c.address, phone: c.phone, logo_url: c.logoUrl,
         setup_complete: c.setupComplete, agent_config: c.agentConfig, integrations: c.integrations,
-        status: c.status, tier: c.tier
-    };
-
-    if (c.tier) {
-        updates.max_users = getMaxUsersForTier(c.tier);
-    }
-
-    const { error } = await supabase.from('companies').update(updates).eq('id', c.id);
+        status: c.status, tier: c.tier // UPDATED: Included status and tier update logic
+    }).eq('id', c.id);
     
     if (error) {
         addToast(`Failed to update company: ${error.message}`, 'error');
         return;
     }
-    
-    setCompanies(prev => prev.map(x => x.id === c.id ? {...x, ...c, maxUsers: c.tier ? updates.max_users : x.maxUsers } : x));
+    setCompanies(prev => prev.map(x => x.id === c.id ? {...x, ...c} : x));
   };
 
+  // --- DELETE COMPANY ---
   const deleteCompany = async (companyId: string) => {
       if (currentUser?.role !== UserRole.SUPER_ADMIN) {
           addToast("Permission denied", "error");
           return;
       }
+      
+      // Delete from Supabase
       const { error } = await supabase.from('companies').delete().eq('id', companyId);
+      
       if (error) {
           addToast(`Failed to delete company: ${error.message}`, 'error');
           return;
       }
+
+      // Update Local State
       setCompanies(prev => prev.filter(c => c.id !== companyId));
-      setUsers(prev => prev.filter(u => u.companyId !== companyId));
+      setUsers(prev => prev.filter(u => u.companyId !== companyId)); // Remove users of deleted company from view
       addToast('Company and all associated data deleted', 'success');
   };
 
   const updateUser = async (u: Partial<User>) => {
     const targetId = u.id || currentUser?.id;
     if (!targetId) return;
-    const { error } = await supabase.from('users').update({ name: u.name, role: u.role, email: u.email }).eq('id', targetId);
+
+    // Allow Super Admin to update other users
+    const { error } = await supabase.from('users').update({ 
+        name: u.name, 
+        role: u.role, 
+        email: u.email 
+    }).eq('id', targetId);
+
     if (error) {
         addToast(`Failed to update user: ${error.message}`, 'error');
         return;
     }
+
     setUsers(prev => prev.map(user => user.id === targetId ? { ...user, ...u } : user));
+    
+    // If updating self, update local context too
     if (currentUser && targetId === currentUser.id) {
         setCurrentUser(prev => prev ? { ...prev, ...u } : null);
     }
@@ -566,11 +542,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const addLead = async (lead: Lead) => {
     if (!currentUser?.companyId) return;
     const { error } = await supabase.from('leads').insert({
-      id: lead.id, name: lead.name, address: lead.address, phone: lead.phone, email: lead.email,
-      status: lead.status, project_type: lead.projectType, source: lead.source, notes: lead.notes,
-      estimated_value: lead.estimatedValue, last_contact: lead.lastContact, assigned_to: lead.assignedTo,
-      company_id: currentUser.companyId, insurance_carrier: lead.insuranceCarrier, policy_number: lead.policyNumber,
-      claim_number: lead.claimNumber, adjuster_name: lead.adjusterName, adjuster_phone: lead.adjusterPhone,
+      id: lead.id,
+      name: lead.name,
+      address: lead.address,
+      phone: lead.phone,
+      email: lead.email,
+      status: lead.status,
+      project_type: lead.projectType,
+      source: lead.source,
+      notes: lead.notes,
+      estimated_value: lead.estimatedValue,
+      last_contact: lead.lastContact,
+      assigned_to: lead.assignedTo,
+      company_id: currentUser.companyId,
+      insurance_carrier: lead.insuranceCarrier,
+      policy_number: lead.policyNumber,
+      claim_number: lead.claimNumber,
+      adjuster_name: lead.adjusterName,
+      adjuster_phone: lead.adjusterPhone,
       damage_date: lead.damageDate
     });
     if (!error) setLeads(prev => [...prev, lead]);
@@ -578,12 +567,26 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const updateLead = async (lead: Lead) => {
     const { error } = await supabase.from('leads').update({
-      name: lead.name, address: lead.address, phone: lead.phone, email: lead.email, status: lead.status,
-      project_type: lead.projectType, source: lead.source, notes: lead.notes, estimated_value: lead.estimatedValue,
-      last_contact: lead.lastContact, assigned_to: lead.assignedTo, insurance_carrier: lead.insuranceCarrier,
-      policy_number: lead.policyNumber, claim_number: lead.claimNumber, adjuster_name: lead.adjusterName,
-      adjuster_phone: lead.adjusterPhone, damage_date: lead.damageDate, project_manager_id: lead.projectManagerId,
-      production_date: lead.productionDate, payment_status: lead.paymentStatus
+      name: lead.name,
+      address: lead.address,
+      phone: lead.phone,
+      email: lead.email,
+      status: lead.status,
+      project_type: lead.projectType,
+      source: lead.source,
+      notes: lead.notes,
+      estimated_value: lead.estimatedValue,
+      last_contact: lead.lastContact,
+      assigned_to: lead.assignedTo,
+      insurance_carrier: lead.insuranceCarrier,
+      policy_number: lead.policyNumber,
+      claim_number: lead.claimNumber,
+      adjuster_name: lead.adjusterName,
+      adjuster_phone: lead.adjusterPhone,
+      damage_date: lead.damageDate,
+      project_manager_id: lead.projectManagerId,
+      production_date: lead.productionDate,
+      payment_status: lead.paymentStatus
     }).eq('id', lead.id);
     if (!error) setLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
   };
@@ -592,17 +595,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!currentUser?.companyId) return;
     const newTask = { ...task, id: Date.now().toString(), companyId: currentUser.companyId };
     const { error } = await supabase.from('tasks').insert({
-      id: newTask.id, title: newTask.title, description: newTask.description, due_date: newTask.dueDate,
-      priority: newTask.priority, status: newTask.status || 'To Do', assigned_to: newTask.assignedTo,
-      related_lead_id: newTask.relatedLeadId, company_id: currentUser.companyId
+      id: newTask.id,
+      title: newTask.title,
+      description: newTask.description,
+      due_date: newTask.dueDate,
+      priority: newTask.priority,
+      status: newTask.status || 'To Do',
+      assigned_to: newTask.assignedTo,
+      related_lead_id: newTask.relatedLeadId,
+      company_id: currentUser.companyId
     });
     if (!error) setTasks(prev => [...prev, newTask as Task]);
   };
 
   const updateTask = async (task: Task) => {
     const { error } = await supabase.from('tasks').update({
-      title: task.title, description: task.description, due_date: task.dueDate, priority: task.priority,
-      status: task.status, assigned_to: task.assignedTo, related_lead_id: task.relatedLeadId
+      title: task.title,
+      description: task.description,
+      due_date: task.dueDate,
+      priority: task.priority,
+      status: task.status,
+      assigned_to: task.assignedTo,
+      related_lead_id: task.relatedLeadId
     }).eq('id', task.id);
     if (!error) setTasks(prev => prev.map(t => t.id === task.id ? task : t));
   };
@@ -616,8 +630,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!currentUser?.companyId) return;
     const newEvent = { ...event, id: Date.now().toString(), companyId: currentUser.companyId, color: '#3b82f6' };
     const { error } = await supabase.from('events').insert({
-      id: newEvent.id, title: newEvent.title, start_time: newEvent.start, end_time: newEvent.end,
-      type: newEvent.type, lead_id: newEvent.leadId, assigned_to: newEvent.assignedTo, company_id: currentUser.companyId
+      id: newEvent.id,
+      title: newEvent.title,
+      start_time: newEvent.start,
+      end_time: newEvent.end,
+      type: newEvent.type,
+      lead_id: newEvent.leadId,
+      assigned_to: newEvent.assignedTo,
+      company_id: currentUser.companyId
     });
     if (!error) setEvents(prev => [...prev, newEvent as CalendarEvent]);
   };
@@ -625,9 +645,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const createInvoice = async (invoice: Invoice) => {
     if (!currentUser?.companyId) return;
     const { error } = await supabase.from('invoices').insert({
-      id: invoice.id, number: invoice.number, lead_id: invoice.leadName, status: invoice.status,
-      date_issued: invoice.dateIssued, date_due: invoice.dateDue, items: invoice.items, subtotal: invoice.subtotal,
-      tax: invoice.tax, total: invoice.total, company_id: currentUser.companyId
+      id: invoice.id,
+      number: invoice.number,
+      lead_id: invoice.leadName,
+      status: invoice.status,
+      date_issued: invoice.dateIssued,
+      date_due: invoice.dateDue,
+      items: invoice.items,
+      subtotal: invoice.subtotal,
+      tax: invoice.tax,
+      total: invoice.total,
+      company_id: currentUser.companyId
     });
     if (!error) setInvoices(prev => [...prev, invoice]);
   };
@@ -640,8 +668,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const addAutomation = async (r: AutomationRule) => {
     if (!currentUser?.companyId) return;
     const { error } = await supabase.from('automations').insert({
-      id: r.id, name: r.name, active: r.active, trigger_type: r.trigger.type, trigger_value: r.trigger.value,
-      action_type: r.action.type, action_config: r.action.config, company_id: currentUser.companyId
+      id: r.id,
+      name: r.name,
+      active: r.active,
+      trigger_type: r.trigger.type,
+      trigger_value: r.trigger.value,
+      action_type: r.action.type,
+      action_config: r.action.config,
+      company_id: currentUser.companyId
     });
     if (!error) setAutomations(prev => [...prev, r]);
   };
@@ -661,38 +695,33 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const addOrder = async (o: MaterialOrder) => {
     if (!currentUser?.companyId) return;
     const { error } = await supabase.from('material_orders').insert({
-      id: o.id, po_number: o.poNumber, supplier_id: o.supplierId, lead_id: o.leadId, status: o.status,
-      delivery_date: o.deliveryDate, items: o.items, instructions: o.instructions, company_id: currentUser.companyId
+      id: o.id,
+      po_number: o.poNumber,
+      supplier_id: o.supplierId,
+      lead_id: o.leadId,
+      status: o.status,
+      delivery_date: o.deliveryDate,
+      items: o.items,
+      instructions: o.instructions,
+      company_id: currentUser.companyId
     });
     if (!error) setOrders(prev => [...prev, o]);
   };
 
-  const addUser = async (u: Partial<User>): Promise<string | null> => {
+  // --- REVISED ADD USER LOGIC (INVITE) ---
+  const addUser = async (u: Partial<User>): Promise<boolean> => {
     const targetCompanyId = u.companyId || currentUser?.companyId;
 
     if (!targetCompanyId && currentUser?.role !== UserRole.SUPER_ADMIN) {
         addToast("Cannot create user without an organization.", "error"); 
-        return null; 
+        return false; 
     }
-
-    if (currentUser?.role !== UserRole.SUPER_ADMIN || (u.role !== UserRole.SUPER_ADMIN && u.role !== UserRole.SAAS_REP)) {
-        const company = companies.find(c => c.id === targetCompanyId);
-        if (company) {
-            const currentCount = users.filter(user => user.companyId === company.id).length;
-            if (currentCount >= company.maxUsers) {
-                addToast(`Limit Reached: Your ${company.tier} plan only allows ${company.maxUsers} users. Please upgrade.`, "error");
-                return null;
-            }
-        }
-    }
-
-    const tempPassword = Math.random().toString(36).slice(-8) + "Aa1!"; 
 
     try {
+        // We use the Edge Function to trigger the Supabase Auth Invite
         const { data, error } = await supabase.functions.invoke('create-user', {
             body: {
                 email: u.email,
-                password: tempPassword,
                 name: u.name,
                 role: u.role,
                 companyId: targetCompanyId || null,
@@ -705,6 +734,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             throw new Error(error.message || "Unknown error calling create-user");
         }
 
+        // Optimistically update local state so the user sees the new member immediately
         const newUser: User = {
             id: data.user.id,
             name: u.name!,
@@ -715,28 +745,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         
         setUsers(prev => [newUser, ...prev]);
-        if (targetCompanyId) {
-            setCompanies(prev => prev.map(c => c.id === targetCompanyId ? { ...c, userCount: c.userCount + 1 } : c));
-        }
-
-        addToast('User created successfully', 'success');
-        return tempPassword;
+        addToast(`Invite sent to ${u.email}`, 'success');
+        return true;
 
     } catch (error: any) {
-        addToast(`Failed to create user: ${error.message}`, 'error');
-        return null;
+        addToast(`Failed to invite user: ${error.message}`, 'error');
+        return false;
     }
   };
 
   const removeUser = async (uid: string) => {
-    const userToRemove = users.find(u => u.id === uid);
     const { error } = await supabase.from('users').delete().eq('id', uid);
-    if (!error) {
-        setUsers(prev => prev.filter(u => u.id !== uid));
-        if (userToRemove?.companyId) {
-            setCompanies(prev => prev.map(c => c.id === userToRemove.companyId ? { ...c, userCount: Math.max(0, c.userCount - 1) } : c));
-        }
-    }
+    if (!error) setUsers(prev => prev.filter(u => u.id !== uid));
   };
 
   const addSoftwareLead = (lead: SoftwareLead) => {
