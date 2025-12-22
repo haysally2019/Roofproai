@@ -17,13 +17,19 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // Check for Authorization header
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      throw new Error("Unauthorized: Auth session missing!");
+    }
+
     // Setup Supabase Clients
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
+      { global: { headers: { Authorization: authHeader } } }
     );
-    
+
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -71,7 +77,7 @@ Deno.serve(async (req: Request) => {
       email: email,
       options: {
         data: { name, role, company_id: companyId },
-        redirectTo: `${origin}/set-password` // <--- CHANGED FROM /dashboard to /set-password
+        redirectTo: `${origin}/set-password`
       }
     });
 

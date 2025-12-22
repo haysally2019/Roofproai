@@ -734,6 +734,12 @@ const register = async (companyName: string, name: string, email: string, passwo
     }
 
     try {
+        // Get current session to ensure we're authenticated
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            throw new Error("You must be logged in to invite users");
+        }
+
         // Call the Edge Function (No password sent)
         const { data, error } = await supabase.functions.invoke('create-user', {
             body: {
