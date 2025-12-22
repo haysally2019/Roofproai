@@ -23,20 +23,17 @@ Deno.serve(async (req: Request) => {
       throw new Error("Unauthorized: Auth session missing!");
     }
 
-    // Setup Supabase Clients
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    // Extract JWT token from Bearer header
+    const jwt = authHeader.replace('Bearer ', '');
 
+    // Setup Supabase Admin Client
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Authenticate Caller
-    const { data: { user: caller }, error: authError } = await supabaseClient.auth.getUser();
+    // Authenticate Caller using the JWT directly
+    const { data: { user: caller }, error: authError } = await supabaseAdmin.auth.getUser(jwt);
     if (authError || !caller) {
       throw new Error("Unauthorized: " + (authError?.message || "No user found"));
     }
