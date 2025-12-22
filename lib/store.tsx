@@ -707,16 +707,18 @@ const register = async (companyName: string, name: string, email: string, passwo
     if (!error) setOrders(prev => [...prev, o]);
   };
 
-  // --- REVISED ADD USER LOGIC (INVITE) ---
+// --- REVISED ADD USER LOGIC ---
   const addUser = async (u: Partial<User>): Promise<boolean> => {
     const targetCompanyId = u.companyId || currentUser?.companyId;
 
+    // Validation
     if (!targetCompanyId && currentUser?.role !== UserRole.SUPER_ADMIN) {
         addToast("Cannot create user without an organization.", "error"); 
         return false; 
     }
 
     try {
+        // Call the Edge Function (No password sent)
         const { data, error } = await supabase.functions.invoke('create-user', {
             body: {
                 email: u.email,
@@ -727,12 +729,9 @@ const register = async (companyName: string, name: string, email: string, passwo
             }
         });
 
-        if (error) {
-            console.error(error);
-            throw new Error(error.message || "Unknown error calling create-user");
-        }
+        if (error) throw new Error(error.message || "Unknown error calling create-user");
 
-        // Optimistically update local state so the user sees the new member immediately
+        // Optimistic UI Update
         const newUser: User = {
             id: data.user.id,
             name: u.name!,
@@ -747,6 +746,7 @@ const register = async (companyName: string, name: string, email: string, passwo
         return true;
 
     } catch (error: any) {
+        console.error("Add User Error:", error);
         addToast(`Failed to invite user: ${error.message}`, 'error');
         return false;
     }
