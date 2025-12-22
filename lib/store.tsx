@@ -45,7 +45,7 @@ interface StoreContextType {
   addEvent: (event: Partial<CalendarEvent>) => void;
   createInvoice: (invoice: Invoice) => void;
   updateInvoiceStatus: (id: string, status: Invoice['status']) => void;
-  addUser: (user: Partial<User>) => Promise<boolean>; // FIX: Changed return type to boolean (success/fail)
+  addUser: (user: Partial<User>) => Promise<boolean>; // FIX: Return boolean success/fail
   removeUser: (userId: string) => Promise<void>;
   addSoftwareLead: (lead: SoftwareLead) => void;
   updateSoftwareLead: (lead: SoftwareLead) => void;
@@ -291,11 +291,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           status: invoice.status,
           dateIssued: invoice.date_issued,
           dateDue: invoice.date_due,
-          items: invoice.items,
-          subtotal: invoice.subtotal,
-          tax: invoice.tax,
-          total: invoice.total,
-          company_id: currentUser.companyId
+          items: invoice.items || [],
+          subtotal: invoice.subtotal || 0,
+          tax: invoice.tax || 0,
+          total: invoice.total || 0
         })));
       }
 
@@ -331,10 +330,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           supplierId: order.supplier_id || '',
           leadId: order.lead_id,
           status: order.status,
-          delivery_date: order.delivery_date,
-          items: order.items,
-          instructions: order.instructions,
-          company_id: currentUser.companyId
+          dateOrdered: order.created_at,
+          deliveryDate: order.delivery_date,
+          items: order.items || [],
+          instructions: order.instructions || ''
         })));
       }
     } catch (error) {
@@ -708,9 +707,7 @@ const register = async (companyName: string, name: string, email: string, passwo
     if (!error) setOrders(prev => [...prev, o]);
   };
 
- // ... (keep existing imports)
-
-  // --- REVISED ADD USER LOGIC ---
+  // --- REVISED ADD USER LOGIC (INVITE) ---
   const addUser = async (u: Partial<User>): Promise<boolean> => {
     const targetCompanyId = u.companyId || currentUser?.companyId;
 
@@ -730,9 +727,12 @@ const register = async (companyName: string, name: string, email: string, passwo
             }
         });
 
-        if (error) throw new Error(error.message || "Unknown error calling create-user");
+        if (error) {
+            console.error(error);
+            throw new Error(error.message || "Unknown error calling create-user");
+        }
 
-        // Optimistically update local state
+        // Optimistically update local state so the user sees the new member immediately
         const newUser: User = {
             id: data.user.id,
             name: u.name!,
@@ -747,8 +747,7 @@ const register = async (companyName: string, name: string, email: string, passwo
         return true;
 
     } catch (error: any) {
-        console.error(error);
-        addToast(`Failed to invite: ${error.message}`, 'error');
+        addToast(`Failed to invite user: ${error.message}`, 'error');
         return false;
     }
   };
