@@ -71,7 +71,7 @@ Deno.serve(async (req: Request) => {
       email: email,
       options: {
         data: { name, role, company_id: companyId },
-        redirectTo: `${origin}/dashboard`
+        redirectTo: `${origin}/set-password` // <--- CHANGED FROM /dashboard to /set-password
       }
     });
 
@@ -101,16 +101,13 @@ Deno.serve(async (req: Request) => {
     let emailError = null;
     
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    console.log("Resend API Key exists:", !!resendApiKey);
     
     if (resendApiKey) {
       try {
         const resend = new Resend(resendApiKey);
-        console.log("Attempting to send email to:", email);
-        console.log("From address: hayden@rafterai.online");
         
         const emailResponse = await resend.emails.send({
-          from: "Rafter AI <hayden@rafterai.online>", // <--- UPDATED HERE
+          from: "Rafter AI <hayden@rafterai.online>",
           to: email,
           subject: "You have been invited to join Rafter AI",
           html: `
@@ -126,20 +123,16 @@ Deno.serve(async (req: Request) => {
           `
         });
 
-        console.log("Resend API response:", JSON.stringify(emailResponse));
-
         if (emailResponse.error) {
           console.error("Resend Error:", emailResponse.error);
           emailError = JSON.stringify(emailResponse.error);
         } else if (emailResponse.data) {
-          console.log("Email sent successfully! ID:", emailResponse.data.id);
           emailSent = true;
         } else {
           emailError = "No data or error in response";
         }
       } catch (error: any) {
         console.error("Email sending exception:", error);
-        console.error("Error details:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
         emailError = error.message || error.toString();
       }
     } else {
