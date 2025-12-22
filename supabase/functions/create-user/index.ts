@@ -7,51 +7,53 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // 1. Create a client with the user's JWT to verify their identity
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     )
 
-    // 2. Check if the caller is a logged-in Super Admin
+    // 1. Verify Caller
     const { data: { user: caller } } = await supabaseClient.auth.getUser()
     if (!caller) throw new Error('Unauthorized')
 
+    // 2. Check Permissions (Allow Super Admin OR Company Admin/Owner)
     const { data: callerProfile } = await supabaseClient
       .from('users')
-      .select('role')
+      .select('role, company_id')
       .eq('id', caller.id)
       .single()
 
-    if (callerProfile?.role !== 'Super Admin') {
-      throw new Error('Permission denied: Super Admin access required')
+    const { email, name, role, companyId, avatarInitials } = await req.json()
+
+    // Authorization Check
+    const isSuperAdmin = callerProfile?.role === 'Super Admin';
+    const isCompanyAdmin = ['Company Owner', 'Admin', 'Company Admin'].includes(callerProfile?.role || '');
+    const isTargetingOwnCompany = companyId === callerProfile?.company_id;
+
+    if (!isSuperAdmin && (!isCompanyAdmin || !isTargetingOwnCompany)) {
+       throw new Error('Permission denied: You can only invite users to your own company.')
     }
 
-    // 3. Initialize Admin Client (Service Role) for privileged actions
+    // 3. Init Admin Client
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { email, password, name, role, companyId, avatarInitials } = await req.json()
-
-    // 4. Create the Auth User
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true // Auto-confirm email since admin created it
+    // 4. Invite User (Triggers Supabase Email)
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      data: { name, role, company_id: companyId } // Metadata for hooks if needed
     })
 
     if (authError) throw authError
 
-    // 5. Create the Public Profile Record
+    // 5. Create Public Profile immediately (so they appear in lists)
     const { error: profileError } = await supabaseAdmin
       .from('users')
       .insert({
@@ -64,9 +66,10 @@ serve(async (req) => {
       })
 
     if (profileError) {
-        // Cleanup: Delete auth user if profile creation fails to avoid orphans
-        await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
-        throw profileError
+        // If profile exists (duplicate invite), ignore error, otherwise throw
+        if (!profileError.message.includes('duplicate key')) {
+             throw profileError;
+        }
     }
 
     return new Response(
