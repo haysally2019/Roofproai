@@ -736,11 +736,11 @@ const register = async (companyName: string, name: string, email: string, passwo
     try {
         // Get current session to ensure we're authenticated
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
+        if (!session?.access_token) {
             throw new Error("You must be logged in to invite users");
         }
 
-        // Call the Edge Function (No password sent)
+        // Call the Edge Function with explicit authorization header
         const { data, error } = await supabase.functions.invoke('create-user', {
             body: {
                 email: u.email,
@@ -748,6 +748,9 @@ const register = async (companyName: string, name: string, email: string, passwo
                 role: u.role,
                 companyId: targetCompanyId || null,
                 avatarInitials: u.name?.slice(0, 2).toUpperCase()
+            },
+            headers: {
+                Authorization: `Bearer ${session.access_token}`
             }
         });
 
