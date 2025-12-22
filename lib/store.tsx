@@ -708,7 +708,9 @@ const register = async (companyName: string, name: string, email: string, passwo
     if (!error) setOrders(prev => [...prev, o]);
   };
 
-  // --- REVISED ADD USER LOGIC (INVITE) ---
+ // ... (keep existing imports)
+
+  // --- REVISED ADD USER LOGIC ---
   const addUser = async (u: Partial<User>): Promise<boolean> => {
     const targetCompanyId = u.companyId || currentUser?.companyId;
 
@@ -718,7 +720,6 @@ const register = async (companyName: string, name: string, email: string, passwo
     }
 
     try {
-        // We use the Edge Function to trigger the Supabase Auth Invite
         const { data, error } = await supabase.functions.invoke('create-user', {
             body: {
                 email: u.email,
@@ -729,12 +730,9 @@ const register = async (companyName: string, name: string, email: string, passwo
             }
         });
 
-        if (error) {
-            console.error(error);
-            throw new Error(error.message || "Unknown error calling create-user");
-        }
+        if (error) throw new Error(error.message || "Unknown error calling create-user");
 
-        // Optimistically update local state so the user sees the new member immediately
+        // Optimistically update local state
         const newUser: User = {
             id: data.user.id,
             name: u.name!,
@@ -749,7 +747,8 @@ const register = async (companyName: string, name: string, email: string, passwo
         return true;
 
     } catch (error: any) {
-        addToast(`Failed to invite user: ${error.message}`, 'error');
+        console.error(error);
+        addToast(`Failed to invite: ${error.message}`, 'error');
         return false;
     }
   };
