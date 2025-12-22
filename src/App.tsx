@@ -4,8 +4,8 @@ import { Menu, Bell, X, CheckCircle, AlertTriangle, Info, Zap, Loader2 } from 'l
 
 // Context
 import { StoreProvider, useStore } from './lib/store';
-// Direct import needed for password updates
-import { supabase } from './lib/supabase'; 
+// Direct import for password setting
+import { supabase } from './lib/supabase';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -14,6 +14,7 @@ import LeadBoard from './components/LeadBoard';
 import Estimator from './components/Estimator';
 import AIChat from './components/AIChat';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
+import SaaSRepDashboard from './components/SaaSRepDashboard'; // <--- NEW IMPORT
 import TeamManagement from './components/TeamManagement';
 import CalendarView from './components/CalendarView';
 import TaskBoard from './components/TaskBoard';
@@ -57,21 +58,17 @@ const SetPassword = () => {
     const handleSetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        // Supabase session is already active from the invite link
         const { error } = await supabase.auth.updateUser({ password });
-        
         if (error) {
             alert('Error: ' + error.message);
             setLoading(false);
         } else {
-            // Redirect to dashboard on success
             window.location.href = '/dashboard'; 
         }
     };
 
     return (
         <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-4 relative overflow-hidden">
-            {/* Background decorations */}
             <div className="absolute -top-[20%] -right-[10%] w-[50%] h-[50%] rounded-full bg-indigo-600/20 blur-[100px] pointer-events-none"></div>
             <div className="absolute -bottom-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-blue-600/20 blur-[100px] pointer-events-none"></div>
 
@@ -109,9 +106,9 @@ const SetPassword = () => {
 // --- Main Layout ---
 const AppLayout: React.FC = () => {
   const {
-      currentUser, activeTab, companies, leads, events, tasks, invoices, users, notifications,
+      currentUser, activeTab, companies, leads, events, tasks, invoices, users, notifications, softwareLeads,
       updateLead, addLead, addToast, login, addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
-      addUser, removeUser, createCompany 
+      addUser, removeUser, createCompany, addSoftwareLead, updateSoftwareLead
   } = useStore();
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -133,27 +130,13 @@ const AppLayout: React.FC = () => {
     }
   };
 
-  // --- ROUTING LOGIC ---
   const path = window.location.pathname.toLowerCase().replace(/\/$/, ''); 
   const hash = window.location.hash.toLowerCase().replace('#', '').replace(/\/$/, ''); 
   const isOnboardingRoute = path === '/onboarding' || path === '/register' || hash === 'onboarding';
 
-  // --- VIEW: SET PASSWORD (Invite Flow) ---
-  if (path === '/set-password') {
-      return <SetPassword />;
-  }
+  if (path === '/set-password') return <SetPassword />;
+  if (isOnboardingRoute) return <><ToastContainer /><TrialFunnel /></>;
 
-  // --- VIEW: ONBOARDING FUNNEL ---
-  if (isOnboardingRoute) {
-      return (
-         <>
-             <ToastContainer />
-             <TrialFunnel /> 
-         </>
-      )
-  }
-
-  // --- VIEW: LOGIN SCREEN ---
   if (!currentUser) {
       return (
          <div className="h-full w-full bg-[#0F172A] relative overflow-y-auto flex flex-col">
@@ -211,11 +194,65 @@ const AppLayout: React.FC = () => {
 
   // --- VIEW: SETUP WIZARD ---
   const currentCompany = companies.find(c => c.id === currentUser.companyId);
-  if (currentUser && currentCompany && !currentCompany.setupComplete) {
+  if (currentUser && currentCompany && !currentCompany.setupComplete && currentUser.role === UserRole.COMPANY_OWNER) {
       return <div className="h-screen w-full bg-slate-50"><Onboarding /></div>;
   }
 
-  // --- VIEW: DASHBOARD (Private) ---
+  // --- VIEW: SAAS REP DASHBOARD (Dedicated View) ---
+  if (currentUser.role === UserRole.SAAS_REP) {
+      return (
+          <>
+            <ToastContainer />
+            <SaaSRepDashboard 
+                companies={companies}
+                users={users}
+                currentUser={currentUser}
+                onAddCompany={createCompany}
+                softwareLeads={softwareLeads}
+                onAddSoftwareLead={addSoftwareLead}
+                onUpdateSoftwareLead={updateSoftwareLead}
+            />
+          </>
+      );
+  }
+
+  // --- VIEW: SUPER ADMIN DASHBOARD ---
+  if (currentUser.role === UserRole.SUPER_ADMIN && activeTab !== Tab.SETTINGS) {
+    return (
+        <SuperAdminDashboard
+            view={activeTab}
+            companies={companies || []}
+            onAddCompany={createCompany}
+            onUpdateStatus={() => {}}
+            users={users || []}
+            onAddUser={addUser}
+            onRemoveUser={removeUser}
+            currentUser={currentUser}
+            softwareLeads={softwareLeads}
+            onAddSoftwareLead={addSoftwareLead}
+            onUpdateSoftwareLead={updateSoftwareLead}
+        />
+    );
+  }
+
+  // --- VIEW: SETTINGS (Common for Super Admin & Reps if needed) ---
+  if (activeTab === Tab.SETTINGS) {
+    return (
+        <div className="flex h-screen bg-[#F8FAFC]">
+            <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+            <main className="flex-1 overflow-auto p-4">
+              <Settings
+                currentUser={currentUser}
+                company={currentCompany}
+                onUpdateUser={useStore().updateUser}
+                onUpdateCompany={useStore().updateCompany}
+              />
+            </main>
+        </div>
+    );
+  }
+
+  // --- VIEW: STANDARD DASHBOARD (Private) ---
   const companyLeads = leads || []; 
 
   return (
@@ -224,7 +261,6 @@ const AppLayout: React.FC = () => {
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        {/* Mobile Header */}
         <div className="md:hidden sticky top-0 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-20 shadow-sm">
             <button onClick={() => setIsSidebarOpen(true)} className="text-slate-600 p-2 -ml-2"><Menu size={24} /></button>
             <span className="font-bold text-slate-800 flex items-center gap-2"><Zap className="text-blue-600 fill-blue-600" size={20} /> Rafter AI</span>
@@ -234,26 +270,9 @@ const AppLayout: React.FC = () => {
         </div>
 
         <main className="flex-1 overflow-auto p-4 md:p-8 relative scroll-smooth custom-scrollbar">
+          {/* ... (Keep existing Standard User Tab Logic here) ... */}
           {(() => {
             try {
-              if ((currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.SAAS_REP) && activeTab !== Tab.SETTINGS) {
-                return (
-                  <SuperAdminDashboard
-                    view={activeTab}
-                    companies={companies || []}
-                    onAddCompany={createCompany}
-                    onUpdateStatus={() => {}}
-                    users={users || []}
-                    onAddUser={addUser}
-                    onRemoveUser={removeUser}
-                    currentUser={currentUser}
-                    softwareLeads={[]}
-                    onAddSoftwareLead={() => {}}
-                    onUpdateSoftwareLead={() => {}}
-                  />
-                );
-              }
-
               if (activeTab === Tab.SETTINGS) {
                 return (
                   <Settings
@@ -307,7 +326,6 @@ const AppLayout: React.FC = () => {
   );
 };
 
-// FIX: Wrapped App in BrowserRouter
 const App: React.FC = () => (
     <BrowserRouter>
         <StoreProvider>
