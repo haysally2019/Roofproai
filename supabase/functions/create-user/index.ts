@@ -102,13 +102,15 @@ Deno.serve(async (req: Request) => {
     // Try to send email via Resend
     let emailSent = false;
     let emailError = null;
-    
+
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    
+    console.log("Resend API Key exists:", !!resendApiKey);
+
     if (resendApiKey) {
       try {
         const resend = new Resend(resendApiKey);
-        
+
+        console.log("Attempting to send email to:", email);
         const emailResponse = await resend.emails.send({
           from: "Rafter AI <hayden@rafterai.online>",
           to: email,
@@ -126,10 +128,13 @@ Deno.serve(async (req: Request) => {
           `
         });
 
+        console.log("Email response received:", JSON.stringify(emailResponse));
+
         if (emailResponse.error) {
           console.error("Resend Error:", emailResponse.error);
           emailError = JSON.stringify(emailResponse.error);
         } else if (emailResponse.data) {
+          console.log("Email sent successfully! ID:", emailResponse.data.id);
           emailSent = true;
         } else {
           emailError = "No data or error in response";
