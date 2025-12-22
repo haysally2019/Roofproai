@@ -206,6 +206,8 @@ export interface User {
   role: UserRole;
   companyId: string | null; // Null if Super Admin or SaaS Rep
   avatarInitials: string;
+  status?: 'Active' | 'Pending'; // Invitation status
+  invitedAt?: string;
 }
 
 // --- Software CRM Types (Super Admin) ---

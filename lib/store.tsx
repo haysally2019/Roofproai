@@ -135,14 +135,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
 
             if (usersRes.data) {
-                setUsers(usersRes.data.map((u: any) => ({
-                    id: u.id,
-                    name: u.name,
-                    email: u.email,
-                    role: u.role as UserRole,
-                    companyId: u.company_id,
-                    avatarInitials: u.avatar_initials || u.name.slice(0, 2).toUpperCase()
-                })));
+                // Fetch auth status for all users to determine if they're pending
+                const { data: authData } = await supabase.rpc('get_users_with_auth_status');
+
+                const authStatusMap = new Map(
+                    (authData || []).map((a: any) => [a.user_id, a])
+                );
+
+                setUsers(usersRes.data.map((u: any) => {
+                    const authStatus = authStatusMap.get(u.id);
+                    const isPending = authStatus && !authStatus.confirmed_at;
+
+                    return {
+                        id: u.id,
+                        name: u.name,
+                        email: u.email,
+                        role: u.role as UserRole,
+                        companyId: u.company_id,
+                        avatarInitials: u.avatar_initials || u.name.slice(0, 2).toUpperCase(),
+                        status: isPending ? 'Pending' : 'Active',
+                        invitedAt: authStatus?.invited_at
+                    };
+                }));
             }
 
             // Init Mock SaaS Leads (Replace with Supabase fetch when table exists)

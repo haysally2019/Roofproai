@@ -70,7 +70,7 @@ const SuperAdminTeam: React.FC<Props> = ({ users, onAddUser, onRemoveUser }) => 
             <tr>
               <th className="p-4">Name</th>
               <th className="p-4">Email</th>
-              <th className="p-4">Role</th>
+              <th className="p-4">Role & Status</th>
               <th className="p-4 text-right">Actions</th>
             </tr>
           </thead>
@@ -89,13 +89,20 @@ const SuperAdminTeam: React.FC<Props> = ({ users, onAddUser, onRemoveUser }) => 
                   </a>
                 </td>
                 <td className="p-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                    user.role === UserRole.SUPER_ADMIN
-                      ? 'bg-purple-50 text-purple-700 border-purple-200'
-                      : 'bg-blue-50 text-blue-700 border-blue-200'
-                  }`}>
-                    {user.role}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                      user.role === UserRole.SUPER_ADMIN
+                        ? 'bg-slate-50 text-slate-700 border-slate-200'
+                        : 'bg-blue-50 text-blue-700 border-blue-200'
+                    }`}>
+                      {user.role}
+                    </span>
+                    {user.status === 'Pending' && (
+                      <span className="px-2 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                        Pending
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="p-4 text-right">
                   <button
