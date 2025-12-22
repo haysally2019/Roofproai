@@ -17,14 +17,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // Check for Resend API Key
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      throw new Error("RESEND_API_KEY environment variable is not configured");
-    }
-
-    const resend = new Resend(resendApiKey);
-
     // Setup Supabase Clients
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -104,31 +96,54 @@ Deno.serve(async (req: Request) => {
       throw new Error("Failed to create user profile: " + insertError.message);
     }
 
-    // Send Email via Resend
-    const emailResponse = await resend.emails.send({
-      from: "Rafter AI <onboarding@resend.dev>",
-      to: email,
-      subject: "You have been invited to join Rafter AI",
-      html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 40px; border: 1px solid #e2e8f0; border-radius: 12px;">
-          <h2 style="color: #1e293b; text-align: center;">Welcome to Rafter AI</h2>
-          <p style="color: #475569; font-size: 16px;">Hello ${name},</p>
-          <p style="color: #475569; font-size: 16px;">You have been invited to join <strong>${isSuperAdmin ? "the team" : "our workspace"}</strong> as a <strong>${role}</strong>.</p>
-          <div style="text-align: center; margin: 32px 0;">
-            <a href="${linkData.properties.action_link}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Accept Invitation</a>
-          </div>
-          <p style="color: #94a3b8; font-size: 12px; text-align: center;">If you didn't expect this, you can ignore this email.</p>
-        </div>
-      `
-    });
+    // Try to send email via Resend (non-blocking)
+    let emailSent = false;
+    let emailError = null;
+    
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (resendApiKey) {
+      try {
+        const resend = new Resend(resendApiKey);
+        const emailResponse = await resend.emails.send({
+          from: "Rafter AI <onboarding@resend.dev>",
+          to: email,
+          subject: "You have been invited to join Rafter AI",
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 40px; border: 1px solid #e2e8f0; border-radius: 12px;">
+              <h2 style="color: #1e293b; text-align: center;">Welcome to Rafter AI</h2>
+              <p style="color: #475569; font-size: 16px;">Hello ${name},</p>
+              <p style="color: #475569; font-size: 16px;">You have been invited to join <strong>${isSuperAdmin ? "the team" : "our workspace"}</strong> as a <strong>${role}</strong>.</p>
+              <div style="text-align: center; margin: 32px 0;">
+                <a href="${linkData.properties.action_link}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Accept Invitation</a>
+              </div>
+              <p style="color: #94a3b8; font-size: 12px; text-align: center;">If you didn't expect this, you can ignore this email.</p>
+            </div>
+          `
+        });
 
-    if (emailResponse.error) {
-      console.error("Resend Error:", emailResponse.error);
-      throw new Error("Failed to send email: " + JSON.stringify(emailResponse.error));
+        if (emailResponse.error) {
+          console.error("Resend Error:", emailResponse.error);
+          emailError = JSON.stringify(emailResponse.error);
+        } else {
+          emailSent = true;
+        }
+      } catch (error: any) {
+        console.error("Email sending error:", error);
+        emailError = error.message;
+      }
+    } else {
+      emailError = "RESEND_API_KEY not configured";
     }
 
+    // Return success with invite link (even if email failed)
     return new Response(
-      JSON.stringify({ success: true, user: linkData.user }),
+      JSON.stringify({ 
+        success: true, 
+        user: linkData.user,
+        inviteLink: linkData.properties.action_link,
+        emailSent,
+        emailError
+      }),
       { 
         headers: { 
           ...corsHeaders, 

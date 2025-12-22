@@ -755,7 +755,22 @@ const register = async (companyName: string, name: string, email: string, passwo
         };
 
         setUsers(prev => [newUser, ...prev]);
-        addToast(`Invite sent to ${u.email}`, 'success');
+
+        // Show appropriate message based on email status
+        if (data.emailSent) {
+            addToast(`Invite sent to ${u.email}`, 'success');
+        } else {
+            console.warn("Email not sent:", data.emailError);
+            // Copy invite link to clipboard
+            if (data.inviteLink && navigator.clipboard) {
+                await navigator.clipboard.writeText(data.inviteLink);
+                addToast(`User created! Email failed to send. Invite link copied to clipboard - share it with ${u.email}`, 'success');
+            } else {
+                addToast(`User created! Email failed: ${data.emailError}. Check console for invite link.`, 'success');
+                console.log("Invite Link:", data.inviteLink);
+            }
+        }
+
         return true;
 
     } catch (error: any) {
