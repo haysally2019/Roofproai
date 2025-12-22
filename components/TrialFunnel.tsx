@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { 
-    ArrowRight, Building2, User, Mail, Lock, 
+import {
+    ArrowRight, Building2, User, Mail, Lock,
     Check, Sparkles, ShieldCheck, ArrowLeft, Loader2, Zap
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -304,9 +303,12 @@ export default function TrialFunnel() {
               <div className="text-center mt-6">
                 <p className="text-sm text-slate-500">
                     Already have an account?{' '}
-                    <Link to="/login" className="font-bold text-indigo-600 hover:text-indigo-500 transition-colors">
+                    <button
+                      onClick={() => window.location.href = '/'}
+                      className="font-bold text-indigo-600 hover:text-indigo-500 transition-colors underline-offset-2 hover:underline"
+                    >
                         Log in
-                    </Link>
+                    </button>
                 </p>
               </div>
 
