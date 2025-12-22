@@ -4,7 +4,7 @@ import { Plus, Search, Mail, User as UserIcon, Trash2, X } from 'lucide-react';
 
 interface Props {
   users: User[];
-  onAddUser: (user: Partial<User>) => Promise<any>; // Updated return type
+  onAddUser: (user: Partial<User>) => Promise<boolean>;
   onRemoveUser: (userId: string) => void;
 }
 
