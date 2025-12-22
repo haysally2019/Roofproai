@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { 
     ArrowRight, Building2, User, Mail, Lock, 
     Check, Sparkles, ShieldCheck, ArrowLeft, Loader2, Zap
@@ -298,6 +299,17 @@ export default function TrialFunnel() {
 
                   </div>
               </div>
+              
+              {/* Login Link */}
+              <div className="text-center mt-6">
+                <p className="text-sm text-slate-500">
+                    Already have an account?{' '}
+                    <Link to="/login" className="font-bold text-indigo-600 hover:text-indigo-500 transition-colors">
+                        Log in
+                    </Link>
+                </p>
+              </div>
+
           </div>
       </div>
     </div>
