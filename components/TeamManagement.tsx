@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { User, UserRole, Company } from '../types';
-import { Mail, Shield, UserPlus, Trash2 } from 'lucide-react';
+import { Mail, Shield, UserPlus, Trash2, Loader2 } from 'lucide-react';
 
 interface TeamManagementProps {
   company: Company;
   users: User[];
-  onAddUser: (user: Partial<User>) => Promise<any>; // Updated type
+  onAddUser: (user: Partial<User>) => Promise<boolean>;
   onRemoveUser: (userId: string) => void;
 }
 
@@ -96,8 +96,9 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
               <button 
                 type="submit"
                 disabled={isSubmitting}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
               >
+                {isSubmitting && <Loader2 className="animate-spin" size={16} />}
                 {isSubmitting ? 'Sending...' : 'Send Invite'}
               </button>
             </div>
