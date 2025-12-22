@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Company, User, UserRole, SubscriptionTier } from '../../types';
 import { Plus, Users, Zap, Search, Mail, User as UserIcon, X, Trash2, Edit2, CheckCircle, Copy, Key, Settings, CreditCard, ShieldAlert, Activity, FileText } from 'lucide-react';
 import { useStore } from '../../lib/store';
-import { SUBSCRIPTION_PLANS } from '../../lib/constants'; // <--- IMPORT THIS
+import { SUBSCRIPTION_PLANS } from '../../lib/constants';
 
 interface Props {
   companies: Company[];
@@ -15,26 +15,19 @@ interface Props {
 const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, initialData, onClearInitialData }) => {
   const { updateUser, removeUser, addUser, deleteCompany, updateCompany } = useStore();
 
-  // View Mode
   const [statusFilter, setStatusFilter] = useState<'Active' | 'Inactive'>('Active');
-
-  // Tenant State
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [companyForm, setCompanyForm] = useState({ name: '', address: '', phone: '', tier: 'Starter' });
   const [searchQuery, setSearchQuery] = useState('');
 
-  // User Management State
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null); 
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [userForm, setUserForm] = useState<Partial<User>>({ name: '', email: '', role: 'Staff' });
   const [isEditingUser, setIsEditingUser] = useState(false);
+  const [isSubmittingUser, setIsSubmittingUser] = useState(false);
   
-  // Settings Management State
   const [settingsCompany, setSettingsCompany] = useState<Company | null>(null);
   const [settingsTab, setSettingsTab] = useState<'Subscription' | 'Billing' | 'Danger'>('Subscription');
-
-  // Success State
-  const [createdUserCreds, setCreatedUserCreds] = useState<{email: string, password: string} | null>(null);
 
   useEffect(() => {
       if (initialData) {
@@ -43,7 +36,6 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
       }
   }, [initialData]);
 
-  // --- COMPANY ACTIONS ---
   const handleCreateCompany = async () => {
       await onAddCompany(companyForm);
       setShowCompanyModal(false);
@@ -57,7 +49,6 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
       return matchesSearch && matchesStatus;
   });
 
-  // --- SETTINGS ACTIONS ---
   const handleUpdateSubscription = (tier: SubscriptionTier) => {
       if (settingsCompany) {
           updateCompany({ id: settingsCompany.id, tier });
@@ -80,7 +71,6 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
       }
   };
 
-  // --- USER ACTIONS ---
   const handleOpenAddUser = () => {
       setUserForm({ name: '', email: '', role: 'Staff' });
       setIsEditingUser(false);
@@ -95,17 +85,15 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
 
   const handleSaveUser = async () => {
       if (!selectedCompany) return;
+      setIsSubmittingUser(true);
 
       if (isEditingUser && userForm.id) {
           await updateUser(userForm);
-          setShowUserModal(false);
       } else {
-          const tempPass = await addUser({ ...userForm, companyId: selectedCompany.id });
-          if (tempPass) {
-              setCreatedUserCreds({ email: userForm.email!, password: tempPass });
-              setShowUserModal(false);
-          }
+          await addUser({ ...userForm, companyId: selectedCompany.id });
       }
+      setIsSubmittingUser(false);
+      setShowUserModal(false);
   };
 
   const handleDeleteUser = async (userId: string) => {
@@ -114,11 +102,15 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
       }
   };
 
-  const copyToClipboard = (text: string) => navigator.clipboard.writeText(text);
+  // Mock Billing
+  const mockInvoices = [
+      { id: 'inv-001', date: '2024-12-01', amount: '$199.00', status: 'Paid' },
+      { id: 'inv-002', date: '2024-11-01', amount: '$199.00', status: 'Paid' },
+      { id: 'inv-003', date: '2024-10-01', amount: '$199.00', status: 'Paid' },
+  ];
 
   return (
     <div>
-        {/* Header & Controls */}
         <div className="flex flex-col gap-6 mb-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -142,7 +134,6 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                 </div>
             </div>
 
-            {/* Status Filter Tabs */}
             <div className="flex border-b border-slate-200">
                 <button 
                     onClick={() => setStatusFilter('Active')}
@@ -159,21 +150,16 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
             </div>
         </div>
 
-        {/* Company Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCompanies.map(company => (
                 <div key={company.id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col h-full group relative">
-                    {/* Header */}
                     <div className="flex justify-between items-start mb-4">
                         <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600 font-bold text-xl">
                             {company.name.substring(0,2).toUpperCase()}
                         </div>
                         <div className="flex gap-2">
                              <span className={`px-2 py-1 rounded text-xs font-bold ${company.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{company.status}</span>
-                             <button 
-                                onClick={() => setSettingsCompany(company)}
-                                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded"
-                             >
+                             <button onClick={() => setSettingsCompany(company)} className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded">
                                  <Settings size={16} />
                              </button>
                         </div>
@@ -188,10 +174,7 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                             <span className="flex items-center gap-1"><Zap size={14}/> {company.tier}</span>
                         </div>
                         
-                        <button 
-                            onClick={() => setSelectedCompany(company)}
-                            className="w-full py-2 bg-slate-50 text-slate-600 text-sm font-bold rounded-lg hover:bg-slate-100 border border-slate-200 transition-colors"
-                        >
+                        <button onClick={() => setSelectedCompany(company)} className="w-full py-2 bg-slate-50 text-slate-600 text-sm font-bold rounded-lg hover:bg-slate-100 border border-slate-200 transition-colors">
                             Manage Users
                         </button>
                     </div>
@@ -204,7 +187,6 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
             )}
         </div>
 
-        {/* --- ONBOARD COMPANY MODAL --- */}
         {showCompanyModal && (
             <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-fade-in relative">
@@ -215,13 +197,7 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                         <input value={companyForm.address} onChange={e => setCompanyForm({...companyForm, address: e.target.value})} placeholder="Address" className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"/>
                         <div className="grid grid-cols-2 gap-4">
                             <input value={companyForm.phone} onChange={e => setCompanyForm({...companyForm, phone: e.target.value})} placeholder="Phone" className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"/>
-                            
-                            {/* DYNAMIC PLAN SELECTION */}
-                            <select 
-                                value={companyForm.tier} 
-                                onChange={e => setCompanyForm({...companyForm, tier: e.target.value})} 
-                                className="w-full p-2.5 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500"
-                            >
+                            <select value={companyForm.tier} onChange={e => setCompanyForm({...companyForm, tier: e.target.value})} className="w-full p-2.5 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500">
                                 {Object.values(SUBSCRIPTION_PLANS).map(plan => (
                                     <option key={plan.id} value={plan.name}>{plan.name}</option>
                                 ))}
@@ -236,7 +212,6 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
             </div>
         )}
 
-        {/* --- SETTINGS MODAL --- */}
         {settingsCompany && (
             <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden animate-fade-in flex flex-col">
@@ -263,17 +238,13 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-2">Change Plan Tier</label>
-                                    
-                                    {/* DYNAMIC PLAN UPDATER */}
                                     <select 
                                         value={settingsCompany.tier} 
                                         onChange={(e) => handleUpdateSubscription(e.target.value as SubscriptionTier)}
                                         className="w-full p-3 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                                     >
                                         {Object.values(SUBSCRIPTION_PLANS).map(plan => (
-                                            <option key={plan.id} value={plan.name}>
-                                                {plan.name} - ${plan.price}/mo
-                                            </option>
+                                            <option key={plan.id} value={plan.name}>{plan.name} - ${plan.price}/mo</option>
                                         ))}
                                     </select>
                                     <p className="text-xs text-slate-500 mt-2">Plan changes apply immediately. Prorated charges will appear on next invoice.</p>
@@ -282,9 +253,25 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                         )}
 
                         {settingsTab === 'Billing' && (
-                            <div className="text-center py-8 text-slate-400">
-                                <CreditCard size={48} className="mx-auto mb-3 opacity-20"/>
-                                <p>No billing history available.</p>
+                            <div>
+                                <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><CreditCard size={18}/> Payment History</h4>
+                                <div className="border rounded-lg overflow-hidden">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-slate-50 font-bold text-slate-500">
+                                            <tr><th className="p-3">Date</th><th className="p-3">Amount</th><th className="p-3">Status</th><th className="p-3 text-right">Invoice</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {mockInvoices.map(inv => (
+                                                <tr key={inv.id}>
+                                                    <td className="p-3">{inv.date}</td>
+                                                    <td className="p-3">{inv.amount}</td>
+                                                    <td className="p-3"><span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-bold">{inv.status}</span></td>
+                                                    <td className="p-3 text-right text-indigo-600 hover:underline cursor-pointer"><FileText size={16} className="inline"/></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         )}
 
@@ -322,8 +309,7 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
             </div>
         )}
 
-        {/* --- MANAGE USERS MODAL --- */}
-        {selectedCompany && !createdUserCreds && (
+        {selectedCompany && (
             <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden animate-fade-in flex flex-col max-h-[85vh]">
                     <div className="p-6 border-b border-slate-100 flex justify-between items-center">
@@ -393,11 +379,11 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
             </div>
         )}
 
-        {/* --- ADD/EDIT USER SUB-MODAL --- */}
         {showUserModal && (
             <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
                 <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-scale-in">
-                    <h3 className="font-bold text-lg mb-4">{isEditingUser ? 'Edit User' : 'Add New User'}</h3>
+                    <h3 className="font-bold text-lg mb-4">{isEditingUser ? 'Edit User' : 'Invite New User'}</h3>
+                    <p className="text-sm text-slate-500 mb-4">The user will receive an invite email to join the company.</p>
                     <div className="space-y-4">
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Full Name</label>
@@ -424,56 +410,10 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                     </div>
                     <div className="flex justify-end gap-2 mt-6">
                         <button onClick={() => setShowUserModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-                        <button onClick={handleSaveUser} className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700">
-                            {isEditingUser ? 'Save Changes' : 'Create Account'}
+                        <button onClick={handleSaveUser} disabled={isSubmittingUser} className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                            {isSubmittingUser ? 'Sending...' : (isEditingUser ? 'Save Changes' : 'Send Invite')}
                         </button>
                     </div>
-                </div>
-            </div>
-        )}
-
-        {/* --- CREDENTIALS SUCCESS MODAL --- */}
-        {createdUserCreds && (
-            <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[70] p-4 backdrop-blur-sm">
-                <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-scale-in relative">
-                    <button onClick={() => setCreatedUserCreds(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X size={20}/></button>
-                    
-                    <div className="flex flex-col items-center text-center mb-6">
-                        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4 shadow-sm">
-                            <CheckCircle size={32} />
-                        </div>
-                        <h3 className="text-xl font-bold text-slate-900">User Created Successfully</h3>
-                        <p className="text-slate-500 text-sm mt-1">Please copy these credentials immediately.</p>
-                    </div>
-
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1 mb-1"><Mail size={12}/> Email</label>
-                            <div className="font-mono text-slate-800 font-medium select-all bg-white border border-slate-200 p-2 rounded">{createdUserCreds.email}</div>
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1 mb-1"><Key size={12}/> Temporary Password</label>
-                            <div className="flex items-center gap-2">
-                                <div className="font-mono text-slate-800 font-bold bg-white px-3 py-2 rounded border border-slate-200 select-all flex-1 tracking-wide">
-                                    {createdUserCreds.password}
-                                </div>
-                                <button 
-                                    onClick={() => copyToClipboard(createdUserCreds.password)}
-                                    className="p-2.5 bg-white border border-slate-200 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 rounded-lg transition-all shadow-sm"
-                                    title="Copy Password"
-                                >
-                                    <Copy size={18} />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <button 
-                        onClick={() => setCreatedUserCreds(null)}
-                        className="w-full mt-6 py-3 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 shadow-lg shadow-slate-200 transition-all"
-                    >
-                        Done
-                    </button>
                 </div>
             </div>
         )}
