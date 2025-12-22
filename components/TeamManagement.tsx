@@ -14,16 +14,17 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newUser, setNewUser] = useState({ name: '', email: '', role: UserRole.SALES_REP });
 
-  const handleAdd = async (e: React.FormEvent) => {
+const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUser.name || !newUser.email) return;
     
-    setIsSubmitting(true);
-    await onAddUser(newUser);
-    setIsSubmitting(false);
+    // Disable button while processing
+    const success = await onAddUser(newUser);
     
-    setIsAdding(false);
-    setNewUser({ name: '', email: '', role: UserRole.SALES_REP });
+    if (success) {
+        setIsAdding(false);
+        setNewUser({ name: '', email: '', role: UserRole.SALES_REP });
+    }
   };
 
   const usagePercent = Math.round((users.length / company.maxUsers) * 100);
