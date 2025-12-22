@@ -729,7 +729,20 @@ const register = async (companyName: string, name: string, email: string, passwo
             }
         });
 
-        if (error) throw new Error(error.message || "Unknown error calling create-user");
+        if (error) {
+            console.error("Edge Function Error:", error);
+            throw new Error(error.message || "Unknown error calling create-user");
+        }
+
+        // Check if the response contains an error
+        if (data?.error) {
+            console.error("Edge Function returned error:", data.error);
+            throw new Error(data.error);
+        }
+
+        if (!data?.user) {
+            throw new Error("No user data returned from edge function");
+        }
 
         // Optimistic UI Update
         const newUser: User = {
@@ -740,7 +753,7 @@ const register = async (companyName: string, name: string, email: string, passwo
             companyId: targetCompanyId || null,
             avatarInitials: u.name?.slice(0, 2).toUpperCase() || 'NA'
         };
-        
+
         setUsers(prev => [newUser, ...prev]);
         addToast(`Invite sent to ${u.email}`, 'success');
         return true;
