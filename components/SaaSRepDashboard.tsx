@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Company, User, SoftwareLead } from '../types';
-import { UserPlus, LogOut, TrendingUp, Building } from 'lucide-react';
+import { UserPlus, LogOut, TrendingUp, Building, Copy, Check, Wallet, AlertCircle, CheckCircle } from 'lucide-react';
 import SuperAdminLeads from './super-admin/SuperAdminLeads';
 import SuperAdminTenants from './super-admin/SuperAdminTenants';
 import { useStore } from '../lib/store';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   companies: Company[];
@@ -21,6 +22,38 @@ const SaaSRepDashboard: React.FC<Props> = ({
 }) => {
   const { logout } = useStore();
   const [activeView, setActiveView] = useState<'pipeline' | 'clients'>('pipeline');
+  
+  // --- REFERRAL & PAYOUT STATE ---
+  const [copied, setCopied] = useState(false);
+  const [earnings, setEarnings] = useState(0);
+  const referralLink = `${window.location.origin}/register?ref=${currentUser.id}`;
+  const stripeConnected = !!currentUser.stripe_connect_id; // In production, verify this field exists on User type
+
+  useEffect(() => {
+     const fetchEarnings = async () => {
+        const { data } = await supabase
+           .from('commissions')
+           .select('amount_cents')
+           .eq('rep_user_id', currentUser.id);
+        
+        if (data) {
+            const total = data.reduce((acc, curr) => acc + curr.amount_cents, 0);
+            setEarnings(total / 100);
+        }
+     };
+     fetchEarnings();
+  }, [currentUser.id]);
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(referralLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleConnectStripe = async () => {
+      // In production, call your backend to get a Stripe Connect OAuth link
+      alert("In production, this redirects to Stripe Connect Onboarding.");
+  };
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden">
@@ -49,6 +82,30 @@ const SaaSRepDashboard: React.FC<Props> = ({
           </button>
         </nav>
 
+        {/* PAYOUT WIDGET */}
+        <div className="px-4 mb-4">
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                <div className="flex items-center gap-2 mb-2">
+                    <Wallet className="text-emerald-400" size={20}/>
+                    <span className="text-slate-300 font-bold text-sm">Commissions</span>
+                </div>
+                <p className="text-2xl font-bold text-white mb-3">${earnings.toFixed(2)}</p>
+                
+                {!stripeConnected ? (
+                    <button 
+                        onClick={handleConnectStripe}
+                        className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded flex items-center justify-center gap-2 transition-colors"
+                    >
+                        <AlertCircle size={12}/> Setup Payouts
+                    </button>
+                ) : (
+                    <div className="text-xs text-emerald-400 flex items-center gap-1 font-bold">
+                        <CheckCircle size={12}/> Payouts Active
+                    </div>
+                )}
+            </div>
+        </div>
+
         <div className="p-4 border-t border-slate-800 bg-slate-900">
             <div className="flex items-center gap-3 mb-4 px-2">
                 <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center font-bold text-white shadow-lg border-2 border-slate-800">
@@ -68,6 +125,27 @@ const SaaSRepDashboard: React.FC<Props> = ({
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 flex flex-col h-full overflow-hidden">
         <div className="flex-1 overflow-hidden p-6 relative">
+            
+            {/* REFERRAL LINK CARD */}
+            <div className="bg-indigo-900 rounded-xl p-6 text-white shadow-lg mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div>
+                    <h3 className="font-bold text-lg text-white">Your Personal Sales Link</h3>
+                    <p className="text-indigo-200 text-sm">Share this URL. Companies that sign up are automatically attributed to you.</p>
+                </div>
+                <div className="flex items-center gap-2 bg-indigo-950/50 p-1.5 pl-4 rounded-lg border border-indigo-700/50 w-full md:w-auto max-w-md">
+                    <code className="text-xs text-indigo-300 truncate font-mono flex-1 select-all">
+                    {referralLink}
+                    </code>
+                    <button 
+                    onClick={copyToClipboard}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5"
+                    >
+                    {copied ? <Check size={14}/> : <Copy size={14}/>}
+                    {copied ? 'Copied' : 'Copy'}
+                    </button>
+                </div>
+            </div>
+
             {activeView === 'pipeline' ? (
                 <SuperAdminLeads 
                     leads={softwareLeads}
