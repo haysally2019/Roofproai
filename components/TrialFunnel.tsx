@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
     ArrowRight, Building2, User, Mail, Lock,
     Check, Sparkles, ShieldCheck, ArrowLeft, Loader2, Zap
@@ -7,6 +8,9 @@ import { supabase } from '../lib/supabase';
 import { stripeProducts } from '../src/stripe-config'; 
 
 export default function TrialFunnel() {
+  const [searchParams] = useSearchParams();
+  const referralCode = searchParams.get('ref'); // Capture ?ref= from URL
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +34,15 @@ export default function TrialFunnel() {
     setError(null);
 
     try {
-        // 1. Create Auth User
+        // 1. Resolve Referral Code (if exists)
+        let referrerId = null;
+        if (referralCode) {
+            // Call the SQL function created in Phase 1
+            const { data: resolved } = await supabase.rpc('resolve_referral_code', { code: referralCode });
+            referrerId = resolved;
+        }
+
+        // 2. Create Auth User
         const { data: authData, error: authError } = await supabase.auth.signUp({
             email: formData.email,
             password: formData.password,
@@ -39,12 +51,13 @@ export default function TrialFunnel() {
 
         if (authError) throw authError;
 
-        // 2. Create Company
+        // 3. Create Company (Injecting referrerId)
         const { data: companyData } = await supabase.from('companies').insert({
             name: formData.companyName,
             status: 'Pending', 
             tier: plan.name,
-            setup_complete: false
+            setup_complete: false,
+            referred_by_user_id: referrerId // <--- Capture Attribution Here
         }).select().single();
 
         if (companyData) {
@@ -57,7 +70,7 @@ export default function TrialFunnel() {
             });
         }
 
-        // 3. Initiate Hosted Checkout
+        // 4. Initiate Hosted Checkout
         const { data: { session } } = await supabase.auth.getSession();
         
         const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-checkout`, {
@@ -96,7 +109,7 @@ export default function TrialFunnel() {
               <Zap size={24} fill="currentColor"/> RAFTER AI
           </div>
           <div className="hidden md:block text-xs font-semibold bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full border border-indigo-100">
-              BETA PRICING LIVE
+              {referralCode ? 'Referral Offer Active' : 'BETA PRICING LIVE'}
           </div>
       </div>
 
