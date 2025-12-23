@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 export function SignupForm() {
   const [email, setEmail] = useState('');
@@ -8,7 +8,17 @@ export function SignupForm() {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const [searchParams] = useSearchParams();
+  const [referralCode, setReferralCode] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const refParam = searchParams.get('ref');
+    if (refParam) {
+      setReferralCode(refParam);
+      sessionStorage.setItem('referralCode', refParam);
+    }
+  }, [searchParams]);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,12 +26,15 @@ export function SignupForm() {
     setMessage(null);
 
     try {
+      const storedReferralCode = referralCode || sessionStorage.getItem('referralCode');
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             name,
+            referral_code: storedReferralCode,
           },
         },
       });
@@ -29,7 +42,6 @@ export function SignupForm() {
       if (error) {
         setMessage({ type: 'error', text: error.message });
       } else if (data.user) {
-        // Create user profile
         const { error: profileError } = await supabase
           .from('users')
           .insert([
@@ -44,6 +56,18 @@ export function SignupForm() {
         if (profileError) {
           setMessage({ type: 'error', text: 'Failed to create user profile' });
         } else {
+          if (storedReferralCode) {
+            const { data: referrerData } = await supabase
+              .from('users')
+              .select('id')
+              .eq('referral_code', storedReferralCode)
+              .maybeSingle();
+
+            if (referrerData) {
+              sessionStorage.setItem('referredByUserId', referrerData.id);
+            }
+          }
+
           setMessage({ type: 'success', text: 'Account created successfully!' });
           navigate('/dashboard');
         }
@@ -62,6 +86,13 @@ export function SignupForm() {
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Create your account
           </h2>
+          {referralCode && (
+            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+              <p className="text-sm text-green-800 text-center">
+                Signing up with referral code: <span className="font-bold">{referralCode}</span>
+              </p>
+            </div>
+          )}
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSignup}>
           <div className="rounded-md shadow-sm -space-y-px">
