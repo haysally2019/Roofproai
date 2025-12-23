@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, UserRole, Company } from '../types';
-import { Mail, Shield, UserPlus, Trash2, Loader2 } from 'lucide-react';
+import { Mail, Shield, UserPlus, Trash2, Loader2, Briefcase } from 'lucide-react';
 
 interface TeamManagementProps {
   company: Company;
@@ -14,31 +14,37 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newUser, setNewUser] = useState({ name: '', email: '', role: UserRole.SALES_REP });
 
-const handleAdd = async (e: React.FormEvent) => {
+  // Filter to show ONLY users belonging to this company
+  const companyUsers = users.filter(u => u.companyId === company.id);
+
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUser.name || !newUser.email) return;
     
-    // Disable button while processing
-    const success = await onAddUser(newUser);
+    setIsSubmitting(true);
+    // STRICT: Enforce creating user for THIS company only
+    await onAddUser({
+        ...newUser,
+        companyId: company.id // <--- This ensures they are attached to the company
+    });
+    setIsSubmitting(false);
     
-    if (success) {
-        setIsAdding(false);
-        setNewUser({ name: '', email: '', role: UserRole.SALES_REP });
-    }
+    setIsAdding(false);
+    setNewUser({ name: '', email: '', role: UserRole.SALES_REP });
   };
 
-  const usagePercent = Math.round((users.length / company.maxUsers) * 100);
+  const usagePercent = Math.round((companyUsers.length / company.maxUsers) * 100);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex justify-between items-end">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Team Management</h2>
-          <p className="text-slate-500">Manage access and roles for {company.name}</p>
+          <p className="text-slate-500">Manage access for {company.name}</p>
         </div>
         <div className="text-right">
           <p className="text-sm font-medium text-slate-700 mb-1">
-            License Usage: {users.length} / {company.maxUsers === 999 ? 'Unlimited' : company.maxUsers}
+            License Usage: {companyUsers.length} / {company.maxUsers === 999 ? 'Unlimited' : company.maxUsers}
           </p>
           <div className="w-48 h-2 bg-slate-200 rounded-full overflow-hidden">
             <div 
@@ -51,10 +57,10 @@ const handleAdd = async (e: React.FormEvent) => {
 
       {isAdding && (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
-          <h3 className="font-semibold text-lg mb-4">Invite New Member</h3>
-          <p className="text-sm text-slate-500 mb-4">An email will be sent to the user to set up their account.</p>
-          <form onSubmit={handleAdd} className="flex gap-4 items-end">
-            <div className="flex-1">
+          <h3 className="font-semibold text-lg mb-4">Invite New Employee</h3>
+          <p className="text-sm text-slate-500 mb-4">An invite will be sent to join <strong>{company.name}</strong>.</p>
+          <form onSubmit={handleAdd} className="flex flex-wrap gap-4 items-end">
+            <div className="flex-1 min-w-[200px]">
               <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
               <input 
                 required
@@ -64,7 +70,7 @@ const handleAdd = async (e: React.FormEvent) => {
                 placeholder="Jane Doe"
               />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-[200px]">
               <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
               <input 
                 required
@@ -83,7 +89,8 @@ const handleAdd = async (e: React.FormEvent) => {
                 onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}
               >
                 <option value={UserRole.SALES_REP}>Sales Rep</option>
-                <option value={UserRole.COMPANY_ADMIN}>Admin</option>
+                <option value={UserRole.COMPANY_ADMIN}>Company Admin</option>
+                {/* Note: 'SaaS Rep' and 'Super Admin' are HIDDEN here */}
               </select>
             </div>
             <div className="flex gap-2">
@@ -109,10 +116,10 @@ const handleAdd = async (e: React.FormEvent) => {
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-          <h3 className="font-semibold text-slate-700">Active Users</h3>
+          <h3 className="font-semibold text-slate-700">Active Employees</h3>
           <button 
             onClick={() => setIsAdding(true)}
-            disabled={users.length >= company.maxUsers}
+            disabled={companyUsers.length >= company.maxUsers}
             className="text-sm font-medium text-indigo-600 hover:text-indigo-800 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <UserPlus size={16} />
@@ -120,7 +127,7 @@ const handleAdd = async (e: React.FormEvent) => {
           </button>
         </div>
         <div className="divide-y divide-slate-100">
-          {users.map(user => (
+          {companyUsers.map(user => (
             <div key={user.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors group">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600 text-sm">
@@ -141,7 +148,7 @@ const handleAdd = async (e: React.FormEvent) => {
                     ? 'bg-purple-100 text-purple-700' 
                     : 'bg-blue-50 text-blue-600'
                 }`}>
-                  {user.role === UserRole.COMPANY_ADMIN && <Shield size={12} />}
+                  {user.role === UserRole.COMPANY_ADMIN ? <Shield size={12} /> : <Briefcase size={12} />}
                   {user.role}
                 </span>
                 
@@ -155,6 +162,9 @@ const handleAdd = async (e: React.FormEvent) => {
               </div>
             </div>
           ))}
+          {companyUsers.length === 0 && (
+              <div className="p-8 text-center text-slate-400 italic">No employees found.</div>
+          )}
         </div>
       </div>
     </div>
