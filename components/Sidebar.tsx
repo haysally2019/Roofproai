@@ -101,7 +101,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               <NavItem tab={Tab.CALENDAR} icon={Calendar} label="Calendar" />
               <NavItem tab={Tab.LEADS} icon={Users} />
               <NavItem tab={Tab.CLAIMS} icon={Umbrella} alert />
-              <NavItem tab={Tab.AI_RECEPTIONIST} icon={Mic} label="AI Receptionist" />
+              {currentUser.role === UserRole.COMPANY_ADMIN && (
+                <NavItem tab={Tab.AI_RECEPTIONIST} icon={Mic} label="AI Receptionist" />
+              )}
 
               {/* Collapsible Section: Production */}
               <div className="mt-3">
@@ -140,9 +142,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
                  )}
               </div>
               
-              <div className="mt-4 px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Admin</div>
-              <NavItem tab={Tab.AUTOMATIONS} icon={Zap} label="Workflows" />
-              <NavItem tab={Tab.TEAM} icon={UserCheck} label="Team" />
+              {currentUser.role === UserRole.COMPANY_ADMIN && (
+                <>
+                  <div className="mt-4 px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Admin</div>
+                  <NavItem tab={Tab.AUTOMATIONS} icon={Zap} label="Workflows" />
+                  <NavItem tab={Tab.TEAM} icon={UserCheck} label="Team" />
+                </>
+              )}
+              <div className="mt-4 px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                {currentUser.role === UserRole.SALES_REP ? 'Settings' : ''}
+              </div>
               <NavItem tab={Tab.SETTINGS} icon={SettingsIcon} />
             </>
           )}
