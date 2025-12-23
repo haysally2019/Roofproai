@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Company, User, SoftwareLead, UserRole } from '../types';
-import { Users, UserPlus, LogOut, TrendingUp, DollarSign, Building } from 'lucide-react';
+import { Company, User, SoftwareLead } from '../types';
+import { UserPlus, LogOut, TrendingUp, Building } from 'lucide-react';
 import SuperAdminLeads from './super-admin/SuperAdminLeads';
 import SuperAdminTenants from './super-admin/SuperAdminTenants';
 import { useStore } from '../lib/store';
@@ -13,10 +13,11 @@ interface Props {
   softwareLeads: SoftwareLead[];
   onAddSoftwareLead: (lead: SoftwareLead) => void;
   onUpdateSoftwareLead: (lead: SoftwareLead) => void;
+  onDeleteSoftwareLead?: (id: string) => void;
 }
 
 const SaaSRepDashboard: React.FC<Props> = ({ 
-  companies, users, currentUser, onAddCompany, softwareLeads, onAddSoftwareLead, onUpdateSoftwareLead 
+  companies, users, currentUser, onAddCompany, softwareLeads, onAddSoftwareLead, onUpdateSoftwareLead, onDeleteSoftwareLead 
 }) => {
   const { logout } = useStore();
   const [activeView, setActiveView] = useState<'pipeline' | 'clients'>('pipeline');
@@ -74,6 +75,7 @@ const SaaSRepDashboard: React.FC<Props> = ({
                     currentUser={currentUser}
                     onAddLead={onAddSoftwareLead}
                     onUpdateLead={onUpdateSoftwareLead}
+                    onDeleteLead={onDeleteSoftwareLead}
                 />
             ) : (
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm h-full overflow-hidden flex flex-col">
