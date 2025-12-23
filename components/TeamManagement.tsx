@@ -14,7 +14,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newUser, setNewUser] = useState({ name: '', email: '', role: UserRole.SALES_REP });
 
-  // Filter to show ONLY users belonging to this company
+  // Filter to show ONLY users belonging to this specific company
   const companyUsers = users.filter(u => u.companyId === company.id);
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -22,25 +22,29 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
     if (!newUser.name || !newUser.email) return;
     
     setIsSubmitting(true);
-    // STRICT: Enforce creating user for THIS company only
+    
+    // STRICT: Force the new user to belong to this company
+    // This prevents owners from accidentally inviting people to the wrong place or creating SaaS Reps
     await onAddUser({
         ...newUser,
-        companyId: company.id // <--- This ensures they are attached to the company
+        companyId: company.id 
     });
-    setIsSubmitting(false);
     
+    setIsSubmitting(false);
     setIsAdding(false);
     setNewUser({ name: '', email: '', role: UserRole.SALES_REP });
   };
 
+  // Calculate license usage
   const usagePercent = Math.round((companyUsers.length / company.maxUsers) * 100);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {/* HEADER & STATS */}
       <div className="flex justify-between items-end">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Team Management</h2>
-          <p className="text-slate-500">Manage access for {company.name}</p>
+          <p className="text-slate-500">Manage employees for {company.name}</p>
         </div>
         <div className="text-right">
           <p className="text-sm font-medium text-slate-700 mb-1">
@@ -55,6 +59,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
         </div>
       </div>
 
+      {/* INVITE FORM */}
       {isAdding && (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
           <h3 className="font-semibold text-lg mb-4">Invite New Employee</h3>
@@ -64,7 +69,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
               <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
               <input 
                 required
-                className="w-full p-2 border border-slate-300 rounded-lg" 
+                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
                 value={newUser.name}
                 onChange={e => setNewUser({...newUser, name: e.target.value})}
                 placeholder="Jane Doe"
@@ -75,7 +80,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
               <input 
                 required
                 type="email"
-                className="w-full p-2 border border-slate-300 rounded-lg" 
+                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
                 value={newUser.email}
                 onChange={e => setNewUser({...newUser, email: e.target.value})}
                 placeholder="jane@company.com"
@@ -84,27 +89,27 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
             <div className="w-48">
               <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
               <select 
-                className="w-full p-2 border border-slate-300 rounded-lg"
+                className="w-full p-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                 value={newUser.role}
                 onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}
               >
+                {/* RESTRICTED OPTIONS: No SaaS Reps or Super Admins */}
                 <option value={UserRole.SALES_REP}>Sales Rep</option>
                 <option value={UserRole.COMPANY_ADMIN}>Company Admin</option>
-                {/* Note: 'SaaS Rep' and 'Super Admin' are HIDDEN here */}
               </select>
             </div>
             <div className="flex gap-2">
               <button 
                 type="button" 
                 onClick={() => setIsAdding(false)}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button 
                 type="submit"
                 disabled={isSubmitting}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2 transition-colors"
               >
                 {isSubmitting && <Loader2 className="animate-spin" size={16} />}
                 {isSubmitting ? 'Sending...' : 'Send Invite'}
@@ -114,13 +119,14 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
         </div>
       )}
 
+      {/* USER LIST */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
           <h3 className="font-semibold text-slate-700">Active Employees</h3>
           <button 
             onClick={() => setIsAdding(true)}
             disabled={companyUsers.length >= company.maxUsers}
-            className="text-sm font-medium text-indigo-600 hover:text-indigo-800 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-sm font-medium text-indigo-600 hover:text-indigo-800 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <UserPlus size={16} />
             Add User
@@ -153,7 +159,11 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
                 </span>
                 
                 <button 
-                  onClick={() => onRemoveUser(user.id)}
+                  onClick={() => {
+                      if (confirm(`Are you sure you want to remove ${user.name}?`)) {
+                          onRemoveUser(user.id);
+                      }
+                  }}
                   className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                   title="Remove User"
                 >
@@ -163,7 +173,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUs
             </div>
           ))}
           {companyUsers.length === 0 && (
-              <div className="p-8 text-center text-slate-400 italic">No employees found.</div>
+              <div className="p-8 text-center text-slate-400 italic">No employees found in this workspace.</div>
           )}
         </div>
       </div>
