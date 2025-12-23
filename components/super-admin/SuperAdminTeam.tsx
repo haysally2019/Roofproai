@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../../types';
-import { Plus, Search, Mail, Trash2, X, Shield, Briefcase } from 'lucide-react';
+import { Plus, Search, Mail, Trash2, X, Shield, Briefcase, Loader2 } from 'lucide-react';
 
 interface Props {
   users: User[];
@@ -10,13 +10,11 @@ interface Props {
 
 const SuperAdminTeam: React.FC<Props> = ({ users, onAddUser, onRemoveUser }) => {
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', role: 'SaaS Rep' }); // Default to SaaS Rep
+  const [form, setForm] = useState({ name: '', email: '', role: 'SaaS Rep' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Filter to show only internal team (Super Admins & SaaS Reps)
+  // Only show Internal Team members (SaaS Reps & Super Admins)
   const filteredUsers = users.filter(u =>
-    (u.name.toLowerCase().includes(form.name.toLowerCase()) || 
-     u.email.toLowerCase().includes(form.name.toLowerCase())) &&
     (u.role === UserRole.SUPER_ADMIN || u.role === UserRole.SAAS_REP)
   );
 
@@ -24,25 +22,25 @@ const SuperAdminTeam: React.FC<Props> = ({ users, onAddUser, onRemoveUser }) => 
     if (!form.name || !form.email) return;
     setIsSubmitting(true);
     
-    // Explicitly send the role. companyId must be null for internal team.
+    // STRICT: Always pass null for companyId when Super Admin invites team
     await onAddUser({
       name: form.name,
       email: form.email,
-      role: form.role as UserRole, // 'SaaS Rep' or 'Super Admin'
+      role: form.role as UserRole,
       companyId: null 
     });
 
     setIsSubmitting(false);
     setShowModal(false);
-    setForm({ name: '', email: '', role: 'SaaS Rep' });
+    setForm({ name: '', email: '', role: 'SaaS Rep' }); // Reset to SaaS Rep default
   };
 
   return (
     <div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Rafter Internal Team</h1>
-          <p className="text-slate-500 text-sm">Manage Super Admins and SaaS Sales Representatives.</p>
+          <h1 className="text-2xl font-extrabold text-slate-900">Internal Team</h1>
+          <p className="text-slate-500 text-sm">Manage SaaS Reps and Super Admins</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
@@ -98,6 +96,7 @@ const SuperAdminTeam: React.FC<Props> = ({ users, onAddUser, onRemoveUser }) => 
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-fade-in relative">
             <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X size={20}/></button>
             <h3 className="font-bold text-lg mb-4">Invite Team Member</h3>
+            <p className="text-sm text-slate-500 mb-4">This user will have access to the <strong>Internal SaaS Dashboard</strong>.</p>
             <div className="space-y-4">
               <input
                 value={form.name}
@@ -129,8 +128,9 @@ const SuperAdminTeam: React.FC<Props> = ({ users, onAddUser, onRemoveUser }) => 
               <button
                 onClick={handleCreate}
                 disabled={!form.name || !form.email || isSubmitting}
-                className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
               >
+                {isSubmitting && <Loader2 className="animate-spin" size={16}/>}
                 {isSubmitting ? 'Sending...' : 'Send Invite'}
               </button>
             </div>
