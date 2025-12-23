@@ -109,8 +109,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         };
         setCurrentUser(user);
 
-        // --- SUPER ADMIN LOGIC ---
-        if (user.role === UserRole.SUPER_ADMIN) {
+        // --- SUPER ADMIN & SAAS REP LOGIC ---
+        if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.SAAS_REP) {
             const [companiesRes, usersRes] = await Promise.all([
                 supabase.from('companies').select('*').order('created_at', { ascending: false }),
                 supabase.from('users').select('*').order('created_at', { ascending: false })
