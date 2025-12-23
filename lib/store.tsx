@@ -45,7 +45,7 @@ interface StoreContextType {
   addEvent: (event: Partial<CalendarEvent>) => void;
   createInvoice: (invoice: Invoice) => void;
   updateInvoiceStatus: (id: string, status: Invoice['status']) => void;
-  addUser: (user: Partial<User>) => Promise<boolean>; 
+  addUser: (user: Partial<User>) => Promise<boolean>; // FIX: Return boolean success/fail
   removeUser: (userId: string) => Promise<void>;
   addSoftwareLead: (lead: SoftwareLead) => void;
   updateSoftwareLead: (lead: SoftwareLead) => void;
@@ -99,29 +99,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (error) throw error;
 
       if (data) {
-        // DEFENSIVE FIX: If user has no company and role is 'Sales Rep', force 'SaaS Rep'
-        // This handles cases where the DB constraint defaulted to 'Sales Rep'
-        let role = data.role as UserRole;
-        if (!data.company_id && role === UserRole.SALES_REP) {
-            role = UserRole.SAAS_REP;
-        }
-
         const user: User = {
           id: data.id,
           name: data.name,
           email: data.email,
-          role: role,
+          role: data.role as UserRole,
           companyId: data.company_id,
-          avatarInitials: data.avatar_initials || data.name.slice(0, 2).toUpperCase(),
-          // Load stripe_connect_id if present
-          stripe_connect_id: data.stripe_connect_id
+          avatarInitials: data.avatar_initials || data.name.slice(0, 2).toUpperCase()
         };
         setCurrentUser(user);
 
-        // --- SUPER ADMIN & SAAS REP LOGIC ---
-        // SaaS Reps need the same data view as Super Admins (list of companies/users)
-        if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.SAAS_REP) {
-            
+        // --- SUPER ADMIN LOGIC ---
+        if (user.role === UserRole.SUPER_ADMIN) {
             const [companiesRes, usersRes] = await Promise.all([
                 supabase.from('companies').select('*').order('created_at', { ascending: false }),
                 supabase.from('users').select('*').order('created_at', { ascending: false })
@@ -141,8 +130,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                     setupComplete: c.setup_complete,
                     phone: c.phone,
                     agentConfig: c.agent_config,
-                    integrations: c.integrations,
-                    referredBy: c.referred_by_user_id
+                    integrations: c.integrations
                 })));
             }
 
@@ -171,8 +159,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 }));
             }
 
-            // Init SaaS Leads (Super Admin & SaaS Reps need this)
-            // In production, fetch this from a 'software_leads' table
+            // Init Mock SaaS Leads (Replace with Supabase fetch when table exists)
             if (softwareLeads.length === 0) {
                 setSoftwareLeads([
                   { id: 'sl-1', companyName: 'Apex Roofing', contactName: 'John Smith', email: 'john@apex.com', phone: '555-0101', status: 'Demo Booked', potentialUsers: 5, assignedTo: user.id, notes: 'Interested in AI', createdAt: new Date().toISOString() },
@@ -181,7 +168,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
 
         } else {
-            // --- STANDARD COMPANY USER LOGIC ---
+            // --- STANDARD USER LOGIC ---
             if (data.companies) {
               const company: Company = {
                 id: data.companies.id,
@@ -427,7 +414,7 @@ const register = async (companyName: string, name: string, email: string, passwo
           tier: 'Starter', 
           status: 'Active', 
           setup_complete: false,
-          referred_by_user_id: referrerId
+          referred_by_user_id: referrerId // <--- The Invisible Stamp
         }).select().single();
       
       if (companyError) { addToast(companyError.message, "error"); return false; }
@@ -456,6 +443,7 @@ const register = async (companyName: string, name: string, email: string, passwo
     setCallLogs([]);
     setAutomations([]);
     setOrders([]);
+    // Clear Super Admin data as well
     setCompanies([]);
     setUsers([]);
     setSoftwareLeads([]);
@@ -508,7 +496,7 @@ const register = async (companyName: string, name: string, email: string, passwo
     const { error } = await supabase.from('companies').update({
         name: c.name, address: c.address, phone: c.phone, logo_url: c.logoUrl,
         setup_complete: c.setupComplete, agent_config: c.agentConfig, integrations: c.integrations,
-        status: c.status, tier: c.tier 
+        status: c.status, tier: c.tier // UPDATED: Included status and tier update logic
     }).eq('id', c.id);
     
     if (error) {
@@ -518,12 +506,14 @@ const register = async (companyName: string, name: string, email: string, passwo
     setCompanies(prev => prev.map(x => x.id === c.id ? {...x, ...c} : x));
   };
 
+  // --- DELETE COMPANY ---
   const deleteCompany = async (companyId: string) => {
       if (currentUser?.role !== UserRole.SUPER_ADMIN) {
           addToast("Permission denied", "error");
           return;
       }
       
+      // Delete from Supabase
       const { error } = await supabase.from('companies').delete().eq('id', companyId);
       
       if (error) {
@@ -531,8 +521,9 @@ const register = async (companyName: string, name: string, email: string, passwo
           return;
       }
 
+      // Update Local State
       setCompanies(prev => prev.filter(c => c.id !== companyId));
-      setUsers(prev => prev.filter(u => u.companyId !== companyId)); 
+      setUsers(prev => prev.filter(u => u.companyId !== companyId)); // Remove users of deleted company from view
       addToast('Company and all associated data deleted', 'success');
   };
 
@@ -540,6 +531,7 @@ const register = async (companyName: string, name: string, email: string, passwo
     const targetId = u.id || currentUser?.id;
     if (!targetId) return;
 
+    // Allow Super Admin to update other users
     const { error } = await supabase.from('users').update({ 
         name: u.name, 
         role: u.role, 
@@ -553,6 +545,7 @@ const register = async (companyName: string, name: string, email: string, passwo
 
     setUsers(prev => prev.map(user => user.id === targetId ? { ...user, ...u } : user));
     
+    // If updating self, update local context too
     if (currentUser && targetId === currentUser.id) {
         setCurrentUser(prev => prev ? { ...prev, ...u } : null);
     }
@@ -728,20 +721,26 @@ const register = async (companyName: string, name: string, email: string, passwo
     if (!error) setOrders(prev => [...prev, o]);
   };
 
+// --- REVISED ADD USER LOGIC ---
   const addUser = async (u: Partial<User>): Promise<boolean> => {
+    // For SaaS Reps and Super Admins, companyId should be null
+    // Only use currentUser's companyId if u.companyId is undefined (not explicitly set)
     const targetCompanyId = u.companyId !== undefined ? u.companyId : currentUser?.companyId;
 
+    // Validation
     if (!targetCompanyId && currentUser?.role !== UserRole.SUPER_ADMIN) {
         addToast("Cannot create user without an organization.", "error");
         return false;
     }
 
     try {
+        // Get current session to ensure we're authenticated
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) {
             throw new Error("You must be logged in to invite users");
         }
 
+        // Call the Edge Function with explicit authorization header
         const { data, error } = await supabase.functions.invoke('create-user', {
             body: {
                 email: u.email,
@@ -760,6 +759,7 @@ const register = async (companyName: string, name: string, email: string, passwo
             throw new Error(error.message || "Unknown error calling create-user");
         }
 
+        // Check if the response contains an error
         if (data?.error) {
             console.error("Edge Function returned error:", data.error);
             throw new Error(data.error);
@@ -769,6 +769,7 @@ const register = async (companyName: string, name: string, email: string, passwo
             throw new Error("No user data returned from edge function");
         }
 
+        // Optimistic UI Update
         const newUser: User = {
             id: data.user.id,
             name: u.name!,
@@ -780,10 +781,12 @@ const register = async (companyName: string, name: string, email: string, passwo
 
         setUsers(prev => [newUser, ...prev]);
 
+        // Show appropriate message based on email status
         if (data.emailSent) {
             addToast(`Invite sent to ${u.email}`, 'success');
         } else {
             console.warn("Email not sent:", data.emailError);
+            // Copy invite link to clipboard
             if (data.inviteLink && navigator.clipboard) {
                 await navigator.clipboard.writeText(data.inviteLink);
                 addToast(`User created! Email failed to send. Invite link copied to clipboard - share it with ${u.email}`, 'success');
