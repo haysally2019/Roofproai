@@ -34,10 +34,11 @@ const SaaSRepDashboard: React.FC<Props> = ({
         const { data } = await supabase
            .from('commissions')
            .select('amount_cents')
-           .eq('rep_user_id', currentUser.id);
-        
+           .eq('rep_user_id', currentUser.id)
+           .eq('status', 'Paid');
+
         if (data) {
-            const total = data.reduce((acc, curr) => acc + curr.amount_cents, 0);
+            const total = data.reduce((acc, curr) => acc + (curr.amount_cents || 0), 0);
             setEarnings(total / 100);
         }
      };
