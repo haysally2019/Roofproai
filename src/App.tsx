@@ -13,7 +13,7 @@ import LeadBoard from './components/LeadBoard';
 import Estimator from './components/Estimator';
 import AIChat from './components/AIChat';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
-import SaaSRepDashboard from './components/SaaSRepDashboard'; // <--- Ensure this is imported
+import SaaSRepDashboard from './components/SaaSRepDashboard';
 import TeamManagement from './components/TeamManagement';
 import CalendarView from './components/CalendarView';
 import TaskBoard from './components/TaskBoard';
@@ -22,8 +22,10 @@ import PriceBook from './components/PriceBook';
 import Settings from './components/Settings';
 import AIReceptionist from './components/AIReceptionist';
 import Automations from './components/Automations';
-import Onboarding from './components/Onboarding'; 
-import TrialFunnel from './components/TrialFunnel'; 
+import Onboarding from './components/Onboarding';
+import TrialFunnel from './components/TrialFunnel';
+import { SignupForm } from './components/auth/SignupForm';
+import { LoginForm } from './components/auth/LoginForm'; 
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -106,10 +108,23 @@ const AppLayout: React.FC = () => {
   };
 
   // --- ROUTING LOGIC ---
-  const path = window.location.pathname.toLowerCase().replace(/\/$/, ''); 
+  const path = window.location.pathname.toLowerCase().replace(/\/$/, '');
   const hash = window.location.hash.toLowerCase();
-  
-  // 1. If path is /set-password, show that screen immediately
+
+  // 1. Handle referral redirect URLs like /r/DEMOS
+  if (path.startsWith('/r/')) {
+    const referralCode = path.substring(3).toUpperCase();
+    if (referralCode) {
+      window.location.href = `/signup?ref=${referralCode}`;
+      return (
+        <div className="h-screen w-screen flex items-center justify-center bg-slate-900">
+          <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" />
+        </div>
+      );
+    }
+  }
+
+  // 2. If path is /set-password, show that screen immediately
   // Note: We depend on Supabase resolving the #access_token from the URL automatically
   if (path === '/set-password') {
       return <SetPassword />;
@@ -128,7 +143,27 @@ const AppLayout: React.FC = () => {
   const isOnboardingRoute = path === '/onboarding' || path === '/register';
   if (isOnboardingRoute) return <><ToastContainer /><TrialFunnel /></>;
 
-  // 3. If no user, show Login
+  // 3. Signup page (public)
+  if (path === '/signup') {
+    return (
+      <>
+        <ToastContainer />
+        <SignupForm />
+      </>
+    );
+  }
+
+  // 4. Login page (public)
+  if (path === '/login') {
+    return (
+      <>
+        <ToastContainer />
+        <LoginForm />
+      </>
+    );
+  }
+
+  // 5. If no user, show Login
   if (!currentUser) {
       return (
          <div className="h-full w-full bg-[#0F172A] relative overflow-y-auto flex flex-col">
@@ -164,8 +199,8 @@ const AppLayout: React.FC = () => {
       )
   }
 
-  // --- 4. VIEW ROUTING BASED ON ROLE ---
-  
+  // --- 6. VIEW ROUTING BASED ON ROLE ---
+
   // A. SaaS Rep View (Dedicated)
   if (currentUser.role === 'SaaS Rep' || currentUser.role === UserRole.SAAS_REP) {
       return (

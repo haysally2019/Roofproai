@@ -67,7 +67,7 @@ const SaaSRepDashboard: React.FC<Props> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const referralUrl = `${window.location.origin}/signup?ref=${referralCode}`;
+  const referralUrl = `${window.location.origin}/r/${referralCode}`;
 
   useEffect(() => {
     loadDashboardData();
