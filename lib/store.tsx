@@ -733,6 +733,19 @@ const register = async (companyName: string, name: string, email: string, passwo
         return false;
     }
 
+    // Check subscription user limits for company owners
+    if (targetCompanyId && currentUser?.role !== UserRole.SUPER_ADMIN) {
+        const company = companies.find(c => c.id === targetCompanyId);
+        if (company) {
+            const currentUserCount = users.filter(user => user.companyId === targetCompanyId).length;
+            if (currentUserCount >= company.maxUsers) {
+                const tierName = company.tier || 'current';
+                addToast(`User limit reached for ${tierName} plan (${company.maxUsers} users). Please upgrade your subscription.`, "error");
+                return false;
+            }
+        }
+    }
+
     try {
         // Get current session to ensure we're authenticated
         const { data: { session } } = await supabase.auth.getSession();

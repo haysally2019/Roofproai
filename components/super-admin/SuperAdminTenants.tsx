@@ -51,8 +51,10 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
 
   const handleUpdateSubscription = (tier: SubscriptionTier) => {
       if (settingsCompany) {
-          updateCompany({ id: settingsCompany.id, tier });
-          setSettingsCompany({ ...settingsCompany, tier });
+          const plan = Object.values(SUBSCRIPTION_PLANS).find(p => p.name === tier);
+          const maxUsers = plan?.maxUsers || 5;
+          updateCompany({ id: settingsCompany.id, tier, maxUsers });
+          setSettingsCompany({ ...settingsCompany, tier, maxUsers });
       }
   };
 
@@ -170,7 +172,7 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                     
                     <div className="mt-auto pt-4 border-t border-slate-100 space-y-3">
                         <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                            <span className="flex items-center gap-1"><Users size={14}/> {company.userCount}/{company.maxUsers} Users</span>
+                            <span className="flex items-center gap-1"><Users size={14}/> {company.userCount}/{company.maxUsers === 999 ? 'Unlimited' : company.maxUsers} Users</span>
                             <span className="flex items-center gap-1"><Zap size={14}/> {company.tier}</span>
                         </div>
                         
@@ -231,20 +233,25 @@ const SuperAdminTenants: React.FC<Props> = ({ companies, users, onAddCompany, in
                             <div className="space-y-4">
                                 <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-lg">
                                     <div className="p-2 bg-white rounded text-indigo-600 shadow-sm"><Activity size={20}/></div>
-                                    <div>
+                                    <div className="flex-1">
                                         <p className="text-xs font-bold text-indigo-800 uppercase">Current Plan</p>
                                         <p className="text-lg font-bold text-indigo-900">{settingsCompany.tier}</p>
+                                        <p className="text-xs text-indigo-600 mt-1">
+                                            {settingsCompany.userCount || 0}/{settingsCompany.maxUsers === 999 ? 'Unlimited' : settingsCompany.maxUsers} Users
+                                        </p>
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-2">Change Plan Tier</label>
-                                    <select 
-                                        value={settingsCompany.tier} 
+                                    <select
+                                        value={settingsCompany.tier}
                                         onChange={(e) => handleUpdateSubscription(e.target.value as SubscriptionTier)}
                                         className="w-full p-3 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                                     >
                                         {Object.values(SUBSCRIPTION_PLANS).map(plan => (
-                                            <option key={plan.id} value={plan.name}>{plan.name} - ${plan.price}/mo</option>
+                                            <option key={plan.id} value={plan.name}>
+                                                {plan.name} - ${plan.price}/mo ({plan.maxUsers === 999 ? 'Unlimited' : plan.maxUsers} users)
+                                            </option>
                                         ))}
                                     </select>
                                     <p className="text-xs text-slate-500 mt-2">Plan changes apply immediately. Prorated charges will appear on next invoice.</p>

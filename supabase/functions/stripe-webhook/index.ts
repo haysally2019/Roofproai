@@ -11,6 +11,12 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+const SUBSCRIPTION_PLAN_MAPPING: Record<string, { tier: string; maxUsers: number }> = {
+  'price_1SgX3WPi0ycIAEpYb38zmYPK': { tier: 'Starter', maxUsers: 5 },
+  'price_1SgX5hPi0ycIAEpYimplJjy5': { tier: 'Professional', maxUsers: 15 },
+  'price_1SgX6FPi0ycIAEpYUM5UikDS': { tier: 'Enterprise', maxUsers: 999 },
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204 });
 
@@ -41,7 +47,7 @@ Deno.serve(async (req) => {
       // 2. Push to CRM (Unlock Company Access)
       // Only if status is 'active' or 'trialing'
       if (["active", "trialing"].includes(subscription.status)) {
-        
+
         // Find the Supabase User ID linked to this Stripe Customer
         const { data: customerData } = await supabase
           .from("stripe_customers")
@@ -58,15 +64,28 @@ Deno.serve(async (req) => {
             .single();
 
           if (userData?.company_id) {
-            // UNLOCK THE COMPANY
+            // Get the price ID from the subscription
+            const priceId = subscription.items.data[0].price.id;
+            const planConfig = SUBSCRIPTION_PLAN_MAPPING[priceId];
+
+            // UNLOCK THE COMPANY with correct tier and user limits
+            const updateData: any = {
+              status: "Active",
+              setup_complete: true
+            };
+
+            // If we recognize the price ID, set tier and max_users
+            if (planConfig) {
+              updateData.tier = planConfig.tier;
+              updateData.max_users = planConfig.maxUsers;
+              console.log(`Setting company to ${planConfig.tier} with ${planConfig.maxUsers} max users`);
+            }
+
             await supabase
               .from("companies")
-              .update({ 
-                status: "Active", 
-                setup_complete: true // This allows them past the Onboarding screen
-              })
+              .update(updateData)
               .eq("id", userData.company_id);
-              
+
             console.log(`Company ${userData.company_id} unlocked for user ${customerData.user_id}`);
           }
         }
