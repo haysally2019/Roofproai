@@ -20,8 +20,9 @@ import PriceBook from './components/PriceBook';
 import Settings from './components/Settings';
 import AIReceptionist from './components/AIReceptionist';
 import Automations from './components/Automations';
-import Onboarding from './components/Onboarding'; 
-import TrialFunnel from './components/TrialFunnel'; 
+import Onboarding from './components/Onboarding';
+import TrialFunnel from './components/TrialFunnel';
+import UserAnalytics from './components/UserAnalytics'; 
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -59,6 +60,7 @@ const AppLayout: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [authLoading, setAuthLoading] = useState(false);
+  const [selectedUserForAnalytics, setSelectedUserForAnalytics] = useState<typeof users[0] | null>(null);
 
   const handleDraftEmail = async (leadId: string) => {
     const lead = leads.find(l => l.id === leadId);
@@ -214,7 +216,22 @@ const AppLayout: React.FC = () => {
                   {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}
                   {activeTab === Tab.AI_RECEPTIONIST && <AIReceptionist />}
                   {activeTab === Tab.AUTOMATIONS && <Automations />}
-                  {activeTab === Tab.TEAM && currentCompany && <TeamManagement company={currentCompany} users={users || []} onAddUser={addUser} onRemoveUser={removeUser} />}
+                  {activeTab === Tab.TEAM && currentCompany && (
+                    selectedUserForAnalytics ? (
+                      <UserAnalytics
+                        user={selectedUserForAnalytics}
+                        onBack={() => setSelectedUserForAnalytics(null)}
+                      />
+                    ) : (
+                      <TeamManagement
+                        company={currentCompany}
+                        users={users || []}
+                        onAddUser={addUser}
+                        onRemoveUser={removeUser}
+                        onViewAnalytics={setSelectedUserForAnalytics}
+                      />
+                    )
+                  )}
                 </div>
               );
             } catch (error) {

@@ -7,9 +7,10 @@ interface TeamManagementProps {
   users: User[];
   onAddUser: (user: Partial<User>) => Promise<boolean>;
   onRemoveUser: (userId: string) => void;
+  onViewAnalytics?: (user: User) => void;
 }
 
-const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUser, onRemoveUser }) => {
+const TeamManagement: React.FC<TeamManagementProps> = ({ company, users, onAddUser, onRemoveUser, onViewAnalytics }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newUser, setNewUser] = useState({ name: '', email: '', role: UserRole.SALES_REP });
@@ -122,31 +123,37 @@ const handleAdd = async (e: React.FormEvent) => {
         <div className="divide-y divide-slate-100">
           {users.map(user => (
             <div key={user.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors group">
-              <div className="flex items-center gap-4">
+              <div
+                className="flex items-center gap-4 flex-1 cursor-pointer"
+                onClick={() => onViewAnalytics?.(user)}
+              >
                 <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600 text-sm">
                   {user.avatarInitials}
                 </div>
                 <div>
-                  <h4 className="font-medium text-slate-900">{user.name}</h4>
+                  <h4 className="font-medium text-slate-900 group-hover:text-blue-600 transition-colors">{user.name}</h4>
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <Mail size={12} />
                     {user.email}
                   </div>
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-6">
                 <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
-                  user.role === UserRole.COMPANY_ADMIN 
-                    ? 'bg-purple-100 text-purple-700' 
+                  user.role === UserRole.COMPANY_ADMIN
+                    ? 'bg-purple-100 text-purple-700'
                     : 'bg-blue-50 text-blue-600'
                 }`}>
                   {user.role === UserRole.COMPANY_ADMIN && <Shield size={12} />}
                   {user.role}
                 </span>
-                
-                <button 
-                  onClick={() => onRemoveUser(user.id)}
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveUser(user.id);
+                  }}
                   className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                   title="Remove User"
                 >
