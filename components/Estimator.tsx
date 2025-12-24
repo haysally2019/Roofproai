@@ -394,7 +394,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
   const endSign = () => setIsSigning(false);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden relative isolate">
       {/* TOP CONTROLS */}
       <div className="bg-white border-b border-slate-200 p-4 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
           <div className="flex bg-slate-100 rounded-lg p-1">
@@ -425,12 +425,12 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
           </div>
       </div>
 
-      <div className="flex-1 overflow-auto bg-slate-50 p-4 md:p-6 flex flex-col lg:flex-row gap-6">
+      <div className="flex-1 overflow-auto bg-slate-50 p-4 md:p-6 flex flex-col lg:flex-row gap-6 relative z-0">
           
           {/* LEFT: TOOLS */}
-          <div className="w-full lg:w-1/3 flex flex-col gap-6 shrink-0 h-full">
+          <div className="w-full lg:w-1/3 flex flex-col gap-6 shrink-0 h-full relative z-0">
               {activeTab === 'map' ? (
-                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col h-full">
+                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col h-full relative z-0">
                       {mapError && (
                           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
                               <AlertTriangle className="text-red-600 shrink-0" size={20} />
@@ -447,8 +447,8 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                       </div>
                       
                       <div className="relative flex-1 bg-slate-100 rounded-lg border border-slate-200 min-h-[400px] mb-3 overflow-hidden">
-                          <div ref={mapRef} className="absolute inset-0 w-full h-full"></div>
-                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10 opacity-60">
+                          <div ref={mapRef} className="absolute inset-0 w-full h-full z-0"></div>
+                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-[5] opacity-60">
                               <Crosshair size={32} className="text-white drop-shadow-md" strokeWidth={1.5} />
                           </div>
                       </div>
@@ -494,7 +494,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                       </button>
                   </div>
               ) : (
-                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative z-0">
                       <h2 className="font-bold text-lg mb-6 flex items-center gap-2"><Calculator size={20} className="text-indigo-600"/> Estimator Settings</h2>
                       
                       <div className="mb-6">
@@ -561,7 +561,7 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
           </div>
 
           {/* RIGHT: PREVIEW */}
-          <div className="w-full lg:w-2/3 bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden min-h-[600px]">
+          <div className="w-full lg:w-2/3 bg-white rounded-xl shadow-lg border border-slate-200 flex flex-col overflow-hidden min-h-[600px] relative z-10">
               <div className="bg-slate-50 border-b border-slate-200 p-2 flex justify-center">
                   <div className="flex bg-white rounded-lg border border-slate-200 p-1">
                       <button onClick={() => setViewMode('proposal')} className={`px-4 py-1.5 text-xs font-bold rounded flex items-center gap-2 ${viewMode === 'proposal' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500'}`}>
