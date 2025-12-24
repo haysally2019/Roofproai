@@ -187,12 +187,29 @@ const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpda
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                  <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide">Client Details</h3>
-                 <button 
-                   onClick={() => editMode ? handleSave() : setEditMode(true)}
-                   className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
-                 >
-                   {editMode ? 'Save Changes' : 'Edit Details'}
-                 </button>
+                 {editMode ? (
+                   <div className="flex gap-2">
+                     <button
+                       onClick={() => { setEditMode(false); setEditData(lead); }}
+                       className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors"
+                     >
+                       Cancel
+                     </button>
+                     <button
+                       onClick={handleSave}
+                       className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
+                     >
+                       Save Changes
+                     </button>
+                   </div>
+                 ) : (
+                   <button
+                     onClick={() => setEditMode(true)}
+                     className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
+                   >
+                     Edit Details
+                   </button>
+                 )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
