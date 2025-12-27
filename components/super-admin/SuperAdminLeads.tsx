@@ -610,113 +610,135 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
       {/* Lead Edit/Create Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 my-8 animate-fade-in">
-            <h3 className="font-bold text-xl mb-6">{form.id ? 'Edit Lead' : 'New SaaS Lead'}</h3>
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <input
-                placeholder="Company Name *"
-                value={form.companyName || ''}
-                onChange={e => setForm({...form, companyName: e.target.value})}
-                className="col-span-2 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <input
-                placeholder="Contact Person *"
-                value={form.contactName || ''}
-                onChange={e => setForm({...form, contactName: e.target.value})}
-                className="p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <input
-                placeholder="Company Size (e.g., 10-50)"
-                value={form.companySize || ''}
-                onChange={e => setForm({...form, companySize: e.target.value})}
-                className="p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <input
-                placeholder="Email"
-                type="email"
-                value={form.email || ''}
-                onChange={e => setForm({...form, email: e.target.value})}
-                className="p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <input
-                placeholder="Phone"
-                value={form.phone || ''}
-                onChange={e => setForm({...form, phone: e.target.value})}
-                className="p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <input
-                placeholder="Website"
-                value={form.website || ''}
-                onChange={e => setForm({...form, website: e.target.value})}
-                className="col-span-2 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <select
-                value={form.status}
-                onChange={e => setForm({...form, status: e.target.value as SoftwareLeadStatus})}
-                className="p-3 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                {columns.filter(c => c !== 'Lost').map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select
-                value={form.priority}
-                onChange={e => setForm({...form, priority: e.target.value as LeadPriority})}
-                className="p-3 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                {priorities.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-              <select
-                value={form.source}
-                onChange={e => setForm({...form, source: e.target.value as LeadSource})}
-                className="p-3 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                {sources.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select
-                value={form.assignedTo}
-                onChange={e => setForm({...form, assignedTo: e.target.value})}
-                className="p-3 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                {saasReps.map(u => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
-              <input
-                type="number"
-                placeholder="Potential Users"
-                value={form.potentialUsers || ''}
-                onChange={e => setForm({...form, potentialUsers: parseInt(e.target.value) || 0})}
-                className="p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <input
-                type="number"
-                placeholder="Estimated Value ($)"
-                value={form.estimatedValue || ''}
-                onChange={e => setForm({...form, estimatedValue: parseInt(e.target.value) || 0})}
-                className="p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <input
-                type="date"
-                placeholder="Next Follow-up Date"
-                value={form.nextFollowUpDate?.split('T')[0] || ''}
-                onChange={e => setForm({...form, nextFollowUpDate: e.target.value ? new Date(e.target.value).toISOString() : undefined})}
-                className="p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <input
-                type="date"
-                placeholder="Demo Scheduled Date"
-                value={form.demoScheduledDate?.split('T')[0] || ''}
-                onChange={e => setForm({...form, demoScheduledDate: e.target.value ? new Date(e.target.value).toISOString() : undefined})}
-                className="p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <textarea
-                placeholder="Notes..."
-                value={form.notes || ''}
-                onChange={e => setForm({...form, notes: e.target.value})}
-                className="col-span-2 p-3 border border-slate-300 rounded-lg h-24 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-              />
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col animate-fade-in">
+            {/* Header - Fixed */}
+            <div className="p-6 border-b border-slate-200">
+              <h3 className="font-bold text-xl">{form.id ? 'Edit Lead' : 'New SaaS Lead'}</h3>
+              <p className="text-sm text-slate-500 mt-1">Fields marked with * are required</p>
             </div>
-            <div className="flex justify-between mt-6">
+
+            {/* Form Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input
+                  placeholder="Company Name *"
+                  value={form.companyName || ''}
+                  onChange={e => setForm({...form, companyName: e.target.value})}
+                  className="md:col-span-2 p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+                <input
+                  placeholder="Contact Person *"
+                  value={form.contactName || ''}
+                  onChange={e => setForm({...form, contactName: e.target.value})}
+                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+                <input
+                  placeholder="Company Size (e.g., 10-50)"
+                  value={form.companySize || ''}
+                  onChange={e => setForm({...form, companySize: e.target.value})}
+                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+                <input
+                  placeholder="Email"
+                  type="email"
+                  value={form.email || ''}
+                  onChange={e => setForm({...form, email: e.target.value})}
+                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+                <input
+                  placeholder="Phone"
+                  value={form.phone || ''}
+                  onChange={e => setForm({...form, phone: e.target.value})}
+                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+                <input
+                  placeholder="Website"
+                  value={form.website || ''}
+                  onChange={e => setForm({...form, website: e.target.value})}
+                  className="md:col-span-2 p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+
+                {/* Dropdowns Row */}
+                <select
+                  value={form.status}
+                  onChange={e => setForm({...form, status: e.target.value as SoftwareLeadStatus})}
+                  className="p-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                >
+                  {columns.filter(c => c !== 'Lost').map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select
+                  value={form.priority}
+                  onChange={e => setForm({...form, priority: e.target.value as LeadPriority})}
+                  className="p-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                >
+                  {priorities.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <select
+                  value={form.source}
+                  onChange={e => setForm({...form, source: e.target.value as LeadSource})}
+                  className="p-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                >
+                  {sources.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select
+                  value={form.assignedTo}
+                  onChange={e => setForm({...form, assignedTo: e.target.value})}
+                  className="p-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                >
+                  {saasReps.map(u => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+
+                {/* Numbers Row */}
+                <input
+                  type="number"
+                  placeholder="Potential Users"
+                  value={form.potentialUsers || ''}
+                  onChange={e => setForm({...form, potentialUsers: parseInt(e.target.value) || 0})}
+                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+                <input
+                  type="number"
+                  placeholder="Estimated Value ($)"
+                  value={form.estimatedValue || ''}
+                  onChange={e => setForm({...form, estimatedValue: parseInt(e.target.value) || 0})}
+                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+
+                {/* Dates Row */}
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">Next Follow-up</label>
+                  <input
+                    type="date"
+                    value={form.nextFollowUpDate?.split('T')[0] || ''}
+                    onChange={e => setForm({...form, nextFollowUpDate: e.target.value ? new Date(e.target.value).toISOString() : undefined})}
+                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">Demo Date</label>
+                  <input
+                    type="date"
+                    value={form.demoScheduledDate?.split('T')[0] || ''}
+                    onChange={e => setForm({...form, demoScheduledDate: e.target.value ? new Date(e.target.value).toISOString() : undefined})}
+                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                </div>
+
+                {/* Notes */}
+                <textarea
+                  placeholder="Notes..."
+                  value={form.notes || ''}
+                  onChange={e => setForm({...form, notes: e.target.value})}
+                  className="md:col-span-2 p-2.5 border border-slate-300 rounded-lg h-20 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Footer - Fixed */}
+            <div className="p-6 border-t border-slate-200 flex justify-between items-center bg-slate-50">
               {form.id ? (
                 <button
                   onClick={() => {
@@ -733,14 +755,14 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
               <div className="flex gap-2">
                 <button
                   onClick={() => { setShowModal(false); setForm({ status: 'Prospect', priority: 'Warm', source: 'Inbound', activities: [], estimatedValue: 0, potentialUsers: 1 }); setSelectedLead(null); }}
-                  className="px-6 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
+                  className="px-5 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={!form.companyName || !form.contactName}
-                  className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                  className="px-5 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
                 >
                   {form.id ? 'Update' : 'Create'} Lead
                 </button>
