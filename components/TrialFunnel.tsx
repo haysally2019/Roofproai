@@ -314,9 +314,9 @@ export default function TrialFunnel() {
                       {/* --- STEP 4: PLAN SELECTION --- */}
                       {step === 4 && (
                           <div className="animate-fade-in">
-                              <div className="text-center mb-6">
-                                  <h2 className="text-2xl font-bold text-slate-900">Choose your tier</h2>
-                                  <p className="text-slate-500 text-sm mt-1">7-Day Free Trial. Cancel Anytime.</p>
+                              <div className="text-center mb-8">
+                                  <h2 className="text-2xl font-bold text-slate-900">Choose your plan</h2>
+                                  <p className="text-slate-500 text-sm mt-1">Start your 7-day free trial</p>
                               </div>
 
                               {error && (
@@ -325,49 +325,48 @@ export default function TrialFunnel() {
                                   </div>
                               )}
 
-                              <div className="grid gap-4 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
+                              <div className="space-y-3">
                                   {sortedProducts.map((plan) => (
-                                      <div 
+                                      <div
                                         key={plan.id}
-                                        onClick={() => handleCheckout(plan)}
-                                        className={`group relative p-4 rounded-xl border-2 cursor-pointer transition-all hover:border-indigo-500 hover:shadow-md ${plan.popular ? 'border-indigo-100 bg-indigo-50/30' : 'border-slate-100 bg-white'}`}
+                                        onClick={() => !loading && handleCheckout(plan)}
+                                        className={`group relative p-6 rounded-xl border-2 cursor-pointer transition-all hover:border-slate-900 hover:shadow-lg ${plan.popular ? 'border-slate-900 bg-slate-50' : 'border-slate-200 bg-white'}`}
                                       >
+                                          {plan.popular && (
+                                              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-3 py-1 rounded-full font-bold">
+                                                  Most Popular
+                                              </div>
+                                          )}
+
                                           <div className="flex justify-between items-center">
-                                              <div className="flex items-center gap-3">
-                                                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center group-hover:border-indigo-600 ${plan.popular ? 'border-indigo-500' : 'border-slate-300'}`}>
-                                                      <div className="w-2.5 h-2.5 rounded-full bg-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                  </div>
-                                                  <div>
-                                                      <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                                                          {plan.name}
-                                                          {plan.popular && <span className="bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Recommended</span>}
-                                                      </h3>
-                                                      <div className="text-slate-500 text-xs mt-0.5 flex gap-2">
-                                                          {plan.features.slice(0, 2).map((f, i) => (
-                                                              <span key={i} className="flex items-center gap-1"><Check size={10} className="text-emerald-500"/> {f}</span>
-                                                          ))}
-                                                          <span className="text-slate-400">+ more</span>
-                                                      </div>
-                                                  </div>
+                                              <div>
+                                                  <h3 className="text-xl font-bold text-slate-900 mb-1">
+                                                      {plan.name}
+                                                  </h3>
+                                                  <p className="text-slate-600 text-sm font-medium">
+                                                      {plan.description}
+                                                  </p>
                                               </div>
+
                                               <div className="text-right">
-                                                  <div className="font-bold text-lg text-slate-900">${plan.price_per_unit}</div>
-                                                  <div className="text-[10px] text-slate-500 uppercase font-medium">/month</div>
+                                                  <div className="text-3xl font-bold text-slate-900">${plan.price_per_unit}</div>
+                                                  <div className="text-xs text-slate-500 font-medium">/month</div>
                                               </div>
                                           </div>
-                                          {/* Hover Effect CTA */}
-                                          <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
-                                              <span className="bg-indigo-600 text-white px-6 py-2 rounded-full font-bold text-sm shadow-lg flex items-center gap-2">
-                                                  {loading ? <Loader2 className="animate-spin" size={16}/> : <>Start Free Trial <ArrowRight size={16}/></>}
-                                              </span>
-                                          </div>
+
+                                          <button
+                                            disabled={loading}
+                                            className="w-full mt-4 bg-slate-900 text-white py-3 rounded-lg font-bold text-sm hover:bg-slate-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                          >
+                                              {loading ? <Loader2 className="animate-spin" size={16}/> : <>Start Free Trial <ArrowRight size={16}/></>}
+                                          </button>
                                       </div>
                                   ))}
                               </div>
-                              
+
                               <div className="mt-6 text-center">
                                   <p className="text-xs text-slate-400 flex items-center justify-center gap-1.5">
-                                      <ShieldCheck size={12}/> Secure 256-bit SSL Encrypted Payment
+                                      <ShieldCheck size={14}/> No credit card required for trial
                                   </p>
                               </div>
                           </div>
