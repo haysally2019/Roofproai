@@ -1,12 +1,15 @@
 
-import React, { useState } from 'react';
-import { Lead, LeadStatus, LeadDocument, ProductionStep, LogicArgument } from '../types';
-import { 
-  X, MapPin, Phone, Mail, Shield, Briefcase, FileText, Image as ImageIcon, 
+import React, { useState, useRef } from 'react';
+import { Lead, LeadStatus, LeadDocument, ProductionStep, LogicArgument, Company } from '../types';
+import {
+  X, MapPin, Phone, Mail, Shield, Briefcase, FileText, Image as ImageIcon,
   CheckSquare, Calendar, DollarSign, Upload, MoreVertical, Hammer, AlertTriangle,
-  BrainCircuit, ArrowRight, Send, MessageSquare, Clock
+  BrainCircuit, ArrowRight, Send, MessageSquare, Clock, Download
 } from 'lucide-react';
 import { analyzeScopeOfLoss, generateSupplementArgument, draftClientEmail } from '../services/geminiService';
+import { EstimateTemplate } from './EstimateTemplate';
+import { generateEstimatePDF } from '../lib/pdfGenerator';
+import { useStore } from '../lib/store';
 
 interface LeadDetailPanelProps {
   lead: Lead;
@@ -16,10 +19,11 @@ interface LeadDetailPanelProps {
 }
 
 const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpdate, onDraftEmail }) => {
+  const { companies, currentUser, addToast } = useStore();
   const [activeTab, setActiveTab] = useState<'overview' | 'docs' | 'claim' | 'intelligence' | 'production' | 'financials' | 'communication'>('overview');
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState<Partial<Lead>>(lead);
-  
+
   // Claim Analysis State
   const [scopeText, setScopeText] = useState('');
   const [analysisResult, setAnalysisResult] = useState('');
@@ -36,6 +40,10 @@ const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpda
   const [emailTone, setEmailTone] = useState<'professional' | 'friendly' | 'urgent'>('professional');
   const [emailDraftContent, setEmailDraftContent] = useState('');
   const [isDraftingEmail, setIsDraftingEmail] = useState(false);
+
+  // PDF Generation State
+  const [downloadingEstimateId, setDownloadingEstimateId] = useState<string | null>(null);
+  const pdfTemplateRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   const handleSave = () => {
     onUpdate({ ...lead, ...editData } as Lead);
@@ -103,6 +111,32 @@ const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpda
     const draft = await draftClientEmail(lead.name, emailTopic, emailTone);
     setEmailDraftContent(draft);
     setIsDraftingEmail(false);
+  };
+
+  const handleDownloadEstimate = async (estimateId: string) => {
+    const estimate = lead.estimates?.find(e => e.id === estimateId);
+    if (!estimate) return;
+
+    const company = companies.find(c => c.id === currentUser?.companyId);
+    if (!company) {
+      addToast("Company information not found", "error");
+      return;
+    }
+
+    setDownloadingEstimateId(estimateId);
+    try {
+      const templateElement = pdfTemplateRefs.current[estimateId];
+      if (templateElement) {
+        const fileName = `${estimate.name?.replace(/\s+/g, '_') || 'Estimate'}_${lead.name.replace(/\s+/g, '_')}.pdf`;
+        await generateEstimatePDF(templateElement, fileName);
+        addToast("PDF downloaded successfully", "success");
+      }
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      addToast("Failed to generate PDF", "error");
+    } finally {
+      setDownloadingEstimateId(null);
+    }
   };
 
   const getStatusBadge = (status: LeadStatus) => {
@@ -570,12 +604,26 @@ const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpda
                     {lead.estimates && lead.estimates.length > 0 ? (
                        <div className="space-y-2">
                           {lead.estimates.map(est => (
-                             <div key={est.id} className="p-3 bg-white border border-slate-200 rounded-lg flex justify-between items-center shadow-sm">
-                                <div>
+                             <div key={est.id} className="p-3 bg-white border border-slate-200 rounded-lg flex justify-between items-center shadow-sm hover:shadow-md transition-shadow">
+                                <div className="flex-1">
                                    <p className="text-sm font-medium text-slate-800">{est.name || 'Unnamed Estimate'}</p>
                                    <p className="text-xs text-slate-500">{est.createdAt} • {est.status || 'Draft'}</p>
                                 </div>
-                                <span className="font-bold text-slate-700">${est.total.toFixed(2)}</span>
+                                <div className="flex items-center gap-3">
+                                   <span className="font-bold text-slate-700">${est.total.toFixed(2)}</span>
+                                   <button
+                                     onClick={() => handleDownloadEstimate(est.id)}
+                                     disabled={downloadingEstimateId === est.id}
+                                     className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                                     title="Download PDF"
+                                   >
+                                     {downloadingEstimateId === est.id ? (
+                                       <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+                                     ) : (
+                                       <Download size={16} />
+                                     )}
+                                   </button>
+                                </div>
                              </div>
                           ))}
                           <div className="mt-4 p-4 bg-slate-50 rounded-lg text-right border-t border-slate-200">
@@ -594,6 +642,25 @@ const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpda
              </div>
           )}
 
+        </div>
+
+        {/* Hidden PDF Templates for saved estimates */}
+        <div className="fixed -left-[9999px] top-0">
+          {lead.estimates?.map(estimate => {
+            const company = companies.find(c => c.id === currentUser?.companyId);
+            if (!company) return null;
+
+            return (
+              <div key={estimate.id}>
+                <EstimateTemplate
+                  ref={(el) => { pdfTemplateRefs.current[estimate.id] = el; }}
+                  estimate={estimate}
+                  lead={lead}
+                  company={company}
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { EstimateItem, Lead, Estimate, EstimateTier } from '../types';
-import { 
+import {
   Sparkles, Save, Calculator, RotateCcw,
-  PenTool, Satellite, FileText, Truck, AlertTriangle, Scan, Crosshair, 
-  Eye, EyeOff, Search
+  PenTool, Satellite, FileText, Truck, AlertTriangle, Scan, Crosshair,
+  Eye, EyeOff, Search, Download
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import MaterialOrderModal from './MaterialOrderModal';
 import { generateSmartEstimate } from '../services/geminiService';
+import { EstimateTemplate } from './EstimateTemplate';
+import { generateEstimatePDF } from '../lib/pdfGenerator';
 
 // --- Internal Error Boundary ---
 class EstimatorErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: string}> {
@@ -42,21 +44,22 @@ interface EstimatorProps {
 const getPitchFactor = (rise: number) => Math.sqrt(1 + Math.pow(rise / 12, 2));
 
 const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
-  const { addToast, priceBook } = useStore(); // <--- GET PRICE BOOK
+  const { addToast, priceBook, companies, currentUser } = useStore();
   const [activeTab, setActiveTab] = useState<'calculator' | 'map'>('map');
   const [viewMode, setViewMode] = useState<'proposal' | 'materials'>('proposal');
-  
+
   // Data State
   const [totalSurfaceArea, setTotalSurfaceArea] = useState<number>(0);
-  const [globalPitch, setGlobalPitch] = useState<number>(6); 
+  const [globalPitch, setGlobalPitch] = useState<number>(6);
   const [wasteFactor, setWasteFactor] = useState<number>(10);
   const [selectedTier, setSelectedTier] = useState<EstimateTier>('Better');
-  const [measurementSource, setMeasurementSource] = useState<'api' | 'manual'>('manual'); 
+  const [measurementSource, setMeasurementSource] = useState<'api' | 'manual'>('manual');
   const [items, setItems] = useState<EstimateItem[]>([]);
   const [materialList, setMaterialList] = useState<EstimateItem[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string>("");
   const [estimateName, setEstimateName] = useState<string>("Roof Replacement Proposal");
-  const [isAiGenerating, setIsAiGenerating] = useState(false); // <--- AI STATE
+  const [isAiGenerating, setIsAiGenerating] = useState(false);
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
 
   // Map State
   const mapRef = useRef<HTMLDivElement>(null);
@@ -77,6 +80,7 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
   const [isSigning, setIsSigning] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
+  const pdfTemplateRef = useRef<HTMLDivElement>(null);
 
   // --- 1. SAFE SCRIPT LOADING ---
   useEffect(() => {
@@ -340,6 +344,49 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
       if(isSigning) { const ctx = signCanvasRef.current?.getContext('2d'); if(ctx) { const r = signCanvasRef.current!.getBoundingClientRect(); ctx.lineTo((e.touches?e.touches[0].clientX:e.clientX)-r.left, (e.touches?e.touches[0].clientY:e.clientY)-r.top); ctx.stroke(); } }
   };
 
+  const handleDownloadPDF = async () => {
+    if (!selectedLeadId || items.length === 0) {
+      addToast("No estimate to download", "error");
+      return;
+    }
+
+    const lead = leads.find(l => l.id === selectedLeadId);
+    const company = companies.find(c => c.id === currentUser?.companyId);
+
+    if (!lead || !company) {
+      addToast("Missing lead or company information", "error");
+      return;
+    }
+
+    setIsDownloadingPDF(true);
+    try {
+      const total = calculateTotal(items);
+      const tempEstimate: Estimate = {
+        id: Date.now().toString(),
+        leadId: selectedLeadId,
+        name: estimateName,
+        items: items,
+        subtotal: total,
+        tax: 0,
+        total: total,
+        createdAt: new Date().toLocaleDateString(),
+        signature: signature || undefined,
+        status: signature ? 'Signed' : 'Draft'
+      };
+
+      if (pdfTemplateRef.current) {
+        const fileName = `${estimateName.replace(/\s+/g, '_')}_${lead.name.replace(/\s+/g, '_')}.pdf`;
+        await generateEstimatePDF(pdfTemplateRef.current, fileName);
+        addToast("PDF downloaded successfully", "success");
+      }
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      addToast("Failed to generate PDF", "error");
+    } finally {
+      setIsDownloadingPDF(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden relative isolate">
       {/* HEADER */}
@@ -353,18 +400,25 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
               </button>
           </div>
           <div className="flex gap-2">
-              <select 
+              <select
                   value={selectedLeadId}
                   onChange={e => {
                       setSelectedLeadId(e.target.value);
                       const l = leads.find(x => x.id === e.target.value);
-                      if (l && searchInputRef.current) searchInputRef.current.value = l.address; 
+                      if (l && searchInputRef.current) searchInputRef.current.value = l.address;
                   }}
                   className="bg-white border border-slate-300 rounded-lg p-2 text-sm w-64"
               >
                   <option value="">Select Customer</option>
                   {leads.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
+              <button
+                onClick={handleDownloadPDF}
+                disabled={items.length === 0 || isDownloadingPDF}
+                className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <Download size={18}/> {isDownloadingPDF ? 'Generating...' : 'PDF'}
+              </button>
               <button onClick={handleSave} disabled={items.length === 0} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
                   <Save size={18}/> Save
               </button>
@@ -476,46 +530,82 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
                       </button>
                   </div>
               </div>
-              
+
               <div className="flex-1 p-8 overflow-y-auto">
                   {items.length > 0 ? (
-                      <div className="space-y-8 animate-fade-in">
-                          <div className="flex justify-between border-b-2 border-slate-900 pb-4">
+                      <div className="space-y-6 animate-fade-in">
+                          <div className="flex justify-between items-start border-b-4 border-slate-900 pb-4 mb-6">
                               <div>
-                                  <h1 className="text-2xl font-extrabold text-slate-900 uppercase">{viewMode === 'proposal' ? 'Roofing Proposal' : 'Material Order'}</h1>
-                                  <p className="text-slate-500 text-sm mt-1">{new Date().toLocaleDateString()}</p>
+                                  <h1 className="text-3xl font-extrabold text-slate-900 mb-1">{viewMode === 'proposal' ? estimateName : 'Material Order'}</h1>
+                                  <p className="text-slate-600 text-sm">Prepared for {leads.find(l => l.id === selectedLeadId)?.name || 'Customer'}</p>
                               </div>
-                              <div className="text-right"><p className="font-bold text-indigo-600 text-lg">Rafter AI</p></div>
+                              <div className="text-right">
+                                  <p className="font-bold text-slate-900 text-lg">{companies.find(c => c.id === currentUser?.companyId)?.name || 'Rafter AI'}</p>
+                                  <p className="text-slate-500 text-xs">{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                              </div>
                           </div>
 
-                          <table className="w-full text-sm text-left">
-                              <thead className="text-slate-500 border-b border-slate-200 uppercase text-xs">
-                                  <tr><th className="py-2">Item</th><th className="text-center py-2">Qty</th><th className="text-right py-2">Rate</th><th className="text-right py-2">Total</th></tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                  {(viewMode === 'proposal' ? items : materialList).map((item, i) => (
-                                      <tr key={i}>
-                                          <td className="py-3 font-medium text-slate-800">{item.description}</td>
-                                          <td className="py-3 text-center text-slate-600">{item.quantity} {item.unit}</td>
-                                          <td className="py-3 text-right text-slate-600">${item.unitPrice.toFixed(2)}</td>
-                                          <td className="py-3 text-right font-bold text-slate-900">${item.total.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                                      </tr>
-                                  ))}
-                              </tbody>
-                          </table>
+                          <div className="bg-slate-50 rounded-lg p-4 mb-4 border border-slate-200">
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                      <p className="text-xs font-bold text-slate-500 uppercase mb-1">Project Address</p>
+                                      <p className="text-slate-800">{leads.find(l => l.id === selectedLeadId)?.address || 'N/A'}</p>
+                                  </div>
+                                  <div>
+                                      <p className="text-xs font-bold text-slate-500 uppercase mb-1">Status</p>
+                                      <p className="text-slate-800">{signature ? 'Signed' : 'Draft'}</p>
+                                  </div>
+                              </div>
+                          </div>
 
-                          <div className="flex justify-end pt-4 border-t border-slate-200">
-                              <div className="flex justify-between font-bold text-xl text-slate-900 w-64">
-                                  <span>Total</span>
-                                  <span>${calculateTotal(viewMode === 'proposal' ? items : materialList).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                          <div>
+                              <h3 className="text-xs font-bold text-slate-500 uppercase mb-3">Scope of Work</h3>
+                              <table className="w-full text-sm border-collapse">
+                                  <thead className="bg-slate-900 text-white">
+                                      <tr>
+                                          <th className="text-left py-3 px-4 font-semibold">Description</th>
+                                          <th className="text-center py-3 px-4 font-semibold">Qty</th>
+                                          <th className="text-center py-3 px-4 font-semibold">Unit</th>
+                                          <th className="text-right py-3 px-4 font-semibold">Rate</th>
+                                          <th className="text-right py-3 px-4 font-semibold">Amount</th>
+                                      </tr>
+                                  </thead>
+                                  <tbody>
+                                      {(viewMode === 'proposal' ? items : materialList).map((item, i) => (
+                                          <tr key={i} className={i % 2 === 0 ? 'bg-slate-50' : 'bg-white'}>
+                                              <td className="py-3 px-4 text-slate-800">{item.description}</td>
+                                              <td className="py-3 px-4 text-center text-slate-700">{item.quantity}</td>
+                                              <td className="py-3 px-4 text-center text-slate-700 uppercase text-xs">{item.unit}</td>
+                                              <td className="py-3 px-4 text-right text-slate-700">${item.unitPrice.toFixed(2)}</td>
+                                              <td className="py-3 px-4 text-right font-bold text-slate-900">${item.total.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                          </tr>
+                                      ))}
+                                  </tbody>
+                              </table>
+                          </div>
+
+                          <div className="flex justify-end pt-4">
+                              <div className="w-72 space-y-2">
+                                  <div className="flex justify-between py-2 border-b border-slate-200">
+                                      <span className="text-slate-600">Subtotal:</span>
+                                      <span className="font-semibold text-slate-900">${calculateTotal(viewMode === 'proposal' ? items : materialList).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                  </div>
+                                  <div className="flex justify-between py-2 border-b border-slate-200">
+                                      <span className="text-slate-600">Tax:</span>
+                                      <span className="font-semibold text-slate-900">$0.00</span>
+                                  </div>
+                                  <div className="flex justify-between py-3 bg-slate-900 text-white px-4 rounded">
+                                      <span className="font-bold text-lg">Total:</span>
+                                      <span className="font-bold text-xl">${calculateTotal(viewMode === 'proposal' ? items : materialList).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                  </div>
                               </div>
                           </div>
 
                           {viewMode === 'proposal' && (
-                              <div className="mt-12">
-                                  <p className="text-xs text-slate-400 uppercase font-bold mb-2">Authorization</p>
+                              <div className="mt-8 pt-6 border-t border-slate-300">
+                                  <p className="text-xs text-slate-500 uppercase font-bold mb-2">Customer Authorization</p>
                                   <div className="border-2 border-dashed border-slate-300 rounded h-24 relative bg-slate-50 hover:bg-white transition-colors" onMouseDown={startSign} onMouseMove={drawSign} onMouseUp={() => setIsSigning(false)} onMouseLeave={() => setIsSigning(false)}>
-                                      {!signature && <div className="absolute inset-0 flex items-center justify-center text-slate-300 font-bold uppercase pointer-events-none">Sign Here</div>}
+                                      {!signature && <div className="absolute inset-0 flex items-center justify-center text-slate-300 font-bold uppercase pointer-events-none text-sm">Sign Here</div>}
                                       <canvas ref={signCanvasRef} width={600} height={96} className="w-full h-full cursor-crosshair relative z-10"/>
                                   </div>
                               </div>
@@ -532,12 +622,37 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
       </div>
       
       {showOrderModal && selectedLeadId && (
-          <MaterialOrderModal 
-              items={materialList} 
-              lead={leads.find(l => l.id === selectedLeadId)!} 
+          <MaterialOrderModal
+              items={materialList}
+              lead={leads.find(l => l.id === selectedLeadId)!}
               onClose={() => setShowOrderModal(false)}
           />
       )}
+
+      {/* Hidden PDF Template for Generation */}
+      <div className="fixed -left-[9999px] top-0">
+        {selectedLeadId && items.length > 0 && (() => {
+          const lead = leads.find(l => l.id === selectedLeadId);
+          const company = companies.find(c => c.id === currentUser?.companyId);
+          if (!lead || !company) return null;
+
+          const total = calculateTotal(items);
+          const tempEstimate: Estimate = {
+            id: Date.now().toString(),
+            leadId: selectedLeadId,
+            name: estimateName,
+            items: items,
+            subtotal: total,
+            tax: 0,
+            total: total,
+            createdAt: new Date().toLocaleDateString(),
+            signature: signature || undefined,
+            status: signature ? 'Signed' : 'Draft'
+          };
+
+          return <EstimateTemplate ref={pdfTemplateRef} estimate={tempEstimate} lead={lead} company={company} />;
+        })()}
+      </div>
     </div>
   );
 };
