@@ -226,15 +226,6 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
           return;
       }
 
-      // Check zoom level
-      if (!lat && mapInstance) {
-          const zoom = mapInstance.getZoom();
-          if (zoom < 18) {
-              addToast("Please zoom in closer to a building (zoom level 18+)", "error");
-              return;
-          }
-      }
-
       setAnalyzing(true);
       try {
           await new Promise(r => setTimeout(r, 500)); // Delay for smoothness
@@ -245,8 +236,8 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
 
           if (!response.ok) {
               if (response.status === 404) {
-                  if (!lat) throw new Error("No building found. Search for an address or zoom in closer to a building with the crosshair centered on the roof.");
-                  return;
+                  if (!lat) throw new Error("Roof not detected at center. Try moving map slightly.");
+                  return; 
               }
               if (response.status === 403) throw new Error("Solar API not enabled. Enable it in Google Cloud Console.");
               throw new Error("Could not fetch roof data.");
@@ -462,14 +453,8 @@ const Estimator: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) => {
                           </div>
                       </div>
 
-                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg mb-3">
-                          <p className="text-xs text-blue-800 leading-relaxed">
-                              <strong>How to use:</strong> Search for an address above, then center the crosshair on a roof and click Auto-Measure. Or use Manual Draw to trace the roof yourself.
-                          </p>
-                      </div>
-
                       <div className="flex flex-col gap-2 mb-4">
-                          <button
+                          <button 
                               onClick={() => fetchRoofData()}
                               disabled={analyzing || !mapCenter}
                               className="w-full py-3 bg-gradient-to-r from-indigo-500 to-blue-600 text-white rounded-lg font-bold text-sm flex justify-center items-center gap-2 hover:from-indigo-600 hover:to-blue-700 disabled:opacity-50 shadow-md transition-all"
