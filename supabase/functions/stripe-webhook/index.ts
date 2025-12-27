@@ -88,6 +88,26 @@ Deno.serve(async (req) => {
 
             console.log(`Company ${userData.company_id} unlocked for user ${customerData.user_id}`);
 
+            // 2a. Update software_leads to mark as converted
+            const { data: userEmailData } = await supabase
+              .from("users")
+              .select("email")
+              .eq("id", customerData.user_id)
+              .single();
+
+            if (userEmailData?.email) {
+              await supabase
+                .from("software_leads")
+                .update({
+                  status: "Converted",
+                  tags: ["converted", "active-subscription"],
+                  notes: "Successfully converted to paying customer.",
+                })
+                .eq("email", userEmailData.email);
+
+              console.log(`Lead converted for ${userEmailData.email}`);
+            }
+
             // 3. Check for referral and create referral_signup record if it's a new subscription
             if (event.type === "customer.subscription.created") {
               const { data: authUserData } = await supabase.auth.admin.getUserById(customerData.user_id);

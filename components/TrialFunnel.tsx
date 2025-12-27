@@ -16,9 +16,75 @@ export default function TrialFunnel() {
   const [formData, setFormData] = useState({ companyName: '', name: '', email: '', password: '' });
 
   // Navigation Handlers
-  const nextStep = (e: React.FormEvent) => {
+  const nextStep = async (e: React.FormEvent) => {
       e.preventDefault();
-      setStep(prev => prev + 1);
+      const newStep = step + 1;
+      setStep(newStep);
+
+      // When user reaches plan selection (step 4), save as lead if they don't convert
+      if (newStep === 4) {
+          await saveAsLead();
+      }
+  };
+
+  const saveAsLead = async () => {
+      try {
+          // Get the super admin user ID for Haydencolesalyer@gmail.com
+          const { data: superAdmin } = await supabase
+              .from('users')
+              .select('id')
+              .eq('email', 'Haydencolesalyer@gmail.com')
+              .eq('role', 'Super Admin')
+              .maybeSingle();
+
+          if (!superAdmin) {
+              console.error('Super admin not found');
+              return;
+          }
+
+          // Check if lead already exists for this email
+          const { data: existingLead } = await supabase
+              .from('software_leads')
+              .select('id')
+              .eq('email', formData.email)
+              .maybeSingle();
+
+          if (existingLead) {
+              // Update existing lead
+              await supabase
+                  .from('software_leads')
+                  .update({
+                      company_name: formData.companyName,
+                      contact_name: formData.name,
+                      status: 'Trial Started',
+                      trial_start_date: new Date().toISOString(),
+                      last_contact_date: new Date().toISOString(),
+                      source: 'Inbound',
+                      priority: 'Hot',
+                      tags: ['onboarding-incomplete'],
+                  })
+                  .eq('id', existingLead.id);
+          } else {
+              // Create new lead
+              await supabase
+                  .from('software_leads')
+                  .insert({
+                      company_name: formData.companyName,
+                      contact_name: formData.name,
+                      email: formData.email,
+                      status: 'Trial Started',
+                      assigned_to: superAdmin.id,
+                      trial_start_date: new Date().toISOString(),
+                      last_contact_date: new Date().toISOString(),
+                      source: 'Inbound',
+                      priority: 'Hot',
+                      tags: ['onboarding-incomplete'],
+                      notes: 'User started onboarding but has not completed payment yet.',
+                  });
+          }
+      } catch (error) {
+          console.error('Error saving lead:', error);
+      }
   };
 
   const prevStep = () => {
@@ -42,7 +108,7 @@ export default function TrialFunnel() {
         // 2. Create Company
         const { data: companyData } = await supabase.from('companies').insert({
             name: formData.companyName,
-            status: 'Pending', 
+            status: 'Pending',
             tier: plan.name,
             setup_complete: false
         }).select().single();
@@ -57,9 +123,20 @@ export default function TrialFunnel() {
             });
         }
 
-        // 3. Initiate Hosted Checkout
+        // 3. Update lead status to indicate checkout initiated
+        await supabase
+            .from('software_leads')
+            .update({
+                status: 'Checkout Started',
+                trial_start_date: new Date().toISOString(),
+                notes: 'User initiated checkout process.',
+                tags: ['checkout-initiated'],
+            })
+            .eq('email', formData.email);
+
+        // 4. Initiate Hosted Checkout
         const { data: { session } } = await supabase.auth.getSession();
-        
+
         const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-checkout`, {
             method: 'POST',
             headers: {
@@ -75,7 +152,7 @@ export default function TrialFunnel() {
 
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Checkout failed");
-        
+
         window.location.href = result.url;
 
     } catch (err: any) {
