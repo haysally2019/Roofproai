@@ -163,11 +163,16 @@ export interface AgentConfig {
   id: string;
   elevenLabsAgentId: string;
   elevenLabsApiKey?: string;
-  voiceId: string; // <--- NEW: Store the selected voice ID
+  voiceId: string;
   name: string;
   systemPrompt: string;
   firstMessage: string;
   isActive: boolean;
+  language?: string;
+  responseDelay?: number;
+  interruptionThreshold?: number;
+  maxDuration?: number;
+  temperature?: number;
   businessHours?: BusinessHours;
 }
 
