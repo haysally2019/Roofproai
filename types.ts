@@ -173,6 +173,17 @@ export interface AgentConfig {
   interruptionThreshold?: number;
   maxDuration?: number;
   temperature?: number;
+  stability?: number;
+  similarityBoost?: number;
+  conversationStarters?: string[];
+  fallbackMessage?: string;
+  transferMessage?: string;
+  endCallPhrases?: string[];
+  pronunciationDictionary?: { word: string; pronunciation: string }[];
+  customVocabulary?: string[];
+  knowledgeBase?: string;
+  webhookUrl?: string;
+  webhookEvents?: string[];
   businessHours?: BusinessHours;
 }
 
