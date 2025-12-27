@@ -118,6 +118,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         // --- SUPER ADMIN & SAAS REP LOGIC ---
         if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.SAAS_REP) {
+            setActiveTab(Tab.ADMIN_OVERVIEW);
             const [companiesRes, usersRes] = await Promise.all([
                 supabase.from('companies').select('*').order('created_at', { ascending: false }),
                 supabase.from('users').select('*').order('created_at', { ascending: false })
@@ -163,6 +164,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
         } else {
             // --- STANDARD USER LOGIC ---
+            setActiveTab(Tab.DASHBOARD);
             if (data.companies) {
               const company: Company = {
                 id: data.companies.id,
