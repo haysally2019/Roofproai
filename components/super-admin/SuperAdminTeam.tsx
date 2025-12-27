@@ -57,36 +57,46 @@ const SuperAdminTeam: React.FC<Props> = ({ users, onAddUser, onRemoveUser }) => 
               <th className="p-4">Name</th>
               <th className="p-4">Email</th>
               <th className="p-4">Role</th>
+              <th className="p-4">Invited By</th>
               <th className="p-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredUsers.map(user => (
-              <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                <td className="p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-600">
-                    {user.avatarInitials}
-                  </div>
-                  <span className="font-medium text-slate-900">{user.name}</span>
-                </td>
-                <td className="p-4 text-sm text-slate-600">{user.email}</td>
-                <td className="p-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold border flex w-fit items-center gap-1 ${
-                    user.role === UserRole.SUPER_ADMIN
-                      ? 'bg-purple-50 text-purple-700 border-purple-200'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  }`}>
-                    {user.role === UserRole.SUPER_ADMIN ? <Shield size={12}/> : <Briefcase size={12}/>}
-                    {user.role}
-                  </span>
-                </td>
-                <td className="p-4 text-right">
-                  <button onClick={() => confirm('Remove user?') && onRemoveUser(user.id)} className="text-slate-400 hover:text-red-600 p-2">
-                    <Trash2 size={16}/>
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {filteredUsers.map(user => {
+              const invitedBy = user.invitedByUserId
+                ? users.find(u => u.id === user.invitedByUserId)
+                : null;
+
+              return (
+                <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-600">
+                      {user.avatarInitials}
+                    </div>
+                    <span className="font-medium text-slate-900">{user.name}</span>
+                  </td>
+                  <td className="p-4 text-sm text-slate-600">{user.email}</td>
+                  <td className="p-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold border flex w-fit items-center gap-1 ${
+                      user.role === UserRole.SUPER_ADMIN
+                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    }`}>
+                      {user.role === UserRole.SUPER_ADMIN ? <Shield size={12}/> : <Briefcase size={12}/>}
+                      {user.role}
+                    </span>
+                  </td>
+                  <td className="p-4 text-sm text-slate-600">
+                    {invitedBy ? invitedBy.name : '-'}
+                  </td>
+                  <td className="p-4 text-right">
+                    <button onClick={() => confirm('Remove user?') && onRemoveUser(user.id)} className="text-slate-400 hover:text-red-600 p-2">
+                      <Trash2 size={16}/>
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

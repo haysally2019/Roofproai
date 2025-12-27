@@ -208,6 +208,7 @@ export interface User {
   avatarInitials: string;
   status?: 'Active' | 'Pending'; // Invitation status
   invitedAt?: string;
+  invitedByUserId?: string; // ID of the Super Admin who invited this user
 }
 
 // --- Software CRM Types (Super Admin) ---

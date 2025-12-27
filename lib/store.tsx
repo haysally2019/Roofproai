@@ -156,7 +156,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                         companyId: u.company_id,
                         avatarInitials: u.avatar_initials || u.name.slice(0, 2).toUpperCase(),
                         status: isPending ? 'Pending' : 'Active',
-                        invitedAt: authStatus?.invited_at
+                        invitedAt: authStatus?.invited_at,
+                        invitedByUserId: u.invited_by_user_id
                     };
                 }));
             }
@@ -220,7 +221,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           email: user.email,
           role: user.role as UserRole,
           companyId: user.company_id,
-          avatarInitials: user.avatar_initials || user.name.slice(0, 2).toUpperCase()
+          avatarInitials: user.avatar_initials || user.name.slice(0, 2).toUpperCase(),
+          invitedByUserId: user.invited_by_user_id
         })));
       }
 
@@ -446,7 +448,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const deleteAutomation = async (id: string) => { const { error } = await supabase.from('automations').delete().eq('id', id); if (!error) setAutomations(prev => prev.filter(a => a.id !== id)); };
   const addOrder = async (o: MaterialOrder) => { if (!currentUser?.companyId) return; const { error } = await supabase.from('material_orders').insert({ id: o.id, po_number: o.poNumber, supplier_id: o.supplierId, lead_id: o.leadId, status: o.status, delivery_date: o.deliveryDate, items: o.items, instructions: o.instructions, company_id: currentUser.companyId }); if (!error) setOrders(prev => [...prev, o]); };
   
-  const addUser = async (u: Partial<User>): Promise<boolean> => { const targetCompanyId = u.companyId !== undefined ? u.companyId : currentUser?.companyId; if (!targetCompanyId && currentUser?.role !== UserRole.SUPER_ADMIN) { addToast("Cannot create user without an organization.", "error"); return false; } if (targetCompanyId && currentUser?.role !== UserRole.SUPER_ADMIN) { const company = companies.find(c => c.id === targetCompanyId); if (company && users.filter(user => user.companyId === targetCompanyId).length >= company.maxUsers) { addToast(`User limit reached for ${company.tier} plan.`, "error"); return false; } } try { const { data: { session } } = await supabase.auth.getSession(); if (!session?.access_token) throw new Error("Not logged in"); const { data, error } = await supabase.functions.invoke('create-user', { body: { email: u.email, name: u.name, role: u.role, companyId: targetCompanyId || null, avatarInitials: u.name?.slice(0, 2).toUpperCase() }, headers: { Authorization: `Bearer ${session.access_token}` } }); if (error || data?.error) throw new Error(error?.message || data?.error); const newUser: User = { id: data.user.id, name: u.name!, email: u.email!, role: u.role!, companyId: targetCompanyId || null, avatarInitials: u.name?.slice(0, 2).toUpperCase() || 'NA' }; setUsers(prev => [newUser, ...prev]); if (data.emailSent) addToast(`Invite sent to ${u.email}`, 'success'); else addToast('User created! Email failed, check console for link.', 'success'); return true; } catch (error: any) { addToast(`Failed: ${error.message}`, 'error'); return false; } };
+  const addUser = async (u: Partial<User>): Promise<boolean> => { const targetCompanyId = u.companyId !== undefined ? u.companyId : currentUser?.companyId; if (!targetCompanyId && currentUser?.role !== UserRole.SUPER_ADMIN) { addToast("Cannot create user without an organization.", "error"); return false; } if (targetCompanyId && currentUser?.role !== UserRole.SUPER_ADMIN) { const company = companies.find(c => c.id === targetCompanyId); if (company && users.filter(user => user.companyId === targetCompanyId).length >= company.maxUsers) { addToast(`User limit reached for ${company.tier} plan.`, "error"); return false; } } try { const { data: { session } } = await supabase.auth.getSession(); if (!session?.access_token) throw new Error("Not logged in"); const { data, error } = await supabase.functions.invoke('create-user', { body: { email: u.email, name: u.name, role: u.role, companyId: targetCompanyId || null, avatarInitials: u.name?.slice(0, 2).toUpperCase(), invitedByUserId: currentUser?.id }, headers: { Authorization: `Bearer ${session.access_token}` } }); if (error || data?.error) throw new Error(error?.message || data?.error); const newUser: User = { id: data.user.id, name: u.name!, email: u.email!, role: u.role!, companyId: targetCompanyId || null, avatarInitials: u.name?.slice(0, 2).toUpperCase() || 'NA' }; setUsers(prev => [newUser, ...prev]); if (data.emailSent) addToast(`Invite sent to ${u.email}`, 'success'); else addToast('User created! Email failed, check console for link.', 'success'); return true; } catch (error: any) { addToast(`Failed: ${error.message}`, 'error'); return false; } };
   const removeUser = async (uid: string) => { const { error } = await supabase.from('users').delete().eq('id', uid); if (!error) setUsers(prev => prev.filter(u => u.id !== uid)); };
   const addSoftwareLead = (lead: SoftwareLead) => { setSoftwareLeads(prev => [...prev, lead]); addToast('Lead added', 'success'); };
   const updateSoftwareLead = (lead: SoftwareLead) => { setSoftwareLeads(prev => prev.map(l => l.id === lead.id ? lead : l)); };

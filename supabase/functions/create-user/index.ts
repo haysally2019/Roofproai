@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Parse Request
-    const { email, name, role, companyId, avatarInitials } = await req.json();
+    const { email, name, role, companyId, avatarInitials, invitedByUserId } = await req.json();
 
     if (!email || !name || !role) {
       throw new Error("Missing required fields: email, name, or role");
@@ -91,7 +91,8 @@ Deno.serve(async (req: Request) => {
         name,
         role,
         company_id: companyId,
-        avatar_initials: avatarInitials
+        avatar_initials: avatarInitials,
+        invited_by_user_id: invitedByUserId || caller.id
       });
 
     if (insertError && !insertError.message.includes("duplicate")) {
