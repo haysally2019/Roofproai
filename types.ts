@@ -215,17 +215,43 @@ export interface User {
 
 export type SoftwareLeadStatus = 'Prospect' | 'Contacted' | 'Demo Booked' | 'Trial' | 'Closed Won' | 'Lost';
 
+export type LeadPriority = 'Hot' | 'Warm' | 'Cold';
+export type LeadSource = 'Inbound' | 'Outbound' | 'Referral' | 'Event' | 'Partner' | 'Other';
+
+export interface LeadActivity {
+  id: string;
+  type: 'Call' | 'Email' | 'Meeting' | 'Demo' | 'Note' | 'Status Change';
+  description: string;
+  timestamp: string;
+  userId: string;
+  userName: string;
+}
+
 export interface SoftwareLead {
   id: string;
   companyName: string;
   contactName: string;
   email: string;
   phone: string;
+  website?: string;
+  companySize?: string;
   status: SoftwareLeadStatus;
+  priority: LeadPriority;
+  source: LeadSource;
   potentialUsers: number;
+  estimatedValue: number;
   assignedTo: string; // SaaS Rep ID
   notes: string;
   createdAt: string;
+  updatedAt: string;
+  lastContactDate?: string;
+  nextFollowUpDate?: string;
+  demoScheduledDate?: string;
+  trialStartDate?: string;
+  trialEndDate?: string;
+  activities: LeadActivity[];
+  tags?: string[];
+  lostReason?: string;
 }
 
 // --- New Modules ---
