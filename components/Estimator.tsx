@@ -3,7 +3,7 @@ import { EstimateItem, Lead, Estimate, EstimateTier } from '../types';
 import {
   Sparkles, Save, Calculator, RotateCcw,
   PenTool, Satellite, FileText, Truck, AlertTriangle, Scan, Crosshair,
-  Eye, EyeOff, Search, Download
+  Eye, EyeOff, Search, Download, Maximize2, Minimize2, Ruler, Undo, Trash2, Layers
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import MaterialOrderModal from './MaterialOrderModal';
@@ -72,7 +72,11 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
   const [mapCenter, setMapCenter] = useState<{lat: number, lng: number} | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
-  
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [measurementMode, setMeasurementMode] = useState<'polygon' | 'ruler' | null>(null);
+  const [rulerLine, setRulerLine] = useState<any>(null);
+  const [measurements, setMeasurements] = useState<Array<{type: string, value: number, label: string}>>([]);
+
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
   // Signature
@@ -240,6 +244,75 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
       }
   };
 
+  const startRulerMode = () => {
+    if (!mapInstance) return;
+
+    setMeasurementMode('ruler');
+    if (drawingManager) drawingManager.setDrawingMode(null);
+
+    let startPoint: any = null;
+    let tempLine: any = null;
+
+    const clickListener = window.google.maps.event.addListener(mapInstance, 'click', (e: any) => {
+      if (!startPoint) {
+        startPoint = e.latLng;
+      } else {
+        const distance = window.google.maps.geometry.spherical.computeDistanceBetween(startPoint, e.latLng);
+        const distanceFeet = Math.round(distance * 3.28084);
+
+        const line = new window.google.maps.Polyline({
+          path: [startPoint, e.latLng],
+          strokeColor: '#ef4444',
+          strokeWeight: 3,
+          map: mapInstance,
+        });
+
+        const midPoint = window.google.maps.geometry.spherical.interpolate(startPoint, e.latLng, 0.5);
+        const marker = new window.google.maps.Marker({
+          position: midPoint,
+          map: mapInstance,
+          label: {
+            text: `${distanceFeet}'`,
+            color: '#fff',
+            fontSize: '14px',
+            fontWeight: 'bold'
+          },
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: 0,
+          }
+        });
+
+        setMeasurements(prev => [...prev, { type: 'distance', value: distanceFeet, label: `${distanceFeet} ft` }]);
+
+        startPoint = null;
+        window.google.maps.event.removeListener(clickListener);
+        setMeasurementMode(null);
+      }
+    });
+  };
+
+  const undoLastPolygon = () => {
+    if (polygons.length > 0) {
+      const lastPoly = polygons[polygons.length - 1];
+      const areaMeters = window.google.maps.geometry.spherical.computeArea(lastPoly.getPath());
+      const areaSqFt = Math.round(areaMeters * 10.7639);
+
+      lastPoly.setMap(null);
+      setPolygons(prev => prev.slice(0, -1));
+      setTotalSurfaceArea(prev => Math.max(0, prev - areaSqFt));
+      addToast("Polygon removed", "info");
+    }
+  };
+
+  const clearAllPolygons = () => {
+    polygons.forEach(p => p.setMap(null));
+    setPolygons([]);
+    setTotalSurfaceArea(0);
+    setMeasurements([]);
+    addToast("All measurements cleared", "info");
+  };
+
   const calculateEstimate = () => {
       if (totalSurfaceArea <= 0) {
           addToast("Area is 0. Please measure first.", "error");
@@ -388,45 +461,183 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden relative isolate">
+    <div className={`flex flex-col overflow-hidden relative isolate ${isFullscreen ? 'fixed inset-0 z-[9999] bg-slate-900' : 'h-full'}`}>
       {/* HEADER */}
-      <div className="bg-white border-b border-slate-200 p-4 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
-          <div className="flex bg-slate-100 rounded-lg p-1">
-              <button onClick={() => setActiveTab('map')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'map' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>
-                  <Satellite size={16}/> Satellite
-              </button>
-              <button onClick={() => setActiveTab('calculator')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'calculator' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>
-                  <Calculator size={16}/> Proposal
-              </button>
-          </div>
-          <div className="flex gap-2">
-              <select
-                  value={selectedLeadId}
-                  onChange={e => {
-                      setSelectedLeadId(e.target.value);
-                      const l = leads.find(x => x.id === e.target.value);
-                      if (l && searchInputRef.current) searchInputRef.current.value = l.address;
-                  }}
-                  className="bg-white border border-slate-300 rounded-lg p-2 text-sm w-64"
-              >
-                  <option value="">Select Customer</option>
-                  {leads.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-              <button
-                onClick={handleDownloadPDF}
-                disabled={items.length === 0 || isDownloadingPDF}
-                className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
-              >
-                <Download size={18}/> {isDownloadingPDF ? 'Generating...' : 'PDF'}
-              </button>
-              <button onClick={handleSave} disabled={items.length === 0} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
-                  <Save size={18}/> Save
-              </button>
-          </div>
-      </div>
+      {!isFullscreen && (
+        <div className="bg-white border-b border-slate-200 p-4 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
+            <div className="flex bg-slate-100 rounded-lg p-1">
+                <button onClick={() => setActiveTab('map')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'map' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>
+                    <Satellite size={16}/> Satellite
+                </button>
+                <button onClick={() => setActiveTab('calculator')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'calculator' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>
+                    <Calculator size={16}/> Proposal
+                </button>
+            </div>
+            <div className="flex gap-2">
+                <select
+                    value={selectedLeadId}
+                    onChange={e => {
+                        setSelectedLeadId(e.target.value);
+                        const l = leads.find(x => x.id === e.target.value);
+                        if (l && searchInputRef.current) searchInputRef.current.value = l.address;
+                    }}
+                    className="bg-white border border-slate-300 rounded-lg p-2 text-sm w-64"
+                >
+                    <option value="">Select Customer</option>
+                    {leads.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+                <button
+                  onClick={handleDownloadPDF}
+                  disabled={items.length === 0 || isDownloadingPDF}
+                  className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  <Download size={18}/> {isDownloadingPDF ? 'Generating...' : 'PDF'}
+                </button>
+                <button onClick={handleSave} disabled={items.length === 0} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
+                    <Save size={18}/> Save
+                </button>
+            </div>
+        </div>
+      )}
 
-      <div className="flex-1 overflow-auto bg-slate-50 p-4 md:p-6 flex flex-col lg:flex-row gap-6 relative z-0">
-          
+      {/* FULLSCREEN MAP MODE */}
+      {isFullscreen && activeTab === 'map' && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900 flex flex-col">
+          {/* Fullscreen Header */}
+          <div className="bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center shrink-0">
+            <div className="flex items-center gap-4">
+              <h2 className="text-white font-bold text-lg flex items-center gap-2">
+                <Satellite size={20}/> Roof Measurement
+              </h2>
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 text-slate-400" size={16}/>
+                <input ref={searchInputRef} placeholder="Search Address..." className="w-96 pl-9 pr-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-white placeholder-slate-400 outline-none focus:border-indigo-500"/>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsFullscreen(false)}
+              className="p-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg flex items-center gap-2"
+            >
+              <Minimize2 size={18}/> Exit Fullscreen
+            </button>
+          </div>
+
+          <div className="flex-1 flex relative">
+            {/* Map Container */}
+            <div className="flex-1 relative">
+              <div
+                ref={mapRef}
+                className="absolute inset-0 w-full h-full z-0 transition-[filter] duration-300"
+                style={{ filter: highContrast ? 'contrast(1.4) brightness(1.1) saturate(0.8)' : 'none' }}
+              ></div>
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-[5] opacity-40">
+                <Crosshair size={48} className="text-white drop-shadow-lg" strokeWidth={1.5} />
+              </div>
+
+              {/* Floating Toolbar */}
+              <div className="absolute top-4 left-4 z-[10] flex flex-col gap-2">
+                <div className="bg-white rounded-lg shadow-lg p-2 flex flex-col gap-2">
+                  <button
+                    onClick={() => fetchRoofData()}
+                    disabled={analyzing || !mapCenter}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded font-bold text-sm flex items-center gap-2 hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {analyzing ? <span className="animate-spin">...</span> : <Scan size={16}/>} Auto-Measure
+                  </button>
+                  <button
+                    onClick={() => {
+                      if(drawingManager) {
+                        drawingManager.setDrawingMode(window.google.maps.drawing.OverlayType.POLYGON);
+                        setMeasurementMode('polygon');
+                      }
+                    }}
+                    className={`px-4 py-2 ${measurementMode === 'polygon' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 border border-slate-200'} rounded font-bold text-sm flex items-center gap-2 hover:bg-indigo-50`}
+                  >
+                    <PenTool size={16}/> Draw Area
+                  </button>
+                  <button
+                    onClick={startRulerMode}
+                    className={`px-4 py-2 ${measurementMode === 'ruler' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 border border-slate-200'} rounded font-bold text-sm flex items-center gap-2 hover:bg-indigo-50`}
+                  >
+                    <Ruler size={16}/> Measure Distance
+                  </button>
+                  <div className="border-t border-slate-200 my-1"></div>
+                  <button
+                    onClick={undoLastPolygon}
+                    disabled={polygons.length === 0}
+                    className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-sm flex items-center gap-2 hover:bg-amber-50 disabled:opacity-50"
+                  >
+                    <Undo size={16}/> Undo
+                  </button>
+                  <button
+                    onClick={clearAllPolygons}
+                    disabled={polygons.length === 0}
+                    className="px-4 py-2 bg-white text-red-600 border border-red-200 rounded font-bold text-sm flex items-center gap-2 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <Trash2 size={16}/> Clear All
+                  </button>
+                  <button
+                    onClick={() => setHighContrast(!highContrast)}
+                    className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-sm flex items-center gap-2 hover:bg-slate-50"
+                  >
+                    {highContrast ? <EyeOff size={16}/> : <Eye size={16}/>} Contrast
+                  </button>
+                </div>
+              </div>
+
+              {/* Measurement Info Panel */}
+              <div className="absolute top-4 right-4 z-[10] bg-white rounded-lg shadow-lg p-4 min-w-[280px]">
+                <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
+                  <Layers size={18}/> Measurements
+                </h3>
+                <div className="space-y-2">
+                  <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <p className="text-xs font-bold text-indigo-600 uppercase mb-1">Total Area</p>
+                    <p className="text-2xl font-extrabold text-indigo-900">{totalSurfaceArea.toLocaleString()} <span className="text-sm font-normal">sqft</span></p>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <p className="text-xs font-bold text-slate-500 uppercase mb-1">Polygons</p>
+                    <p className="text-lg font-bold text-slate-900">{polygons.length}</p>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <p className="text-xs font-bold text-slate-500 uppercase mb-1">Mode</p>
+                    <p className="text-sm font-bold text-indigo-600">{measurementSource === 'api' ? '3D Auto' : 'Manual Trace'}</p>
+                  </div>
+                  {measurements.length > 0 && (
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
+                      <p className="text-xs font-bold text-slate-500 uppercase mb-2">Distance Measurements</p>
+                      {measurements.map((m, i) => (
+                        <p key={i} className="text-sm text-slate-700">{m.label}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Bottom Action Bar */}
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[10] bg-white rounded-lg shadow-lg p-4 flex gap-3">
+                <button
+                  onClick={calculateEstimate}
+                  disabled={totalSurfaceArea === 0}
+                  className="px-6 py-3 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 disabled:opacity-50 shadow-lg flex items-center gap-2"
+                >
+                  <Calculator size={18}/> Generate Estimate
+                </button>
+                <button
+                  onClick={handleAiEstimate}
+                  disabled={totalSurfaceArea === 0 || isAiGenerating}
+                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 shadow-lg flex items-center gap-2"
+                >
+                  {isAiGenerating ? <span className="animate-spin">✨</span> : <Sparkles size={18}/>} AI Smart Scope
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={`flex-1 overflow-auto bg-slate-50 p-4 md:p-6 flex flex-col lg:flex-row gap-6 relative z-0 ${isFullscreen ? 'hidden' : ''}`}>
+
           {/* LEFT PANEL */}
           <div className="w-full lg:w-1/3 flex flex-col gap-4 shrink-0 h-full relative z-0">
               {activeTab === 'map' ? (
@@ -437,14 +648,20 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
                           <Search className="absolute left-3 top-2.5 text-slate-400" size={16}/>
                           <input ref={searchInputRef} placeholder="Search Address..." className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500"/>
                       </div>
-                      
+
                       <div className="relative flex-1 bg-slate-100 rounded-lg border border-slate-200 min-h-[400px] mb-3 overflow-hidden group">
-                          <div 
-                            ref={mapRef} 
+                          <div
+                            ref={mapRef}
                             className="absolute inset-0 w-full h-full z-0 transition-[filter] duration-300"
                             style={{ filter: highContrast ? 'contrast(1.4) brightness(1.1) saturate(0.8)' : 'none' }}
                           ></div>
-                          <div className="absolute top-2 right-2 z-[5]">
+                          <div className="absolute top-2 right-2 z-[5] flex gap-2">
+                              <button
+                                onClick={() => setIsFullscreen(true)}
+                                className="p-2 bg-white rounded shadow text-slate-600 hover:text-indigo-600"
+                              >
+                                <Maximize2 size={16}/>
+                              </button>
                               <button onClick={() => setHighContrast(!highContrast)} className="p-2 bg-white rounded shadow text-slate-600 hover:text-indigo-600">
                                   {highContrast ? <EyeOff size={16}/> : <Eye size={16}/>}
                               </button>
@@ -454,23 +671,35 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
                           </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 mb-4">
+                      <div className="grid grid-cols-2 gap-2 mb-3">
                           <button onClick={() => fetchRoofData()} disabled={analyzing || !mapCenter} className="py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-xs flex justify-center items-center gap-2 hover:bg-indigo-700 disabled:opacity-50">
                               {analyzing ? <span className="animate-spin">...</span> : <Scan size={14}/>} Auto-Measure
                           </button>
-                          <button onClick={() => { if(drawingManager) { drawingManager.setDrawingMode(window.google.maps.drawing.OverlayType.POLYGON); } }} className="py-2.5 bg-white text-slate-700 border border-slate-200 rounded-lg font-bold text-xs flex justify-center items-center gap-2 hover:bg-slate-50">
+                          <button onClick={() => { if(drawingManager) { drawingManager.setDrawingMode(window.google.maps.drawing.OverlayType.POLYGON); setMeasurementMode('polygon'); } }} className="py-2.5 bg-white text-slate-700 border border-slate-200 rounded-lg font-bold text-xs flex justify-center items-center gap-2 hover:bg-slate-50">
                               <PenTool size={14}/> Manual Trace
                           </button>
                       </div>
-                      
+
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                          <button onClick={startRulerMode} className="py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-slate-50">
+                              <Ruler size={12}/> Ruler
+                          </button>
+                          <button onClick={undoLastPolygon} disabled={polygons.length === 0} className="py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-amber-50 disabled:opacity-50">
+                              <Undo size={12}/> Undo
+                          </button>
+                          <button onClick={clearAllPolygons} disabled={polygons.length === 0} className="py-2 bg-white text-red-600 border border-red-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-red-50 disabled:opacity-50">
+                              <Trash2 size={12}/> Clear
+                          </button>
+                      </div>
+
                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center mb-2">
                           <div>
                               <p className="text-xs font-bold text-slate-400 uppercase">Total Area</p>
                               <p className="text-2xl font-extrabold text-slate-800">{totalSurfaceArea.toLocaleString()} <span className="text-sm font-normal text-slate-500">sqft</span></p>
                           </div>
                           <div className="text-right">
-                              <p className="text-xs font-bold text-slate-400 uppercase">Mode</p>
-                              <span className="text-sm font-bold text-indigo-600">{measurementSource === 'api' ? '3D Auto' : 'Manual'}</span>
+                              <p className="text-xs font-bold text-slate-400 uppercase">Polygons</p>
+                              <span className="text-sm font-bold text-indigo-600">{polygons.length}</span>
                           </div>
                       </div>
 
