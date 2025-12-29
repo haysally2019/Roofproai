@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Umbrella, FileText, Briefcase, CheckSquare,
   Receipt, Tag, UserCheck, Settings as SettingsIcon, Globe, Building2,
   Hexagon, Hammer, LogOut, ChevronDown, ChevronRight, X, Calendar, Headset, Mic, Zap,
-  Package, HardHat, CreditCard
+  Package, HardHat, CreditCard, FileSignature, ScrollText
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { UserRole, Tab } from '../types';
@@ -139,6 +139,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
                  </button>
                  {financeOpen && (
                     <div className="pl-2 space-y-0.5 mt-0.5">
+                        <NavItem tab={Tab.CONTRACTS} icon={FileSignature} />
+                        <NavItem tab={Tab.PROPOSALS} icon={ScrollText} />
                         <NavItem tab={Tab.INVOICES} icon={CreditCard} />
                         <NavItem tab={Tab.PRICE_BOOK} icon={Tag} label="Price Book" />
                     </div>

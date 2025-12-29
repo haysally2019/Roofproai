@@ -24,7 +24,9 @@ import Onboarding from './components/Onboarding';
 import TrialFunnel from './components/TrialFunnel';
 import UserAnalytics from './components/UserAnalytics';
 import MaterialOrders from './components/MaterialOrders';
-import LaborOrders from './components/LaborOrders'; 
+import LaborOrders from './components/LaborOrders';
+import Contracts from './components/Contracts';
+import Proposals from './components/Proposals'; 
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -216,6 +218,8 @@ const AppLayout: React.FC = () => {
                   {activeTab === Tab.TASKS && <TaskBoard tasks={tasks || []} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
                   {activeTab === Tab.MATERIAL_ORDERS && <MaterialOrders />}
                   {activeTab === Tab.LABOR_ORDERS && <LaborOrders />}
+                  {activeTab === Tab.CONTRACTS && <Contracts />}
+                  {activeTab === Tab.PROPOSALS && <Proposals />}
                   {activeTab === Tab.INVOICES && <InvoiceSystem invoices={invoices || []} leads={companyLeads} currentUser={currentUser} onCreateInvoice={createInvoice} onUpdateStatus={updateInvoiceStatus} />}
                   {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}
                   {activeTab === Tab.AI_RECEPTIONIST && <AIReceptionist />}
