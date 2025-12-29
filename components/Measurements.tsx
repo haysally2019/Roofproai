@@ -58,6 +58,31 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const azureApiKey = import.meta.env.VITE_AZURE_MAPS_KEY;
 
+  const handleMapClick = useCallback((e: any) => {
+    const position = e.position;
+    if (!position) {
+      console.log('No position in click event');
+      return;
+    }
+
+    console.log('Map clicked:', position, 'Drawing mode:', isDrawingMode, 'Drawing feature:', isDrawingFeature);
+
+    if (isDrawingMode) {
+      console.log('Adding point to segment');
+      setCurrentSegment(prev => {
+        const newSegment = [...prev, position];
+        console.log('New segment length:', newSegment.length);
+        return newSegment;
+      });
+      return;
+    }
+
+    if (isDrawingFeature) {
+      console.log('Adding point to feature');
+      setCurrentFeatureLine(prev => [...prev, position]);
+    }
+  }, [isDrawingMode, isDrawingFeature]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -308,31 +333,6 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       }
     }
   }, [roofFeatures, currentFeatureLine, azureMap, featureDataSource]);
-
-  const handleMapClick = useCallback((e: any) => {
-    const position = e.position;
-    if (!position) {
-      console.log('No position in click event');
-      return;
-    }
-
-    console.log('Map clicked:', position, 'Drawing mode:', isDrawingMode, 'Drawing feature:', isDrawingFeature);
-
-    if (isDrawingMode) {
-      console.log('Adding point to segment');
-      setCurrentSegment(prev => {
-        const newSegment = [...prev, position];
-        console.log('New segment length:', newSegment.length);
-        return newSegment;
-      });
-      return;
-    }
-
-    if (isDrawingFeature) {
-      console.log('Adding point to feature');
-      setCurrentFeatureLine(prev => [...prev, position]);
-    }
-  }, [isDrawingMode, isDrawingFeature]);
 
   const calculateDistance = (point1: atlas.data.Position, point2: atlas.data.Position): number => {
     const R = 6371000;
