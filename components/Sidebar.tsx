@@ -139,7 +139,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
                  </button>
                  {financeOpen && (
                     <div className="pl-2 space-y-0.5 mt-0.5">
-                        <NavItem tab={Tab.INVOICES} icon={CreditCard} label="Invoices & Payments" />
+                        <NavItem tab={Tab.INVOICES} icon={CreditCard} />
                         <NavItem tab={Tab.PRICE_BOOK} icon={Tag} label="Price Book" />
                     </div>
                  )}

@@ -428,7 +428,7 @@ export enum Tab {
   TASKS = 'Tasks',
   MATERIAL_ORDERS = 'Materials',
   LABOR_ORDERS = 'Labor',
-  INVOICES = 'Invoices & Payments',
+  INVOICES = 'Payments',
   PRICE_BOOK = 'Price Book',
   TEAM = 'Team',
   SETTINGS = 'Settings',
