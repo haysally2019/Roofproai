@@ -1,9 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { FileText, AlertTriangle, CheckCircle, Sparkles, Upload, X } from 'lucide-react';
 import { analyzeScopeOfLoss, analyzeScopeFromImage } from '../services/geminiService';
 import * as pdfjsLib from 'pdfjs-dist';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 const SupplementDetector: React.FC = () => {
   const [scopeText, setScopeText] = useState<string>('');
@@ -11,6 +9,10 @@ const SupplementDetector: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+  }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -43,26 +45,55 @@ const SupplementDetector: React.FC = () => {
       reader.readAsDataURL(file);
     } else if (fileType === 'application/pdf') {
       setIsAnalyzing(true);
-      setAnalysis('');
+      setAnalysis('Processing PDF...');
       try {
+        console.log('Starting PDF processing...');
         const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        console.log('ArrayBuffer created, size:', arrayBuffer.byteLength);
+
+        const loadingTask = pdfjsLib.getDocument({
+          data: arrayBuffer,
+          useWorkerFetch: false,
+          isEvalSupported: false,
+          useSystemFonts: true,
+        });
+
+        console.log('Loading PDF document...');
+        const pdf = await loadingTask.promise;
+        console.log('PDF loaded successfully, pages:', pdf.numPages);
+
         let fullText = '';
 
         for (let i = 1; i <= pdf.numPages; i++) {
+          console.log(`Processing page ${i}/${pdf.numPages}...`);
           const page = await pdf.getPage(i);
           const textContent = await page.getTextContent();
           const pageText = textContent.items
+            .filter((item: any) => item.str)
             .map((item: any) => item.str)
             .join(' ');
           fullText += pageText + '\n\n';
         }
 
-        setScopeText(fullText.trim());
+        console.log('Text extraction complete. Length:', fullText.length);
+
+        if (fullText.trim()) {
+          setScopeText(fullText.trim());
+          setAnalysis('');
+        } else {
+          setAnalysis('No text found in PDF. The PDF might be scanned or image-based. Try uploading as an image instead.');
+          setUploadedFile(null);
+        }
         setIsAnalyzing(false);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error parsing PDF:', error);
-        setAnalysis('Error reading PDF file. Please try again or use a text file.');
+        console.error('Error details:', {
+          message: error?.message,
+          name: error?.name,
+          stack: error?.stack
+        });
+        const errorMessage = error?.message || 'Unknown error';
+        setAnalysis(`Error reading PDF: ${errorMessage}. Try uploading the file as an image or text file instead.`);
         setUploadedFile(null);
         setIsAnalyzing(false);
       }
