@@ -5,6 +5,15 @@ import { useStore } from '../lib/store';
 import * as atlas from 'azure-maps-control';
 import 'azure-maps-control/dist/atlas.min.css';
 
+interface AddressSuggestion {
+  address: string;
+  position: {
+    lat: number;
+    lon: number;
+  };
+  type: string;
+}
+
 interface MeasurementsProps {}
 
 const Measurements: React.FC<MeasurementsProps> = () => {
@@ -12,6 +21,8 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewMeasurement, setShowNewMeasurement] = useState(false);
   const [address, setAddress] = useState('');
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedMeasurement, setSelectedMeasurement] = useState<RoofMeasurement | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'measure'>('list');
 
@@ -23,9 +34,30 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const [azureMap, setAzureMap] = useState<atlas.Map | null>(null);
   const [dataSource, setDataSource] = useState<atlas.source.DataSource | null>(null);
   const [isGeocoding, setIsGeocoding] = useState(false);
+  const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
 
   const mapRef = useRef<HTMLDivElement>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
   const azureApiKey = import.meta.env.VITE_AZURE_MAPS_KEY;
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(event.target as Node) &&
+        addressInputRef.current &&
+        !addressInputRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     if (!azureApiKey || azureApiKey === 'YOUR_AZURE_MAPS_KEY_HERE' || !mapRef.current || viewMode !== 'measure') {
@@ -147,6 +179,51 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     return [sumLng / positions.length, sumLat / positions.length];
   };
 
+  const fetchAddressSuggestions = async (query: string) => {
+    if (!query.trim() || query.length < 3) {
+      setAddressSuggestions([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `https://atlas.microsoft.com/search/address/json?api-version=1.0&subscription-key=${azureApiKey}&query=${encodeURIComponent(query)}&typeahead=true&limit=5&countrySet=US`
+      );
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        const suggestions: AddressSuggestion[] = data.results.map((result: any) => ({
+          address: result.address.freeformAddress,
+          position: result.position,
+          type: result.type
+        }));
+        setAddressSuggestions(suggestions);
+        setShowSuggestions(true);
+      } else {
+        setAddressSuggestions([]);
+      }
+    } catch (err) {
+      console.error('Address suggestion error:', err);
+      setAddressSuggestions([]);
+    }
+  };
+
+  const handleAddressChange = (value: string) => {
+    setAddress(value);
+    if (value.length >= 3) {
+      fetchAddressSuggestions(value);
+    } else {
+      setAddressSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  const selectAddressSuggestion = (suggestion: AddressSuggestion) => {
+    setAddress(suggestion.address);
+    setShowSuggestions(false);
+    setAddressSuggestions([]);
+  };
+
   const handleAddressSearch = async () => {
     if (!address.trim()) return;
 
@@ -182,6 +259,12 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     }
   };
 
+  const undoLastPoint = () => {
+    if (currentSegment.length > 0) {
+      setCurrentSegment(currentSegment.slice(0, -1));
+    }
+  };
+
   const finishSegment = () => {
     if (currentSegment.length < 3) {
       alert('A roof segment needs at least 3 points');
@@ -204,6 +287,12 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     setSegments([...segments, newSegment]);
     setCurrentSegment([]);
     setIsDrawingMode(false);
+  };
+
+  const updateSegmentName = (segmentId: string, newName: string) => {
+    setSegments(segments.map(seg =>
+      seg.id === segmentId ? { ...seg, name: newName } : seg
+    ));
   };
 
   const calculatePolygonArea = (positions: atlas.data.Position[]): number => {
@@ -350,6 +439,14 @@ const Measurements: React.FC<MeasurementsProps> = () => {
             ) : (
               <div className="flex gap-2">
                 <button
+                  onClick={undoLastPoint}
+                  className="px-3 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700"
+                  disabled={currentSegment.length === 0}
+                  title="Undo last point"
+                >
+                  Undo
+                </button>
+                <button
                   onClick={finishSegment}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
                   disabled={currentSegment.length < 3}
@@ -388,9 +485,15 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               style={{ minHeight: '600px' }}
             />
             {isDrawingMode && (
-              <div className="absolute top-4 left-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-10">
-                <p className="font-semibold">Drawing Mode Active</p>
-                <p className="text-sm">Click on the map to add points to your roof segment</p>
+              <div className="absolute top-4 left-4 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
+                <p className="font-semibold mb-1">Drawing Mode Active</p>
+                <p className="text-sm mb-2">Click on the map to add points to your roof segment</p>
+                <div className="text-xs space-y-1 bg-blue-700 bg-opacity-50 p-2 rounded">
+                  <p>• Click to add points ({currentSegment.length} added)</p>
+                  <p>• Need at least 3 points to finish</p>
+                  <p>• Use Undo to remove last point</p>
+                  <p>• Click Finish when done</p>
+                </div>
               </div>
             )}
           </div>
@@ -426,8 +529,28 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                     className="p-3 border border-slate-200 rounded-lg hover:bg-slate-50"
                   >
                     <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <p className="font-semibold text-slate-900">{segment.name}</p>
+                      <div className="flex-1">
+                        {editingSegmentId === segment.id ? (
+                          <input
+                            type="text"
+                            value={segment.name}
+                            onChange={(e) => updateSegmentName(segment.id, e.target.value)}
+                            onBlur={() => setEditingSegmentId(null)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') setEditingSegmentId(null);
+                            }}
+                            className="w-full px-2 py-1 border border-blue-300 rounded text-sm font-semibold"
+                            autoFocus
+                          />
+                        ) : (
+                          <p
+                            className="font-semibold text-slate-900 cursor-pointer hover:text-blue-600"
+                            onClick={() => setEditingSegmentId(segment.id)}
+                            title="Click to edit name"
+                          >
+                            {segment.name}
+                          </p>
+                        )}
                         <p className="text-sm text-slate-600">{segment.areaSqft.toFixed(0)} sq ft</p>
                       </div>
                       <button
@@ -653,28 +776,58 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               </button>
             </div>
             <div className="p-6 space-y-4">
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Property Address
                 </label>
                 <input
+                  ref={addressInputRef}
                   type="text"
                   value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="123 Main St, Dallas, TX 75201"
+                  onChange={(e) => handleAddressChange(e.target.value)}
+                  onFocus={() => {
+                    if (addressSuggestions.length > 0) {
+                      setShowSuggestions(true);
+                    }
+                  }}
+                  placeholder="Start typing address... (e.g., 123 Main St, Dallas, TX)"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={isGeocoding}
                 />
+                {showSuggestions && addressSuggestions.length > 0 && (
+                  <div
+                    ref={suggestionsRef}
+                    className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                  >
+                    {addressSuggestions.map((suggestion, index) => (
+                      <button
+                        key={index}
+                        onClick={() => selectAddressSuggestion(suggestion)}
+                        className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-b-0"
+                      >
+                        <div className="flex items-start gap-2">
+                          <MapPin size={16} className="text-blue-600 shrink-0 mt-1" />
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">{suggestion.address}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{suggestion.type}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-900 font-semibold mb-1">How it works:</p>
-                <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
-                  <li>Enter the property address</li>
-                  <li>Click to view Azure Maps satellite imagery</li>
-                  <li>Draw segments around each roof section</li>
-                  <li>Areas are automatically calculated</li>
-                  <li>Save and export your measurements</li>
+                <p className="text-sm text-blue-900 font-semibold mb-2">How it works:</p>
+                <ol className="text-xs text-blue-700 space-y-1.5 list-decimal list-inside">
+                  <li>Start typing an address - suggestions will appear</li>
+                  <li>Select your address from the dropdown</li>
+                  <li>View high-resolution satellite imagery</li>
+                  <li>Click "Draw Segment" and outline each roof section</li>
+                  <li>Areas are calculated automatically as you draw</li>
+                  <li>Edit segment names by clicking on them</li>
+                  <li>Save and export your complete measurements</li>
                 </ol>
               </div>
             </div>
