@@ -47,6 +47,10 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const [showMeasurementTools, setShowMeasurementTools] = useState(false);
   const [measurementMode, setMeasurementMode] = useState<'distance' | 'angle' | null>(null);
   const [measurementPoints, setMeasurementPoints] = useState<atlas.data.Position[]>([]);
+  const [pivotPoints, setPivotPoints] = useState<atlas.data.Position[]>([]);
+  const [isAddingPivots, setIsAddingPivots] = useState(false);
+  const [currentLineLabeling, setCurrentLineLabeling] = useState<number>(0);
+  const [workflowStep, setWorkflowStep] = useState<'idle' | 'pivots' | 'labeling'>('idle');
 
   const [roofEdges, setRoofEdges] = useState<Array<{
     id: string,
@@ -73,7 +77,12 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       return;
     }
 
-    console.log('Map clicked:', position, 'Drawing mode:', isDrawingMode, 'Labeling mode:', isLabelingMode);
+    console.log('Map clicked:', position, 'Workflow step:', workflowStep);
+
+    if (workflowStep === 'pivots') {
+      setPivotPoints(prev => [...prev, position]);
+      return;
+    }
 
     if (measurementMode === 'distance') {
       setMeasurementPoints(prev => {
@@ -133,7 +142,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         setShowFeatureTypeModal(true);
       }
     }
-  }, [isDrawingMode, isLabelingMode, isEditingPoints, editingSegmentPoints, measurementMode, segments]);
+  }, [isDrawingMode, isLabelingMode, isEditingPoints, editingSegmentPoints, measurementMode, segments, workflowStep]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -342,6 +351,38 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       }
     }
 
+    if (pivotPoints.length > 0) {
+      pivotPoints.forEach((pos, i) => {
+        const point = new atlas.data.Feature(new atlas.data.Point(pos), {
+          title: `${i + 1}`
+        });
+        dataSource.add(point);
+      });
+
+      for (let i = 0; i < pivotPoints.length - 1; i++) {
+        const line = new atlas.data.LineString([pivotPoints[i], pivotPoints[i + 1]]);
+        dataSource.add(new atlas.data.Feature(line));
+
+        const dist = calculateEdgeLength(pivotPoints[i], pivotPoints[i + 1]);
+        const midPoint: atlas.data.Position = [
+          (pivotPoints[i][0] + pivotPoints[i + 1][0]) / 2,
+          (pivotPoints[i][1] + pivotPoints[i + 1][1]) / 2
+        ];
+        const distLabel = new atlas.data.Feature(new atlas.data.Point(midPoint), {
+          title: `${dist} ft`
+        });
+        dataSource.add(distLabel);
+      }
+
+      if (pivotPoints.length > 2 && workflowStep === 'pivots') {
+        const closingLine = new atlas.data.LineString([
+          pivotPoints[pivotPoints.length - 1],
+          pivotPoints[0]
+        ]);
+        dataSource.add(new atlas.data.Feature(closingLine, { strokeDasharray: [3, 3] }));
+      }
+    }
+
     if (measurementPoints.length > 0) {
       measurementPoints.forEach((pos, i) => {
         const point = new atlas.data.Feature(new atlas.data.Point(pos), {
@@ -372,7 +413,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         dataSource.add(angleLabel);
       }
     }
-  }, [segments, currentSegment, azureMap, dataSource, isEditingPoints, editingSegmentPoints, measurementPoints, measurementMode]);
+  }, [segments, currentSegment, azureMap, dataSource, isEditingPoints, editingSegmentPoints, measurementPoints, measurementMode, pivotPoints, workflowStep]);
 
   useEffect(() => {
     if (!azureMap || !featureDataSource) return;
@@ -389,16 +430,18 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       unlabeled: '#94a3b8'
     };
 
-    roofEdges.forEach((edge) => {
+    roofEdges.forEach((edge, index) => {
+      const isCurrentLine = workflowStep === 'labeling' && index === currentLineLabeling;
       const line = new atlas.data.LineString([edge.start, edge.end]);
       const lineFeature = new atlas.data.Feature(line, {
-        color: featureColors[edge.type],
+        color: isCurrentLine ? '#fff700' : featureColors[edge.type],
         type: edge.type,
-        edgeId: edge.id
+        edgeId: edge.id,
+        strokeWidth: isCurrentLine ? 8 : 6
       });
       featureDataSource.add(lineFeature);
 
-      if (edge.type !== 'unlabeled') {
+      if (edge.type !== 'unlabeled' || isCurrentLine) {
         const midPoint: atlas.data.Position = [
           (edge.start[0] + edge.end[0]) / 2,
           (edge.start[1] + edge.end[1]) / 2
@@ -412,14 +455,15 @@ const Measurements: React.FC<MeasurementsProps> = () => {
           penetration: 'Pen',
           unlabeled: ''
         };
+        const label = isCurrentLine ? `→ ${edge.length}' ←` : `${featureLabels[edge.type]}: ${edge.length}'`;
         const labelFeature = new atlas.data.Feature(new atlas.data.Point(midPoint), {
-          label: `${featureLabels[edge.type]}: ${edge.length}'`,
-          color: featureColors[edge.type]
+          label: label,
+          color: isCurrentLine ? '#fff700' : featureColors[edge.type]
         });
         featureDataSource.add(labelFeature);
       }
     });
-  }, [roofEdges, azureMap, featureDataSource]);
+  }, [roofEdges, azureMap, featureDataSource, workflowStep, currentLineLabeling]);
 
   useEffect(() => {
     if (segments.length === 0) {
@@ -917,14 +961,24 @@ const Measurements: React.FC<MeasurementsProps> = () => {
             >
               <Eye size={18} />
             </button>
-            {!isDrawingMode && !isLabelingMode && !isEditingPoints && !measurementMode ? (
+            {workflowStep === 'idle' && !isDrawingMode && !isLabelingMode && !isEditingPoints && !measurementMode ? (
               <>
                 <button
-                  onClick={() => setIsDrawingMode(true)}
+                  onClick={() => {
+                    setWorkflowStep('pivots');
+                    setPivotPoints([]);
+                  }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
                 >
+                  <MapPin size={20} />
+                  Start Measurement
+                </button>
+                <button
+                  onClick={() => setIsDrawingMode(true)}
+                  className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 flex items-center gap-2"
+                >
                   <Square size={20} />
-                  Draw
+                  Draw Polygon
                 </button>
                 <button
                   onClick={() => {
@@ -939,15 +993,115 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   <Edit size={20} />
                   Edit
                 </button>
-                <button
-                  onClick={() => setIsLabelingMode(true)}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
-                  disabled={segments.length === 0}
-                >
-                  <Ruler size={20} />
-                  Label
-                </button>
               </>
+            ) : workflowStep === 'pivots' ? (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    if (pivotPoints.length > 0) {
+                      setPivotPoints(pivotPoints.slice(0, -1));
+                    }
+                  }}
+                  className="px-3 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700"
+                  disabled={pivotPoints.length === 0}
+                  title="Undo last pivot"
+                >
+                  Undo
+                </button>
+                <button
+                  onClick={() => {
+                    if (pivotPoints.length < 3) {
+                      alert('Need at least 3 pivot points to create a roof outline');
+                      return;
+                    }
+                    const edges: Array<{
+                      id: string;
+                      type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration' | 'unlabeled';
+                      length: number;
+                      start: atlas.data.Position;
+                      end: atlas.data.Position;
+                      segmentId: string;
+                      edgeIndex: number;
+                    }> = [];
+
+                    for (let i = 0; i < pivotPoints.length; i++) {
+                      const start = pivotPoints[i];
+                      const end = pivotPoints[(i + 1) % pivotPoints.length];
+                      edges.push({
+                        id: crypto.randomUUID(),
+                        type: 'unlabeled',
+                        length: calculateEdgeLength(start, end),
+                        start,
+                        end,
+                        segmentId: 'pivot-segment',
+                        edgeIndex: i
+                      });
+                    }
+                    setRoofEdges(edges);
+                    setWorkflowStep('labeling');
+                    setCurrentLineLabeling(0);
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                  disabled={pivotPoints.length < 3}
+                >
+                  <Check size={20} />
+                  Finish Outline ({pivotPoints.length} points)
+                </button>
+                <button
+                  onClick={() => {
+                    setPivotPoints([]);
+                    setWorkflowStep('idle');
+                  }}
+                  className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : workflowStep === 'labeling' ? (
+              <div className="flex gap-2 items-center">
+                <span className="text-sm font-medium text-slate-700 px-3 py-2 bg-slate-100 rounded">
+                  Line {currentLineLabeling + 1} of {roofEdges.length}
+                </span>
+                <button
+                  onClick={() => {
+                    if (currentLineLabeling < roofEdges.length - 1) {
+                      setCurrentLineLabeling(currentLineLabeling + 1);
+                    } else {
+                      const closedPositions = [...pivotPoints, pivotPoints[0]];
+                      const area = calculatePolygonArea(pivotPoints);
+                      const newSegment: MeasurementSegment = {
+                        id: crypto.randomUUID(),
+                        measurementId: selectedMeasurement?.id || '',
+                        name: `Segment ${segments.length + 1}`,
+                        areaSqft: area,
+                        geometry: pivotPoints.map(pos => ({ lat: pos[1], lng: pos[0] })),
+                        displayOrder: segments.length,
+                        materialType: 'Shingle',
+                        condition: 'Good'
+                      };
+                      setSegments([...segments, newSegment]);
+                      setPivotPoints([]);
+                      setWorkflowStep('idle');
+                      setCurrentLineLabeling(0);
+                    }
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                >
+                  <Check size={20} />
+                  {currentLineLabeling < roofEdges.length - 1 ? 'Next Line' : 'Finish'}
+                </button>
+                <button
+                  onClick={() => {
+                    setPivotPoints([]);
+                    setRoofEdges([]);
+                    setWorkflowStep('idle');
+                    setCurrentLineLabeling(0);
+                  }}
+                  className="px-3 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+              </div>
             ) : isDrawingMode ? (
               <div className="flex gap-2">
                 <button
@@ -1065,9 +1219,60 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               className="w-full h-full"
               style={{
                 minHeight: '600px',
-                cursor: isDrawingMode || isLabelingMode || isEditingPoints || measurementMode ? 'crosshair' : 'grab'
+                cursor: isDrawingMode || isLabelingMode || isEditingPoints || measurementMode || workflowStep !== 'idle' ? 'crosshair' : 'grab'
               }}
             />
+            {workflowStep === 'pivots' && (
+              <div className="absolute top-4 left-4 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
+                <p className="font-semibold mb-1 flex items-center gap-2">
+                  <MapPin size={16} />
+                  Adding Pivot Points
+                </p>
+                <p className="text-sm mb-2">Click on roof corners to create outline</p>
+                <div className="text-xs space-y-1 bg-blue-700 bg-opacity-50 p-2 rounded">
+                  <p>• Click each corner point ({pivotPoints.length} added)</p>
+                  <p>• Lines auto-connect between points</p>
+                  <p>• Need at least 3 points to continue</p>
+                  <p>• Use Undo to remove last point</p>
+                  <p>• Click "Finish Outline" when complete</p>
+                </div>
+              </div>
+            )}
+
+            {workflowStep === 'labeling' && currentLineLabeling < roofEdges.length && (
+              <div className="absolute top-4 left-4 bg-purple-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-md">
+                <p className="font-semibold mb-2 flex items-center gap-2">
+                  <Ruler size={16} />
+                  Label Line {currentLineLabeling + 1} of {roofEdges.length}
+                </p>
+                <p className="text-sm mb-3">
+                  Length: {roofEdges[currentLineLabeling].length} ft
+                </p>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium">Edge Type:</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['ridge', 'hip', 'valley', 'eave', 'rake', 'penetration'].map(type => (
+                      <button
+                        key={type}
+                        onClick={() => {
+                          const updatedEdges = [...roofEdges];
+                          updatedEdges[currentLineLabeling].type = type as any;
+                          setRoofEdges(updatedEdges);
+                        }}
+                        className={`px-3 py-2 rounded text-sm font-medium ${
+                          roofEdges[currentLineLabeling].type === type
+                            ? 'bg-white text-purple-600'
+                            : 'bg-purple-700 text-white hover:bg-purple-800'
+                        }`}
+                      >
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {isDrawingMode && (
               <div className="absolute top-4 left-4 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
                 <p className="font-semibold mb-1">Drawing Roof Segment</p>
