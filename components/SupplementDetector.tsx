@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FileText, AlertTriangle, CheckCircle, Sparkles, Upload, X, Mail } from 'lucide-react';
-import { analyzeScopeOfLoss, analyzeScopeFromImage } from '../services/geminiService';
+import { analyzeScopeOfLoss, analyzeScopeFromImage, generateSupplementEmail } from '../services/geminiService';
 import * as pdfjsLib from 'pdfjs-dist';
 
 const SupplementDetector: React.FC = () => {
   const [scopeText, setScopeText] = useState<string>('');
   const [analysis, setAnalysis] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isGeneratingEmail, setIsGeneratingEmail] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -157,34 +158,22 @@ Best regards,
     URL.revokeObjectURL(url);
   };
 
-  const generateEmailToAdjuster = () => {
-    const subject = 'Supplement Request - Additional Items for Review';
+  const generateEmailToAdjuster = async () => {
+    if (!analysis) return;
 
-    const body = `Dear Adjuster,
+    setIsGeneratingEmail(true);
+    try {
+      const emailBody = await generateSupplementEmail(analysis);
+      const subject = 'Supplement Request - Additional Items for Review';
 
-I hope this message finds you well. I am writing to request a supplement for the following items that were identified as missing from the original scope of loss:
-
-${analysis}
-
-Each of these items is necessary to complete the restoration work properly and in accordance with:
-- Industry best practices and manufacturer specifications
-- Local and national building codes
-- Insurance policy coverage provisions
-
-I have included detailed justification for each supplement item above. Please review these findings at your earliest convenience so we can move forward with the claim resolution.
-
-I am available to discuss these items further or schedule a time to walk through them in person if needed. Please let me know if you require any additional documentation or clarification.
-
-Thank you for your attention to this matter.
-
-Best regards,
-[Your Name]
-[Your Company Name]
-[Your Phone Number]
-[Your Email]`;
-
-    const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailtoLink;
+      const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
+      window.location.href = mailtoLink;
+    } catch (error) {
+      console.error('Failed to generate email:', error);
+      alert('Failed to generate email. Please try again.');
+    } finally {
+      setIsGeneratingEmail(false);
+    }
   };
 
   const pasteExample = () => {
@@ -319,10 +308,20 @@ Total: $4,715`;
             <div className="mt-4 flex flex-col gap-2">
               <button
                 onClick={generateEmailToAdjuster}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2"
+                disabled={isGeneratingEmail}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Mail size={16} />
-                Email to Adjuster
+                {isGeneratingEmail ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Generating Email...
+                  </>
+                ) : (
+                  <>
+                    <Mail size={16} />
+                    Email to Adjuster
+                  </>
+                )}
               </button>
               <div className="flex gap-2">
                 <button

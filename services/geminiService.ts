@@ -340,14 +340,14 @@ export const findLocalSuppliers = async (location: string): Promise<GroundingRes
  */
 export const generateSupplementArgument = async (denialReason: string, itemInQuestion: string): Promise<LogicArgument> => {
   try {
-    const prompt = `You are an expert insurance supplement specialist. 
+    const prompt = `You are an expert insurance supplement specialist.
     The adjuster denied: "${itemInQuestion}".
     Their reason: "${denialReason}".
-    
+
     Create a logical argument to overturn this denial based on construction standards and Xactimate logic.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-thinking-exp-01-21', 
+      model: 'gemini-2.0-flash-thinking-exp-01-21',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -375,5 +375,38 @@ export const generateSupplementArgument = async (denialReason: string, itemInQue
       reasoning: "The AI logic center is currently offline.",
       action: "Please draft manually."
     };
+  }
+};
+
+/**
+ * Generates a professional email to send to an insurance adjuster based on supplement analysis.
+ */
+export const generateSupplementEmail = async (analysisResults: string): Promise<string> => {
+  if (!apiKey) return "API Key missing.";
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: `You are a professional roofing contractor writing to an insurance adjuster about supplement requests.
+
+Based on this supplement analysis:
+${analysisResults}
+
+Write a professional, persuasive email that:
+1. Opens with a courteous greeting
+2. Clearly states this is a supplement request
+3. Lists each missing/underpriced item with brief justification
+4. References industry standards, building codes, or manufacturer specs where applicable
+5. Maintains a collaborative tone (you're working together, not adversarial)
+6. Closes professionally with an offer to discuss or provide documentation
+7. Includes placeholders for signature: [Your Name], [Company Name], [Phone], [Email]
+
+The email should be well-structured, concise but thorough, and ready to send. Do not include a subject line.`,
+    });
+
+    return response.text || "Unable to generate email at this time.";
+  } catch (error) {
+    console.error("Email generation error:", error);
+    return "Failed to generate email. Please try again.";
   }
 };
