@@ -214,8 +214,10 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       map.layers.add(polygonLayer);
 
       const lineLayer = new atlas.layer.LineLayer(source, undefined, {
-        strokeColor: 'rgba(59, 130, 246, 0.8)',
-        strokeWidth: 2
+        strokeColor: '#3b82f6',
+        strokeWidth: 3,
+        lineJoin: 'round',
+        lineCap: 'round'
       });
       map.layers.add(lineLayer);
 
@@ -237,7 +239,9 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
       const featureLineLayer = new atlas.layer.LineLayer(featureSource, undefined, {
         strokeColor: ['get', 'color'],
-        strokeWidth: 6
+        strokeWidth: 6,
+        lineJoin: 'round',
+        lineCap: 'round'
       });
       map.layers.add(featureLineLayer);
 
@@ -978,7 +982,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 flex items-center gap-2"
                 >
                   <Square size={20} />
-                  Draw Polygon
+                  Draw Roof Segment
                 </button>
                 <button
                   onClick={() => {
@@ -1219,9 +1223,26 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               className="w-full h-full"
               style={{
                 minHeight: '600px',
-                cursor: isDrawingMode || isLabelingMode || isEditingPoints || measurementMode || workflowStep !== 'idle' ? 'crosshair' : 'grab'
+                cursor: isDrawingMode || isLabelingMode || isEditingPoints || measurementMode || workflowStep !== 'idle' ? 'default' : 'grab'
               }}
             />
+            {isDrawingMode && (
+              <div className="absolute top-4 left-4 bg-slate-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
+                <p className="font-semibold mb-1 flex items-center gap-2">
+                  <Square size={16} />
+                  Drawing Roof Segment
+                </p>
+                <p className="text-sm mb-2">Click points to create roof outline</p>
+                <div className="text-xs space-y-1 bg-slate-700 bg-opacity-50 p-2 rounded">
+                  <p>• Click each corner to add point ({currentSegment.length} points)</p>
+                  <p>• Straight lines connect each point</p>
+                  <p>• Need at least 3 points to finish</p>
+                  <p>• Use Undo to remove last point</p>
+                  <p>• Click "Finish" when outline is complete</p>
+                </div>
+              </div>
+            )}
+
             {workflowStep === 'pivots' && (
               <div className="absolute top-4 left-4 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
                 <p className="font-semibold mb-1 flex items-center gap-2">
