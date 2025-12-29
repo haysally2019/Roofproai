@@ -75,9 +75,17 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
   const [analyzing, setAnalyzing] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [measurementMode, setMeasurementMode] = useState<'polygon' | 'ruler' | null>(null);
+  const [measurementMode, setMeasurementMode] = useState<'polygon' | 'ruler' | 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration' | null>(null);
   const [rulerLine, setRulerLine] = useState<any>(null);
   const [measurements, setMeasurements] = useState<Array<{type: string, value: number, label: string}>>([]);
+  const [roofFeatures, setRoofFeatures] = useState<Array<{
+    type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration',
+    length: number,
+    line: any,
+    marker: any,
+    label: string
+  }>>([]);
+  const [tempMeasurementStart, setTempMeasurementStart] = useState<any>(null);
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -400,6 +408,107 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
     });
   };
 
+  const startRoofFeatureMeasurement = (featureType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration') => {
+    if (!mapInstance) return;
+
+    setMeasurementMode(featureType);
+    if (drawingManager) drawingManager.setDrawingMode(null);
+
+    const featureColors: Record<string, string> = {
+      ridge: '#ef4444',
+      hip: '#f59e0b',
+      valley: '#3b82f6',
+      eave: '#10b981',
+      rake: '#8b5cf6',
+      penetration: '#ec4899'
+    };
+
+    const featureLabels: Record<string, string> = {
+      ridge: 'Ridge',
+      hip: 'Hip',
+      valley: 'Valley',
+      eave: 'Eave',
+      rake: 'Rake',
+      penetration: 'Penetration'
+    };
+
+    const clickListener = window.google.maps.event.addListener(mapInstance, 'click', (e: any) => {
+      if (!tempMeasurementStart) {
+        setTempMeasurementStart(e.latLng);
+
+        const startMarker = new window.google.maps.Marker({
+          position: e.latLng,
+          map: mapInstance,
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            fillColor: featureColors[featureType],
+            fillOpacity: 1,
+            strokeColor: '#fff',
+            strokeWeight: 2,
+            scale: 6,
+          }
+        });
+      } else {
+        const distance = window.google.maps.geometry.spherical.computeDistanceBetween(tempMeasurementStart, e.latLng);
+        const distanceFeet = Math.round(distance * 3.28084);
+
+        const line = new window.google.maps.Polyline({
+          path: [tempMeasurementStart, e.latLng],
+          strokeColor: featureColors[featureType],
+          strokeWeight: 4,
+          map: mapInstance,
+        });
+
+        const midPoint = window.google.maps.geometry.spherical.interpolate(tempMeasurementStart, e.latLng, 0.5);
+        const marker = new window.google.maps.Marker({
+          position: midPoint,
+          map: mapInstance,
+          label: {
+            text: `${featureLabels[featureType]}: ${distanceFeet}'`,
+            color: '#fff',
+            fontSize: '12px',
+            fontWeight: 'bold'
+          },
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            fillColor: featureColors[featureType],
+            fillOpacity: 0.9,
+            strokeColor: '#fff',
+            strokeWeight: 2,
+            scale: 8,
+          }
+        });
+
+        const endMarker = new window.google.maps.Marker({
+          position: e.latLng,
+          map: mapInstance,
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            fillColor: featureColors[featureType],
+            fillOpacity: 1,
+            strokeColor: '#fff',
+            strokeWeight: 2,
+            scale: 6,
+          }
+        });
+
+        setRoofFeatures(prev => [...prev, {
+          type: featureType,
+          length: distanceFeet,
+          line: line,
+          marker: marker,
+          label: `${featureLabels[featureType]}: ${distanceFeet} ft`
+        }]);
+
+        addToast(`${featureLabels[featureType]} measured: ${distanceFeet} ft`, "success");
+
+        setTempMeasurementStart(null);
+        window.google.maps.event.removeListener(clickListener);
+        setMeasurementMode(null);
+      }
+    });
+  };
+
   const undoLastPolygon = () => {
     if (polygons.length > 0) {
       const lastPoly = polygons[polygons.length - 1];
@@ -418,7 +527,28 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
     setPolygons([]);
     setTotalSurfaceArea(0);
     setMeasurements([]);
+    roofFeatures.forEach(f => {
+      if (f.line) f.line.setMap(null);
+      if (f.marker) f.marker.setMap(null);
+    });
+    setRoofFeatures([]);
     addToast("All measurements cleared", "info");
+  };
+
+  const undoLastFeature = () => {
+    if (roofFeatures.length > 0) {
+      const lastFeature = roofFeatures[roofFeatures.length - 1];
+      if (lastFeature.line) lastFeature.line.setMap(null);
+      if (lastFeature.marker) lastFeature.marker.setMap(null);
+      setRoofFeatures(prev => prev.slice(0, -1));
+      addToast("Feature removed", "info");
+    }
+  };
+
+  const getTotalFeatureLength = (type: string) => {
+    return roofFeatures
+      .filter(f => f.type === type)
+      .reduce((sum, f) => sum + f.length, 0);
   };
 
   const calculateEstimate = () => {
@@ -450,20 +580,120 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
       // Adjust for Tier
       if (selectedTier === 'Better') pricePerSq *= 1.15;
       if (selectedTier === 'Best') pricePerSq *= 1.35;
-      
+
       // Adjust for Pitch
       if (globalPitch > 7) pricePerSq += 25;
 
-      setItems([
+      const baseItems = [
           { description: "Mobilization & Safety", quantity: 1, unit: 'LS', unitPrice: mobPrice, total: mobPrice },
           { description: "Tear-off & Disposal", quantity: squares, unit: 'SQ', unitPrice: tearOffPrice, total: squares * tearOffPrice },
           { description: `Install ${selectedTier} System`, quantity: squares, unit: 'SQ', unitPrice: (pricePerSq - tearOffPrice), total: squares * (pricePerSq - tearOffPrice) },
           { description: "Ice & Water Shield Upgrade", quantity: Math.ceil(sqFt * 0.15), unit: 'SF', unitPrice: iceWaterPrice, total: Math.ceil(sqFt * 0.15) * iceWaterPrice },
           { description: "Flashings & Ventilation", quantity: 1, unit: 'LS', unitPrice: flashPrice, total: flashPrice },
-      ]);
-      setMaterialList([
+      ];
+
+      // Add roof feature line items
+      const featureItems: EstimateItem[] = [];
+
+      const ridgeLength = getTotalFeatureLength('ridge');
+      if (ridgeLength > 0) {
+          const ridgePrice = findPrice('Ridge Cap', 8.50);
+          featureItems.push({
+              description: "Ridge Cap Installation",
+              quantity: ridgeLength,
+              unit: 'LF',
+              unitPrice: ridgePrice,
+              total: ridgeLength * ridgePrice
+          });
+      }
+
+      const hipLength = getTotalFeatureLength('hip');
+      if (hipLength > 0) {
+          const hipPrice = findPrice('Hip Cap', 8.50);
+          featureItems.push({
+              description: "Hip Cap Installation",
+              quantity: hipLength,
+              unit: 'LF',
+              unitPrice: hipPrice,
+              total: hipLength * hipPrice
+          });
+      }
+
+      const valleyLength = getTotalFeatureLength('valley');
+      if (valleyLength > 0) {
+          const valleyPrice = findPrice('Valley Metal', 12.00);
+          featureItems.push({
+              description: "Valley Metal Installation",
+              quantity: valleyLength,
+              unit: 'LF',
+              unitPrice: valleyPrice,
+              total: valleyLength * valleyPrice
+          });
+      }
+
+      const eaveLength = getTotalFeatureLength('eave');
+      if (eaveLength > 0) {
+          const eavePrice = findPrice('Drip Edge', 4.50);
+          featureItems.push({
+              description: "Drip Edge Installation",
+              quantity: eaveLength,
+              unit: 'LF',
+              unitPrice: eavePrice,
+              total: eaveLength * eavePrice
+          });
+      }
+
+      const rakeLength = getTotalFeatureLength('rake');
+      if (rakeLength > 0) {
+          const rakePrice = findPrice('Rake Metal', 4.50);
+          featureItems.push({
+              description: "Rake Edge Installation",
+              quantity: rakeLength,
+              unit: 'LF',
+              unitPrice: rakePrice,
+              total: rakeLength * rakePrice
+          });
+      }
+
+      const penetrationCount = roofFeatures.filter(f => f.type === 'penetration').length;
+      if (penetrationCount > 0) {
+          const penPrice = findPrice('Pipe Boot', 35.00);
+          featureItems.push({
+              description: "Pipe Boot Installation",
+              quantity: penetrationCount,
+              unit: 'EA',
+              unitPrice: penPrice,
+              total: penetrationCount * penPrice
+          });
+      }
+
+      setItems([...baseItems, ...featureItems]);
+
+      const baseMaterials = [
           { description: `${selectedTier} Shingles`, quantity: squares * 3, unit: 'BDL', unitPrice: 38.00, total: squares * 3 * 38.00 },
-      ]);
+      ];
+
+      const materialFeatures: EstimateItem[] = [];
+      if (ridgeLength > 0) {
+          materialFeatures.push({
+              description: "Ridge Cap Shingles",
+              quantity: Math.ceil(ridgeLength / 30),
+              unit: 'BDL',
+              unitPrice: 45.00,
+              total: Math.ceil(ridgeLength / 30) * 45.00
+          });
+      }
+      if (valleyLength > 0) {
+          materialFeatures.push({
+              description: "Valley Metal",
+              quantity: Math.ceil(valleyLength / 10),
+              unit: 'PC',
+              unitPrice: 28.00,
+              total: Math.ceil(valleyLength / 10) * 28.00
+          });
+      }
+
+      setMaterialList([...baseMaterials, ...materialFeatures]);
   };
 
   // --- NEW: AI GENERATOR ---
@@ -643,8 +873,9 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
               </div>
 
               {/* Floating Toolbar */}
-              <div className="absolute top-4 left-4 z-[10] flex flex-col gap-2">
+              <div className="absolute top-4 left-4 z-[10] flex flex-col gap-2 max-h-[calc(100vh-8rem)] overflow-y-auto">
                 <div className="bg-white rounded-lg shadow-lg p-2 flex flex-col gap-2">
+                  <p className="text-xs font-bold text-slate-500 uppercase px-2 pt-1">Area Measurement</p>
                   <button
                     onClick={() => fetchRoofData()}
                     disabled={analyzing || !mapCenter}
@@ -663,38 +894,80 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
                   >
                     <PenTool size={16}/> Draw Area
                   </button>
-                  <button
-                    onClick={startRulerMode}
-                    className={`px-4 py-2 ${measurementMode === 'ruler' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 border border-slate-200'} rounded font-bold text-sm flex items-center gap-2 hover:bg-indigo-50`}
-                  >
-                    <Ruler size={16}/> Measure Distance
-                  </button>
+
                   <div className="border-t border-slate-200 my-1"></div>
+                  <p className="text-xs font-bold text-slate-500 uppercase px-2">Roof Features</p>
+
+                  <button
+                    onClick={() => startRoofFeatureMeasurement('ridge')}
+                    className={`px-4 py-2 ${measurementMode === 'ridge' ? 'bg-red-600 text-white' : 'bg-white text-slate-700 border-2 border-red-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-red-50`}
+                  >
+                    <div className="w-3 h-3 rounded-full bg-red-500"></div> Ridge
+                  </button>
+                  <button
+                    onClick={() => startRoofFeatureMeasurement('hip')}
+                    className={`px-4 py-2 ${measurementMode === 'hip' ? 'bg-amber-600 text-white' : 'bg-white text-slate-700 border-2 border-amber-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-amber-50`}
+                  >
+                    <div className="w-3 h-3 rounded-full bg-amber-500"></div> Hip
+                  </button>
+                  <button
+                    onClick={() => startRoofFeatureMeasurement('valley')}
+                    className={`px-4 py-2 ${measurementMode === 'valley' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 border-2 border-blue-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-blue-50`}
+                  >
+                    <div className="w-3 h-3 rounded-full bg-blue-500"></div> Valley
+                  </button>
+                  <button
+                    onClick={() => startRoofFeatureMeasurement('eave')}
+                    className={`px-4 py-2 ${measurementMode === 'eave' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-700 border-2 border-emerald-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-emerald-50`}
+                  >
+                    <div className="w-3 h-3 rounded-full bg-emerald-500"></div> Eave
+                  </button>
+                  <button
+                    onClick={() => startRoofFeatureMeasurement('rake')}
+                    className={`px-4 py-2 ${measurementMode === 'rake' ? 'bg-purple-600 text-white' : 'bg-white text-slate-700 border-2 border-purple-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-purple-50`}
+                  >
+                    <div className="w-3 h-3 rounded-full bg-purple-500"></div> Rake
+                  </button>
+                  <button
+                    onClick={() => startRoofFeatureMeasurement('penetration')}
+                    className={`px-4 py-2 ${measurementMode === 'penetration' ? 'bg-pink-600 text-white' : 'bg-white text-slate-700 border-2 border-pink-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-pink-50`}
+                  >
+                    <div className="w-3 h-3 rounded-full bg-pink-500"></div> Penetration
+                  </button>
+
+                  <div className="border-t border-slate-200 my-1"></div>
+                  <button
+                    onClick={undoLastFeature}
+                    disabled={roofFeatures.length === 0}
+                    className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-xs flex items-center gap-2 hover:bg-amber-50 disabled:opacity-50"
+                  >
+                    <Undo size={14}/> Undo Feature
+                  </button>
                   <button
                     onClick={undoLastPolygon}
                     disabled={polygons.length === 0}
-                    className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-sm flex items-center gap-2 hover:bg-amber-50 disabled:opacity-50"
+                    className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-xs flex items-center gap-2 hover:bg-amber-50 disabled:opacity-50"
                   >
-                    <Undo size={16}/> Undo
+                    <Undo size={14}/> Undo Area
                   </button>
                   <button
                     onClick={clearAllPolygons}
-                    disabled={polygons.length === 0}
-                    className="px-4 py-2 bg-white text-red-600 border border-red-200 rounded font-bold text-sm flex items-center gap-2 hover:bg-red-50 disabled:opacity-50"
+                    disabled={polygons.length === 0 && roofFeatures.length === 0}
+                    className="px-4 py-2 bg-white text-red-600 border border-red-200 rounded font-bold text-xs flex items-center gap-2 hover:bg-red-50 disabled:opacity-50"
                   >
-                    <Trash2 size={16}/> Clear All
+                    <Trash2 size={14}/> Clear All
                   </button>
                   <button
                     onClick={() => setHighContrast(!highContrast)}
-                    className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-sm flex items-center gap-2 hover:bg-slate-50"
+                    className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-xs flex items-center gap-2 hover:bg-slate-50"
                   >
-                    {highContrast ? <EyeOff size={16}/> : <Eye size={16}/>} Contrast
+                    {highContrast ? <EyeOff size={14}/> : <Eye size={14}/>} Contrast
                   </button>
                 </div>
               </div>
 
               {/* Measurement Info Panel */}
-              <div className="absolute top-4 right-4 z-[10] bg-white rounded-lg shadow-lg p-4 min-w-[280px]">
+              <div className="absolute top-4 right-4 z-[10] bg-white rounded-lg shadow-lg p-4 min-w-[320px] max-h-[calc(100vh-8rem)] overflow-y-auto">
                 <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
                   <Layers size={18}/> Measurements
                 </h3>
@@ -711,13 +984,76 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
                     <p className="text-xs font-bold text-slate-500 uppercase mb-1">Mode</p>
                     <p className="text-sm font-bold text-indigo-600">{measurementSource === 'api' ? '3D Auto' : 'Manual Trace'}</p>
                   </div>
-                  {measurements.length > 0 && (
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
-                      <p className="text-xs font-bold text-slate-500 uppercase mb-2">Distance Measurements</p>
-                      {measurements.map((m, i) => (
-                        <p key={i} className="text-sm text-slate-700">{m.label}</p>
-                      ))}
-                    </div>
+
+                  {roofFeatures.length > 0 && (
+                    <>
+                      <div className="border-t border-slate-200 my-2"></div>
+                      <p className="text-xs font-bold text-slate-500 uppercase mb-2">Roof Features</p>
+
+                      {getTotalFeatureLength('ridge') > 0 && (
+                        <div className="p-2 bg-red-50 rounded border border-red-200 flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                            <span className="text-xs font-bold text-slate-700">Ridge</span>
+                          </div>
+                          <span className="text-sm font-bold text-slate-900">{getTotalFeatureLength('ridge')} ft</span>
+                        </div>
+                      )}
+
+                      {getTotalFeatureLength('hip') > 0 && (
+                        <div className="p-2 bg-amber-50 rounded border border-amber-200 flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                            <span className="text-xs font-bold text-slate-700">Hip</span>
+                          </div>
+                          <span className="text-sm font-bold text-slate-900">{getTotalFeatureLength('hip')} ft</span>
+                        </div>
+                      )}
+
+                      {getTotalFeatureLength('valley') > 0 && (
+                        <div className="p-2 bg-blue-50 rounded border border-blue-200 flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                            <span className="text-xs font-bold text-slate-700">Valley</span>
+                          </div>
+                          <span className="text-sm font-bold text-slate-900">{getTotalFeatureLength('valley')} ft</span>
+                        </div>
+                      )}
+
+                      {getTotalFeatureLength('eave') > 0 && (
+                        <div className="p-2 bg-emerald-50 rounded border border-emerald-200 flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+                            <span className="text-xs font-bold text-slate-700">Eave</span>
+                          </div>
+                          <span className="text-sm font-bold text-slate-900">{getTotalFeatureLength('eave')} ft</span>
+                        </div>
+                      )}
+
+                      {getTotalFeatureLength('rake') > 0 && (
+                        <div className="p-2 bg-purple-50 rounded border border-purple-200 flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                            <span className="text-xs font-bold text-slate-700">Rake</span>
+                          </div>
+                          <span className="text-sm font-bold text-slate-900">{getTotalFeatureLength('rake')} ft</span>
+                        </div>
+                      )}
+
+                      {getTotalFeatureLength('penetration') > 0 && (
+                        <div className="p-2 bg-pink-50 rounded border border-pink-200 flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-pink-500"></div>
+                            <span className="text-xs font-bold text-slate-700">Penetrations</span>
+                          </div>
+                          <span className="text-sm font-bold text-slate-900">{roofFeatures.filter(f => f.type === 'penetration').length}</span>
+                        </div>
+                      )}
+
+                      <div className="text-xs text-slate-500 mt-2 italic">
+                        {roofFeatures.length} feature{roofFeatures.length !== 1 ? 's' : ''} marked
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -788,27 +1124,97 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
                           </button>
                       </div>
 
+                      <div className="mb-3">
+                          <p className="text-xs font-bold text-slate-500 uppercase mb-2 px-1">Roof Features</p>
+                          <div className="grid grid-cols-3 gap-1.5">
+                              <button onClick={() => startRoofFeatureMeasurement('ridge')} className="py-1.5 bg-white text-slate-700 border-2 border-red-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-red-50">
+                                  <div className="w-2 h-2 rounded-full bg-red-500"></div> Ridge
+                              </button>
+                              <button onClick={() => startRoofFeatureMeasurement('hip')} className="py-1.5 bg-white text-slate-700 border-2 border-amber-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-amber-50">
+                                  <div className="w-2 h-2 rounded-full bg-amber-500"></div> Hip
+                              </button>
+                              <button onClick={() => startRoofFeatureMeasurement('valley')} className="py-1.5 bg-white text-slate-700 border-2 border-blue-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-blue-50">
+                                  <div className="w-2 h-2 rounded-full bg-blue-500"></div> Valley
+                              </button>
+                              <button onClick={() => startRoofFeatureMeasurement('eave')} className="py-1.5 bg-white text-slate-700 border-2 border-emerald-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-emerald-50">
+                                  <div className="w-2 h-2 rounded-full bg-emerald-500"></div> Eave
+                              </button>
+                              <button onClick={() => startRoofFeatureMeasurement('rake')} className="py-1.5 bg-white text-slate-700 border-2 border-purple-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-purple-50">
+                                  <div className="w-2 h-2 rounded-full bg-purple-500"></div> Rake
+                              </button>
+                              <button onClick={() => startRoofFeatureMeasurement('penetration')} className="py-1.5 bg-white text-slate-700 border-2 border-pink-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-pink-50">
+                                  <div className="w-2 h-2 rounded-full bg-pink-500"></div> Pen
+                              </button>
+                          </div>
+                      </div>
+
                       <div className="grid grid-cols-3 gap-2 mb-3">
-                          <button onClick={startRulerMode} className="py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-slate-50">
-                              <Ruler size={12}/> Ruler
+                          <button onClick={undoLastFeature} disabled={roofFeatures.length === 0} className="py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-amber-50 disabled:opacity-50">
+                              <Undo size={10}/> Feature
                           </button>
                           <button onClick={undoLastPolygon} disabled={polygons.length === 0} className="py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-amber-50 disabled:opacity-50">
-                              <Undo size={12}/> Undo
+                              <Undo size={10}/> Area
                           </button>
-                          <button onClick={clearAllPolygons} disabled={polygons.length === 0} className="py-2 bg-white text-red-600 border border-red-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-red-50 disabled:opacity-50">
-                              <Trash2 size={12}/> Clear
+                          <button onClick={clearAllPolygons} disabled={polygons.length === 0 && roofFeatures.length === 0} className="py-2 bg-white text-red-600 border border-red-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-red-50 disabled:opacity-50">
+                              <Trash2 size={10}/> Clear
                           </button>
                       </div>
 
-                      <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center mb-2">
-                          <div>
-                              <p className="text-xs font-bold text-slate-400 uppercase">Total Area</p>
-                              <p className="text-2xl font-extrabold text-slate-800">{totalSurfaceArea.toLocaleString()} <span className="text-sm font-normal text-slate-500">sqft</span></p>
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 mb-2">
+                          <div className="flex justify-between items-center mb-2">
+                              <div>
+                                  <p className="text-xs font-bold text-slate-400 uppercase">Total Area</p>
+                                  <p className="text-xl font-extrabold text-slate-800">{totalSurfaceArea.toLocaleString()} <span className="text-xs font-normal text-slate-500">sqft</span></p>
+                              </div>
+                              <div className="text-right">
+                                  <p className="text-xs font-bold text-slate-400 uppercase">Polygons</p>
+                                  <span className="text-sm font-bold text-indigo-600">{polygons.length}</span>
+                              </div>
                           </div>
-                          <div className="text-right">
-                              <p className="text-xs font-bold text-slate-400 uppercase">Polygons</p>
-                              <span className="text-sm font-bold text-indigo-600">{polygons.length}</span>
-                          </div>
+
+                          {roofFeatures.length > 0 && (
+                              <>
+                                  <div className="border-t border-slate-200 my-2"></div>
+                                  <div className="space-y-1">
+                                      {getTotalFeatureLength('ridge') > 0 && (
+                                          <div className="flex justify-between text-xs">
+                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-500"></div>Ridge</span>
+                                              <span className="font-bold text-slate-800">{getTotalFeatureLength('ridge')} ft</span>
+                                          </div>
+                                      )}
+                                      {getTotalFeatureLength('hip') > 0 && (
+                                          <div className="flex justify-between text-xs">
+                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-500"></div>Hip</span>
+                                              <span className="font-bold text-slate-800">{getTotalFeatureLength('hip')} ft</span>
+                                          </div>
+                                      )}
+                                      {getTotalFeatureLength('valley') > 0 && (
+                                          <div className="flex justify-between text-xs">
+                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div>Valley</span>
+                                              <span className="font-bold text-slate-800">{getTotalFeatureLength('valley')} ft</span>
+                                          </div>
+                                      )}
+                                      {getTotalFeatureLength('eave') > 0 && (
+                                          <div className="flex justify-between text-xs">
+                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div>Eave</span>
+                                              <span className="font-bold text-slate-800">{getTotalFeatureLength('eave')} ft</span>
+                                          </div>
+                                      )}
+                                      {getTotalFeatureLength('rake') > 0 && (
+                                          <div className="flex justify-between text-xs">
+                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div>Rake</span>
+                                              <span className="font-bold text-slate-800">{getTotalFeatureLength('rake')} ft</span>
+                                          </div>
+                                      )}
+                                      {roofFeatures.filter(f => f.type === 'penetration').length > 0 && (
+                                          <div className="flex justify-between text-xs">
+                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-pink-500"></div>Penetrations</span>
+                                              <span className="font-bold text-slate-800">{roofFeatures.filter(f => f.type === 'penetration').length}</span>
+                                          </div>
+                                      )}
+                                  </div>
+                              </>
+                          )}
                       </div>
 
                       <div className="flex gap-2">
