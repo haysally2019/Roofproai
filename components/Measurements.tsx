@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Ruler, Plus, Search, Save, Trash2, MapPin, Square, Download, X, Edit, Check, Layers, AlertCircle, Eye } from 'lucide-react';
+import { Ruler, Plus, Search, Save, Trash2, MapPin, Square, Download, X, Edit, Check, Layers, AlertCircle, Eye, Move, XCircle } from 'lucide-react';
 import { RoofMeasurement, MeasurementSegment } from '../types';
 import { useStore } from '../lib/store';
 import * as atlas from 'azure-maps-control';
@@ -40,6 +40,13 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
   const [isBirdsEyeView, setIsBirdsEyeView] = useState(false);
+  const [isEditingPoints, setIsEditingPoints] = useState(false);
+  const [editingSegmentPoints, setEditingSegmentPoints] = useState<string | null>(null);
+  const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
+  const [roofPitch, setRoofPitch] = useState<number>(4);
+  const [showMeasurementTools, setShowMeasurementTools] = useState(false);
+  const [measurementMode, setMeasurementMode] = useState<'distance' | 'angle' | null>(null);
+  const [measurementPoints, setMeasurementPoints] = useState<atlas.data.Position[]>([]);
 
   const [roofEdges, setRoofEdges] = useState<Array<{
     id: string,
@@ -68,6 +75,44 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
     console.log('Map clicked:', position, 'Drawing mode:', isDrawingMode, 'Labeling mode:', isLabelingMode);
 
+    if (measurementMode === 'distance') {
+      setMeasurementPoints(prev => {
+        if (prev.length >= 2) return [position];
+        return [...prev, position];
+      });
+      return;
+    }
+
+    if (measurementMode === 'angle') {
+      setMeasurementPoints(prev => {
+        if (prev.length >= 3) return [position];
+        return [...prev, position];
+      });
+      return;
+    }
+
+    if (isEditingPoints && editingSegmentPoints) {
+      if (e.shapes && e.shapes.length > 0) {
+        const shape = e.shapes[0];
+        const pointIndex = shape.getProperties()?.pointIndex;
+        if (pointIndex !== undefined) {
+          setSelectedPointIndex(pointIndex);
+          return;
+        }
+      }
+
+      const segment = segments.find(s => s.id === editingSegmentPoints);
+      if (segment) {
+        const updatedGeometry = [...segment.geometry, { lat: position[1], lng: position[0] }];
+        setSegments(segments.map(s =>
+          s.id === editingSegmentPoints
+            ? { ...s, geometry: updatedGeometry }
+            : s
+        ));
+      }
+      return;
+    }
+
     if (isDrawingMode) {
       console.log('Adding point to segment');
       setCurrentSegment(prev => {
@@ -88,7 +133,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         setShowFeatureTypeModal(true);
       }
     }
-  }, [isDrawingMode, isLabelingMode]);
+  }, [isDrawingMode, isLabelingMode, isEditingPoints, editingSegmentPoints, measurementMode, segments]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -183,7 +228,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
       const featureLineLayer = new atlas.layer.LineLayer(featureSource, undefined, {
         strokeColor: ['get', 'color'],
-        strokeWidth: 4
+        strokeWidth: 6
       });
       map.layers.add(featureLineLayer);
 
@@ -271,6 +316,16 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         title: `${segment.areaSqft.toFixed(0)} ft²`
       });
       dataSource.add(marker);
+
+      if (isEditingPoints && editingSegmentPoints === segment.id) {
+        positions.forEach((pos, index) => {
+          const pointMarker = new atlas.data.Feature(new atlas.data.Point(pos), {
+            title: `P${index + 1}`,
+            pointIndex: index
+          });
+          dataSource.add(pointMarker);
+        });
+      }
     });
 
     if (currentSegment.length > 0) {
@@ -286,7 +341,38 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         dataSource.add(new atlas.data.Feature(line));
       }
     }
-  }, [segments, currentSegment, azureMap, dataSource]);
+
+    if (measurementPoints.length > 0) {
+      measurementPoints.forEach((pos, i) => {
+        const point = new atlas.data.Feature(new atlas.data.Point(pos), {
+          title: `M${i + 1}`
+        });
+        dataSource.add(point);
+      });
+
+      if (measurementPoints.length === 2 && measurementMode === 'distance') {
+        const line = new atlas.data.LineString(measurementPoints);
+        dataSource.add(new atlas.data.Feature(line));
+        const dist = calculateEdgeLength(measurementPoints[0], measurementPoints[1]);
+        const midPoint: atlas.data.Position = [
+          (measurementPoints[0][0] + measurementPoints[1][0]) / 2,
+          (measurementPoints[0][1] + measurementPoints[1][1]) / 2
+        ];
+        const distLabel = new atlas.data.Feature(new atlas.data.Point(midPoint), {
+          title: `${dist} ft`
+        });
+        dataSource.add(distLabel);
+      }
+
+      if (measurementPoints.length === 3 && measurementMode === 'angle') {
+        const angle = calculateAngle(measurementPoints[0], measurementPoints[1], measurementPoints[2]);
+        const angleLabel = new atlas.data.Feature(new atlas.data.Point(measurementPoints[1]), {
+          title: `${angle}°`
+        });
+        dataSource.add(angleLabel);
+      }
+    }
+  }, [segments, currentSegment, azureMap, dataSource, isEditingPoints, editingSegmentPoints, measurementPoints, measurementMode]);
 
   useEffect(() => {
     if (!azureMap || !featureDataSource) return;
@@ -542,6 +628,19 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     setIsDrawingMode(false);
   };
 
+  useEffect(() => {
+    const updatedSegments = segments.map(segment => {
+      const positions: atlas.data.Position[] = segment.geometry.map(
+        point => [point.lng, point.lat]
+      );
+      const area = calculatePolygonArea(positions);
+      return { ...segment, areaSqft: area };
+    });
+    if (JSON.stringify(updatedSegments) !== JSON.stringify(segments)) {
+      setSegments(updatedSegments);
+    }
+  }, [roofPitch]);
+
   const updateSegmentName = (segmentId: string, newName: string) => {
     setSegments(segments.map(seg =>
       seg.id === segmentId ? { ...seg, name: newName } : seg
@@ -568,7 +667,46 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
     area = Math.abs(area * R * R / 2);
     const sqft = area * 10.7639;
-    return Math.round(sqft * 100) / 100;
+
+    const pitchMultiplier = Math.sqrt(1 + Math.pow(roofPitch / 12, 2));
+    return Math.round(sqft * pitchMultiplier * 100) / 100;
+  };
+
+  const deletePointFromSegment = (segmentId: string, pointIndex: number) => {
+    const segment = segments.find(s => s.id === segmentId);
+    if (!segment || segment.geometry.length <= 3) {
+      alert('Cannot delete - segment needs at least 3 points');
+      return;
+    }
+
+    const updatedGeometry = segment.geometry.filter((_, i) => i !== pointIndex);
+    const updatedSegments = segments.map(s =>
+      s.id === segmentId
+        ? { ...s, geometry: updatedGeometry }
+        : s
+    );
+    setSegments(updatedSegments);
+  };
+
+  const movePoint = (segmentId: string, pointIndex: number, newPosition: atlas.data.Position) => {
+    const updatedSegments = segments.map(s => {
+      if (s.id === segmentId) {
+        const updatedGeometry = s.geometry.map((pt, i) =>
+          i === pointIndex ? { lat: newPosition[1], lng: newPosition[0] } : pt
+        );
+        return { ...s, geometry: updatedGeometry };
+      }
+      return s;
+    });
+    setSegments(updatedSegments);
+  };
+
+  const calculateAngle = (p1: atlas.data.Position, vertex: atlas.data.Position, p2: atlas.data.Position): number => {
+    const angle1 = Math.atan2(p1[1] - vertex[1], p1[0] - vertex[0]);
+    const angle2 = Math.atan2(p2[1] - vertex[1], p2[0] - vertex[0]);
+    let angle = Math.abs(angle1 - angle2) * (180 / Math.PI);
+    if (angle > 180) angle = 360 - angle;
+    return Math.round(angle * 10) / 10;
   };
 
   const calculateTotalArea = () => {
@@ -704,27 +842,102 @@ const Measurements: React.FC<MeasurementsProps> = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-lg">
+              <label className="text-sm font-medium text-slate-700">Pitch:</label>
+              <input
+                type="number"
+                value={roofPitch}
+                onChange={(e) => setRoofPitch(Number(e.target.value))}
+                className="w-16 px-2 py-1 border border-slate-300 rounded text-sm"
+                step="0.5"
+                min="0"
+                max="24"
+              />
+              <span className="text-xs text-slate-600">/12</span>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowMeasurementTools(!showMeasurementTools);
+                if (showMeasurementTools) {
+                  setMeasurementMode(null);
+                  setMeasurementPoints([]);
+                }
+              }}
+              className={`px-3 py-2 rounded-lg flex items-center gap-2 ${
+                showMeasurementTools
+                  ? 'bg-orange-600 text-white hover:bg-orange-700'
+                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+              }`}
+              title="Measurement tools"
+            >
+              <Ruler size={18} />
+            </button>
+
+            {showMeasurementTools && (
+              <>
+                <button
+                  onClick={() => {
+                    setMeasurementMode(measurementMode === 'distance' ? null : 'distance');
+                    setMeasurementPoints([]);
+                  }}
+                  className={`px-3 py-2 rounded-lg text-sm ${
+                    measurementMode === 'distance'
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                  }`}
+                >
+                  Distance
+                </button>
+                <button
+                  onClick={() => {
+                    setMeasurementMode(measurementMode === 'angle' ? null : 'angle');
+                    setMeasurementPoints([]);
+                  }}
+                  className={`px-3 py-2 rounded-lg text-sm ${
+                    measurementMode === 'angle'
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                  }`}
+                >
+                  Angle
+                </button>
+              </>
+            )}
+
             <button
               onClick={() => setIsBirdsEyeView(!isBirdsEyeView)}
-              className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+              className={`px-3 py-2 rounded-lg flex items-center gap-2 ${
                 isBirdsEyeView
                   ? 'bg-green-600 text-white hover:bg-green-700'
                   : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
               }`}
               title="Toggle bird's eye view (tilted angle)"
             >
-              <Eye size={20} />
-              Bird's Eye
+              <Eye size={18} />
             </button>
-            {!isDrawingMode && !isLabelingMode ? (
+            {!isDrawingMode && !isLabelingMode && !isEditingPoints && !measurementMode ? (
               <>
                 <button
                   onClick={() => setIsDrawingMode(true)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
                 >
                   <Square size={20} />
-                  Draw Segment
+                  Draw
+                </button>
+                <button
+                  onClick={() => {
+                    if (segments.length > 0) {
+                      setIsEditingPoints(true);
+                      setEditingSegmentPoints(segments[0].id);
+                    }
+                  }}
+                  className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2"
+                  disabled={segments.length === 0}
+                >
+                  <Edit size={20} />
+                  Edit
                 </button>
                 <button
                   onClick={() => setIsLabelingMode(true)}
@@ -732,7 +945,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   disabled={segments.length === 0}
                 >
                   <Ruler size={20} />
-                  Label Features
+                  Label
                 </button>
               </>
             ) : isDrawingMode ? (
@@ -763,7 +976,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   Cancel
                 </button>
               </div>
-            ) : (
+            ) : isLabelingMode ? (
               <div className="flex gap-2">
                 <button
                   onClick={() => setIsLabelingMode(false)}
@@ -773,7 +986,66 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   Done Labeling
                 </button>
               </div>
-            )}
+            ) : isEditingPoints ? (
+              <div className="flex gap-2">
+                <select
+                  value={editingSegmentPoints || ''}
+                  onChange={(e) => {
+                    setEditingSegmentPoints(e.target.value);
+                    setSelectedPointIndex(null);
+                  }}
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                >
+                  {segments.map(seg => (
+                    <option key={seg.id} value={seg.id}>{seg.name}</option>
+                  ))}
+                </select>
+                {selectedPointIndex !== null && (
+                  <button
+                    onClick={() => {
+                      if (editingSegmentPoints) {
+                        deletePointFromSegment(editingSegmentPoints, selectedPointIndex);
+                        setSelectedPointIndex(null);
+                      }
+                    }}
+                    className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
+                  >
+                    <Trash2 size={18} />
+                    Delete Point
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setIsEditingPoints(false);
+                    setEditingSegmentPoints(null);
+                    setSelectedPointIndex(null);
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                >
+                  <Check size={20} />
+                  Done Editing
+                </button>
+              </div>
+            ) : measurementMode ? (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setMeasurementMode(null);
+                    setMeasurementPoints([]);
+                  }}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-2"
+                >
+                  <Check size={20} />
+                  Done Measuring
+                </button>
+                <button
+                  onClick={() => setMeasurementPoints([])}
+                  className="px-3 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
+                >
+                  Clear
+                </button>
+              </div>
+            ) : null}
 
             <button
               onClick={saveMeasurement}
@@ -791,7 +1063,10 @@ const Measurements: React.FC<MeasurementsProps> = () => {
             <div
               ref={mapRef}
               className="w-full h-full"
-              style={{ minHeight: '600px' }}
+              style={{
+                minHeight: '600px',
+                cursor: isDrawingMode || isLabelingMode || isEditingPoints || measurementMode ? 'crosshair' : 'grab'
+              }}
             />
             {isDrawingMode && (
               <div className="absolute top-4 left-4 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
@@ -818,6 +1093,56 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   <p>• Select the feature type (ridge, valley, hip, etc.)</p>
                   <p>• Labeled edges will be color-coded</p>
                   <p>• Click "Done Labeling" when finished</p>
+                </div>
+              </div>
+            )}
+
+            {isEditingPoints && (
+              <div className="absolute top-4 left-4 bg-teal-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
+                <p className="font-semibold mb-1 flex items-center gap-2">
+                  <Edit size={16} />
+                  Editing Segment Points
+                </p>
+                <p className="text-sm mb-2">Modify segment geometry by adding or removing points</p>
+                <div className="text-xs space-y-1 bg-teal-700 bg-opacity-50 p-2 rounded">
+                  <p>• Click points to select them</p>
+                  <p>• Click "Delete Point" to remove selected</p>
+                  <p>• Click on map to add new points</p>
+                  <p>• Switch segments using dropdown</p>
+                </div>
+              </div>
+            )}
+
+            {measurementMode === 'distance' && (
+              <div className="absolute top-4 left-4 bg-orange-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
+                <p className="font-semibold mb-1">Measure Distance</p>
+                <p className="text-sm mb-2">Click two points to measure distance</p>
+                <div className="text-xs space-y-1 bg-orange-700 bg-opacity-50 p-2 rounded">
+                  <p>• Click first point</p>
+                  <p>• Click second point</p>
+                  <p>• Distance will be shown in feet</p>
+                  {measurementPoints.length === 2 && (
+                    <p className="font-bold text-white mt-2">
+                      Distance: {calculateEdgeLength(measurementPoints[0], measurementPoints[1])} ft
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {measurementMode === 'angle' && (
+              <div className="absolute top-4 left-4 bg-orange-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
+                <p className="font-semibold mb-1">Measure Angle</p>
+                <p className="text-sm mb-2">Click three points to measure angle</p>
+                <div className="text-xs space-y-1 bg-orange-700 bg-opacity-50 p-2 rounded">
+                  <p>• Click first point</p>
+                  <p>• Click vertex point (center)</p>
+                  <p>• Click third point</p>
+                  {measurementPoints.length === 3 && (
+                    <p className="font-bold text-white mt-2">
+                      Angle: {calculateAngle(measurementPoints[0], measurementPoints[1], measurementPoints[2])}°
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -975,6 +1300,14 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               <h4 className="font-semibold text-slate-900 mb-2">Summary</h4>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
+                  <span className="text-slate-600">Roof Pitch:</span>
+                  <span className="font-semibold">{roofPitch}:12</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Pitch Multiplier:</span>
+                  <span className="font-semibold">{Math.sqrt(1 + Math.pow(roofPitch / 12, 2)).toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-1">
                   <span className="text-slate-600">Total Area:</span>
                   <span className="font-semibold">{calculateTotalArea().toFixed(0)} sq ft</span>
                 </div>
