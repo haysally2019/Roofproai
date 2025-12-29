@@ -172,20 +172,22 @@ Total: $4,715`;
   };
 
   return (
-    <div className="h-full flex flex-col gap-6">
-      <div className="bg-gradient-to-r from-amber-600 to-orange-600 rounded-xl p-8 text-white flex justify-between items-center shadow-lg">
+    <div className="h-full flex flex-col gap-6 overflow-hidden">
+      <div className="bg-gradient-to-r from-indigo-600 to-blue-600 rounded-2xl p-8 text-white flex justify-between items-center shadow-sm">
         <div>
           <h2 className="text-3xl font-bold mb-2">AI Supplement Detector</h2>
-          <p className="text-amber-100">Paste an insurance scope. AI will identify missing line items like O&P, code upgrades, and more.</p>
+          <p className="text-indigo-100">Paste an insurance scope. AI will identify missing line items like O&P, code upgrades, and more.</p>
         </div>
-        <AlertTriangle size={48} className="text-amber-200 opacity-50" />
+        <div className="p-3 rounded-xl bg-white bg-opacity-10">
+          <AlertTriangle size={32} className="text-indigo-200" />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
-        <div className="bg-white rounded-xl border border-slate-200 p-6 flex flex-col shadow-sm">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 flex flex-col shadow-sm overflow-hidden">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-              <FileText size={18} className="text-amber-600" />
+              <FileText size={18} className="text-indigo-600" />
               Insurance Scope
             </h3>
             <div className="flex gap-2">
@@ -197,7 +199,7 @@ Total: $4,715`;
               </button>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="text-xs px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg transition-colors font-medium flex items-center gap-1"
+                className="text-xs px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-lg transition-colors font-medium flex items-center gap-1"
               >
                 <Upload size={14} />
                 Upload File
@@ -213,14 +215,14 @@ Total: $4,715`;
           </div>
 
           {uploadedFile && (
-            <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
+            <div className="mb-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <FileText size={16} className="text-amber-600" />
+                <FileText size={16} className="text-indigo-600" />
                 <span className="text-sm text-slate-700 font-medium">{uploadedFile.name}</span>
               </div>
               <button
                 onClick={clearFile}
-                className="text-amber-600 hover:text-amber-800 transition-colors"
+                className="text-indigo-600 hover:text-indigo-800 transition-colors"
               >
                 <X size={16} />
               </button>
@@ -231,14 +233,14 @@ Total: $4,715`;
             value={scopeText}
             onChange={(e) => setScopeText(e.target.value)}
             placeholder="Paste insurance scope text here, or upload a file above...&#10;&#10;Example:&#10;1. Remove shingles - 25 SQ @ $45/SQ&#10;2. Install new shingles - 25 SQ @ $85/SQ&#10;3. Replace decking - 8 sheets @ $45/sheet&#10;..."
-            className="flex-1 w-full p-4 border border-slate-200 rounded-lg text-sm font-mono bg-slate-50 resize-none focus:ring-2 focus:ring-amber-500 outline-none"
+            className="flex-1 w-full p-4 border border-slate-200 rounded-lg text-sm font-mono bg-slate-50 resize-none focus:ring-2 focus:ring-indigo-500 outline-none min-h-0"
             disabled={isAnalyzing}
           />
 
           <button
             onClick={runAnalysis}
             disabled={isAnalyzing || !scopeText.trim()}
-            className="mt-4 w-full py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-sm shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="mt-4 w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isAnalyzing ? (
               <>
@@ -254,21 +256,21 @@ Total: $4,715`;
           </button>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-6 flex flex-col shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 flex flex-col shadow-sm overflow-hidden">
           <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <AlertTriangle size={18} className="text-amber-600" />
+            <AlertTriangle size={18} className="text-indigo-600" />
             Analysis Results
           </h3>
 
-          <div className="flex-1 bg-slate-50 rounded-lg p-4 overflow-y-auto text-sm leading-relaxed text-slate-700 border border-slate-100">
+          <div className="flex-1 bg-slate-50 rounded-lg p-4 overflow-y-auto text-sm leading-relaxed text-slate-700 border border-slate-100 min-h-0">
             {isAnalyzing ? (
               <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-400">
-                <div className="w-6 h-6 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
                 <p>Analyzing scope for missing supplements...</p>
               </div>
             ) : analysis ? (
               <div className="space-y-4">
-                <div className="whitespace-pre-wrap">{analysis}</div>
+                <div className="whitespace-pre-wrap break-words">{analysis}</div>
                 <div className="mt-6 pt-4 border-t border-slate-200">
                   <div className="flex items-start gap-2 text-xs text-slate-500">
                     <CheckCircle size={14} className="text-emerald-600 mt-0.5 shrink-0" />
@@ -302,39 +304,39 @@ Total: $4,715`;
         </div>
       </div>
 
-      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-        <h4 className="text-sm font-bold text-blue-900 mb-2">Common Supplements to Look For:</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-blue-700">
+      <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 shadow-sm">
+        <h4 className="text-sm font-bold text-indigo-900 mb-3">Common Supplements to Look For:</h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-indigo-700">
           <div className="flex items-center gap-1">
-            <CheckCircle size={12} className="text-blue-600" />
+            <CheckCircle size={12} className="text-indigo-600" />
             Overhead & Profit
           </div>
           <div className="flex items-center gap-1">
-            <CheckCircle size={12} className="text-blue-600" />
+            <CheckCircle size={12} className="text-indigo-600" />
             Code Upgrades
           </div>
           <div className="flex items-center gap-1">
-            <CheckCircle size={12} className="text-blue-600" />
+            <CheckCircle size={12} className="text-indigo-600" />
             Ventilation Improvements
           </div>
           <div className="flex items-center gap-1">
-            <CheckCircle size={12} className="text-blue-600" />
+            <CheckCircle size={12} className="text-indigo-600" />
             Drip Edge Installation
           </div>
           <div className="flex items-center gap-1">
-            <CheckCircle size={12} className="text-blue-600" />
+            <CheckCircle size={12} className="text-indigo-600" />
             Pipe Collars/Flashings
           </div>
           <div className="flex items-center gap-1">
-            <CheckCircle size={12} className="text-blue-600" />
+            <CheckCircle size={12} className="text-indigo-600" />
             Valley Metal
           </div>
           <div className="flex items-center gap-1">
-            <CheckCircle size={12} className="text-blue-600" />
+            <CheckCircle size={12} className="text-indigo-600" />
             Waste Factor
           </div>
           <div className="flex items-center gap-1">
-            <CheckCircle size={12} className="text-blue-600" />
+            <CheckCircle size={12} className="text-indigo-600" />
             Steep Pitch Charges
           </div>
         </div>
