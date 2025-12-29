@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, AlertTriangle, CheckCircle, Sparkles, Upload, X } from 'lucide-react';
+import { FileText, AlertTriangle, CheckCircle, Sparkles, Upload, X, Mail } from 'lucide-react';
 import { analyzeScopeOfLoss, analyzeScopeFromImage } from '../services/geminiService';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -157,6 +157,36 @@ Best regards,
     URL.revokeObjectURL(url);
   };
 
+  const generateEmailToAdjuster = () => {
+    const subject = 'Supplement Request - Additional Items for Review';
+
+    const body = `Dear Adjuster,
+
+I hope this message finds you well. I am writing to request a supplement for the following items that were identified as missing from the original scope of loss:
+
+${analysis}
+
+Each of these items is necessary to complete the restoration work properly and in accordance with:
+- Industry best practices and manufacturer specifications
+- Local and national building codes
+- Insurance policy coverage provisions
+
+I have included detailed justification for each supplement item above. Please review these findings at your earliest convenience so we can move forward with the claim resolution.
+
+I am available to discuss these items further or schedule a time to walk through them in person if needed. Please let me know if you require any additional documentation or clarification.
+
+Thank you for your attention to this matter.
+
+Best regards,
+[Your Name]
+[Your Company Name]
+[Your Phone Number]
+[Your Email]`;
+
+    const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailtoLink;
+  };
+
   const pasteExample = () => {
     const exampleScope = `ROOFING ESTIMATE - CLAIM #ABC123
 
@@ -286,19 +316,28 @@ Total: $4,715`;
           </div>
 
           {analysis && (
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4 flex flex-col gap-2">
               <button
-                onClick={generateSupplementLetter}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-medium text-sm transition-colors"
+                onClick={generateEmailToAdjuster}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2"
               >
-                Download Letter
+                <Mail size={16} />
+                Email to Adjuster
               </button>
-              <button
-                onClick={copyToClipboard}
-                className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-sm transition-colors"
-              >
-                Copy
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={generateSupplementLetter}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-medium text-sm transition-colors"
+                >
+                  Download Letter
+                </button>
+                <button
+                  onClick={copyToClipboard}
+                  className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-sm transition-colors"
+                >
+                  Copy
+                </button>
+              </div>
             </div>
           )}
         </div>
