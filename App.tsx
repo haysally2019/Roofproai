@@ -22,7 +22,9 @@ import AIReceptionist from './components/AIReceptionist';
 import Automations from './components/Automations';
 import Onboarding from './components/Onboarding';
 import TrialFunnel from './components/TrialFunnel';
-import UserAnalytics from './components/UserAnalytics'; 
+import UserAnalytics from './components/UserAnalytics';
+import MaterialOrders from './components/MaterialOrders';
+import LaborOrders from './components/LaborOrders'; 
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -212,6 +214,8 @@ const AppLayout: React.FC = () => {
                   {activeTab === Tab.ESTIMATES && <Estimator leads={companyLeads} onSaveEstimate={(id, est) => { const lead = companyLeads.find(l => l.id === id); if(lead) updateLead({ ...lead, estimates: [...(lead.estimates||[]), est] }); }} />}
                   {activeTab === Tab.CALENDAR && <CalendarView events={events || []} currentUser={currentUser} onAddEvent={addEvent} />}
                   {activeTab === Tab.TASKS && <TaskBoard tasks={tasks || []} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
+                  {activeTab === Tab.MATERIAL_ORDERS && <MaterialOrders />}
+                  {activeTab === Tab.LABOR_ORDERS && <LaborOrders />}
                   {activeTab === Tab.INVOICES && <InvoiceSystem invoices={invoices || []} leads={companyLeads} currentUser={currentUser} onCreateInvoice={createInvoice} onUpdateStatus={updateInvoiceStatus} />}
                   {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}
                   {activeTab === Tab.AI_RECEPTIONIST && <AIReceptionist />}

@@ -410,13 +410,15 @@ export enum Tab {
   JOBS = 'Jobs',
   ESTIMATES = 'Estimates',
   TASKS = 'Tasks',
+  MATERIAL_ORDERS = 'Materials',
+  LABOR_ORDERS = 'Labor',
   INVOICES = 'Invoices',
   PRICE_BOOK = 'Price Book',
   TEAM = 'Team',
   SETTINGS = 'Settings',
   AI_RECEPTIONIST = 'AI Receptionist',
   AUTOMATIONS = 'Automations',
-  
+
   // Admin Tabs
   ADMIN_OVERVIEW = 'Overview',
   ADMIN_LEADS = 'SaaS Leads',
