@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Ruler, Plus, Search, Save, Trash2, MapPin, Square, Download, X, Edit, Check, Layers, AlertCircle } from 'lucide-react';
 import { RoofMeasurement, MeasurementSegment } from '../types';
 import { useStore } from '../lib/store';
@@ -148,8 +148,6 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       });
       map.layers.add(featureSymbolLayer);
 
-      map.events.add('click', handleMapClick);
-
       setAzureMap(map);
     });
 
@@ -159,6 +157,18 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       }
     };
   }, [azureApiKey, viewMode, mapCenter]);
+
+  useEffect(() => {
+    if (!azureMap) return;
+
+    azureMap.events.add('click', handleMapClick);
+
+    return () => {
+      if (azureMap) {
+        azureMap.events.remove('click', handleMapClick);
+      }
+    };
+  }, [azureMap, handleMapClick]);
 
   useEffect(() => {
     if (!azureMap || !dataSource) return;
@@ -254,7 +264,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     }
   }, [roofFeatures, currentFeatureLine, azureMap, featureDataSource]);
 
-  const handleMapClick = (e: any) => {
+  const handleMapClick = useCallback((e: any) => {
     const position = e.position;
     if (!position) return;
 
@@ -266,7 +276,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     if (isDrawingFeature) {
       setCurrentFeatureLine(prev => [...prev, position]);
     }
-  };
+  }, [isDrawingMode, isDrawingFeature]);
 
   const calculateDistance = (point1: atlas.data.Position, point2: atlas.data.Position): number => {
     const R = 6371000;
