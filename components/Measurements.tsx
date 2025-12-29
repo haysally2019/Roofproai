@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Ruler, Plus, Search, Save, Trash2, MapPin, Square, Download, X, Edit, Check, Layers, AlertCircle } from 'lucide-react';
+import { Ruler, Plus, Search, Save, Trash2, MapPin, Square, Download, X, Edit, Check, Layers, AlertCircle, Eye } from 'lucide-react';
 import { RoofMeasurement, MeasurementSegment } from '../types';
 import { useStore } from '../lib/store';
 import * as atlas from 'azure-maps-control';
@@ -37,6 +37,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const [dataSource, setDataSource] = useState<atlas.source.DataSource | null>(null);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
+  const [isBirdsEyeView, setIsBirdsEyeView] = useState(false);
 
   const [roofFeatures, setRoofFeatures] = useState<Array<{
     id: string,
@@ -169,6 +170,16 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       }
     };
   }, [azureMap, handleMapClick]);
+
+  useEffect(() => {
+    if (!azureMap) return;
+
+    azureMap.setCamera({
+      pitch: isBirdsEyeView ? 60 : 0,
+      type: 'ease',
+      duration: 500
+    });
+  }, [azureMap, isBirdsEyeView]);
 
   useEffect(() => {
     if (!azureMap || !dataSource) return;
@@ -633,6 +644,18 @@ const Measurements: React.FC<MeasurementsProps> = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsBirdsEyeView(!isBirdsEyeView)}
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                isBirdsEyeView
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+              }`}
+              title="Toggle bird's eye view (tilted angle)"
+            >
+              <Eye size={20} />
+              Bird's Eye
+            </button>
             {!isDrawingMode && !isDrawingFeature ? (
               <>
                 <button
