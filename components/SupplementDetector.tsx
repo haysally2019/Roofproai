@@ -1,11 +1,57 @@
-import React, { useState } from 'react';
-import { FileText, AlertTriangle, CheckCircle, Sparkles } from 'lucide-react';
-import { analyzeScopeOfLoss } from '../services/geminiService';
+import React, { useState, useRef } from 'react';
+import { FileText, AlertTriangle, CheckCircle, Sparkles, Upload, X } from 'lucide-react';
+import { analyzeScopeOfLoss, analyzeScopeFromImage } from '../services/geminiService';
 
 const SupplementDetector: React.FC = () => {
   const [scopeText, setScopeText] = useState<string>('');
   const [analysis, setAnalysis] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadedFile(file);
+
+    const fileType = file.type;
+
+    if (fileType.startsWith('text/') || file.name.endsWith('.txt')) {
+      const text = await file.text();
+      setScopeText(text);
+    } else if (fileType.startsWith('image/') || file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result as string;
+        const base64Data = base64String.split(',')[1];
+
+        setIsAnalyzing(true);
+        setAnalysis('');
+        try {
+          const result = await analyzeScopeFromImage(base64Data, fileType);
+          setAnalysis(result);
+        } catch (error) {
+          setAnalysis('Error analyzing image. Please try again.');
+        } finally {
+          setIsAnalyzing(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } else if (fileType === 'application/pdf') {
+      setAnalysis('PDF support coming soon. Please extract text and paste it, or upload as an image screenshot.');
+      setUploadedFile(null);
+    }
+  };
+
+  const clearFile = () => {
+    setUploadedFile(null);
+    setScopeText('');
+    setAnalysis('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const runAnalysis = async () => {
     if (!scopeText.trim()) return;
@@ -20,6 +66,39 @@ const SupplementDetector: React.FC = () => {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(analysis);
+      alert('Analysis copied to clipboard!');
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  };
+
+  const generateSupplementLetter = () => {
+    const letter = `Dear Insurance Adjuster,
+
+I am writing to request a supplement for the following items that were not included in the original scope of loss:
+
+${analysis}
+
+Please review these items and adjust the claim accordingly. All recommendations are based on industry standards, building codes, and proper roofing practices.
+
+Thank you for your attention to this matter.
+
+Best regards,
+[Your Name]
+[Company Name]`;
+
+    const blob = new Blob([letter], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'supplement-request.txt';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const pasteExample = () => {
@@ -53,19 +132,51 @@ Total: $4,715`;
               <FileText size={18} className="text-amber-600" />
               Insurance Scope
             </h3>
-            <button
-              onClick={pasteExample}
-              className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors font-medium"
-            >
-              Load Example
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={pasteExample}
+                className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors font-medium"
+              >
+                Load Example
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="text-xs px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg transition-colors font-medium flex items-center gap-1"
+              >
+                <Upload size={14} />
+                Upload File
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={handleFileUpload}
+                accept=".txt,.jpg,.jpeg,.png,.gif,.webp,.pdf,text/*,image/*"
+                className="hidden"
+              />
+            </div>
           </div>
+
+          {uploadedFile && (
+            <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText size={16} className="text-amber-600" />
+                <span className="text-sm text-slate-700 font-medium">{uploadedFile.name}</span>
+              </div>
+              <button
+                onClick={clearFile}
+                className="text-amber-600 hover:text-amber-800 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
           <textarea
             value={scopeText}
             onChange={(e) => setScopeText(e.target.value)}
-            placeholder="Paste insurance scope text here...&#10;&#10;Example:&#10;1. Remove shingles - 25 SQ @ $45/SQ&#10;2. Install new shingles - 25 SQ @ $85/SQ&#10;3. Replace decking - 8 sheets @ $45/sheet&#10;..."
+            placeholder="Paste insurance scope text here, or upload a file above...&#10;&#10;Example:&#10;1. Remove shingles - 25 SQ @ $45/SQ&#10;2. Install new shingles - 25 SQ @ $85/SQ&#10;3. Replace decking - 8 sheets @ $45/sheet&#10;..."
             className="flex-1 w-full p-4 border border-slate-200 rounded-lg text-sm font-mono bg-slate-50 resize-none focus:ring-2 focus:ring-amber-500 outline-none"
+            disabled={isAnalyzing}
           />
 
           <button
@@ -118,10 +229,16 @@ Total: $4,715`;
 
           {analysis && (
             <div className="mt-4 flex gap-2">
-              <button className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-medium text-sm transition-colors">
-                Generate Supplement Letter
+              <button
+                onClick={generateSupplementLetter}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-medium text-sm transition-colors"
+              >
+                Download Letter
               </button>
-              <button className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-sm transition-colors">
+              <button
+                onClick={copyToClipboard}
+                className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-sm transition-colors"
+              >
                 Copy
               </button>
             </div>

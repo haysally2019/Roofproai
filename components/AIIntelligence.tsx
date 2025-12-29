@@ -63,19 +63,15 @@ const AIIntelligence: React.FC = () => {
 
 Provide clear, actionable advice with specific references when possible. Be concise but thorough.`;
 
-      const chat = ai.chats.create({
+      const response = await ai.models.generateContent({
         model: 'gemini-2.0-flash-exp',
-        config: {
-          systemInstruction: systemPrompt
-        }
+        contents: `${systemPrompt}\n\nUser Question: ${userMessage.content}`,
       });
-
-      const response = await chat.sendMessage(userMessage.content);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: response.text,
+        content: response.text || 'I apologize, but I could not generate a response.',
         timestamp: new Date(),
       };
 

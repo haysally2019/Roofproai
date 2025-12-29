@@ -159,17 +159,69 @@ export const suggestTasksForLead = async (leadStatus: string, projectType: strin
 };
 
 /**
- * Analyzes an Insurance Scope of Loss.
+ * Analyzes an Insurance Scope of Loss from text.
  */
 export const analyzeScopeOfLoss = async (scopeText: string): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.0-flash',
-      contents: `Analyze this insurance scope of loss text and identify missing items commonly overlooked (like code upgrades, ice & water shield, O&P). Provide a bulleted list of potential supplements.\n\nText: ${scopeText}`,
+      contents: `You are an expert roofing insurance supplement specialist. Analyze this insurance scope of loss and identify:
+
+1. Missing line items commonly overlooked (O&P, code upgrades, ice & water shield, ventilation, etc.)
+2. Underpriced items that need adjustment
+3. Missing scope items that should be included
+4. Code compliance issues that require supplements
+
+Provide a detailed analysis with:
+- **Missing Items**: List specific items with explanations
+- **Underpriced Items**: Items that appear below market rate
+- **Recommended Actions**: What to request from the adjuster
+- **Estimated Additional Value**: Rough estimate of supplement value
+
+Scope of Loss:
+${scopeText}`,
     });
     return response.text || "No analysis available.";
   } catch (error) {
+    console.error("Scope analysis error:", error);
     return "Failed to analyze document.";
+  }
+};
+
+/**
+ * Analyzes a scope of loss from an image file using Vision AI.
+ */
+export const analyzeScopeFromImage = async (base64Image: string, mimeType: string): Promise<string> => {
+  if (!apiKey) return "API Key missing.";
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Image } },
+          { text: `You are an expert roofing insurance supplement specialist. Extract and analyze the scope of loss from this document. Identify:
+
+1. All line items currently included
+2. Missing items commonly overlooked (O&P, code upgrades, ice & water shield, ventilation, etc.)
+3. Underpriced items
+4. Missing scope items that should be included
+5. Code compliance issues
+
+Provide:
+- **Current Scope Summary**: What's included
+- **Missing Items**: Detailed list with explanations
+- **Underpriced Items**: Items below market rate
+- **Recommended Supplements**: What to request
+- **Estimated Additional Value**: Rough supplement value` }
+        ]
+      }
+    });
+
+    return response.text || "No analysis generated from image.";
+  } catch (error) {
+    console.error("Vision scope analysis error:", error);
+    return "Could not analyze the document image. Please try a clearer photo or upload as text.";
   }
 };
 
