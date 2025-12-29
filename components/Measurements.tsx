@@ -31,9 +31,8 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
   const [imagerySource] = useState<'Vexcel' | 'Bing' | 'Google' | 'Nearmap'>('Bing');
   const [isDrawingMode, setIsDrawingMode] = useState(false);
-  const [isDrawingFeature, setIsDrawingFeature] = useState(false);
+  const [isLabelingMode, setIsLabelingMode] = useState(false);
   const [currentSegment, setCurrentSegment] = useState<atlas.data.Position[]>([]);
-  const [currentFeatureLine, setCurrentFeatureLine] = useState<atlas.data.Position[]>([]);
   const [segments, setSegments] = useState<MeasurementSegment[]>([]);
   const [mapCenter, setMapCenter] = useState<atlas.data.Position>([-96.7970, 32.7767]);
   const [azureMap, setAzureMap] = useState<atlas.Map | null>(null);
@@ -42,16 +41,18 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
   const [isBirdsEyeView, setIsBirdsEyeView] = useState(false);
 
-  const [roofFeatures, setRoofFeatures] = useState<Array<{
+  const [roofEdges, setRoofEdges] = useState<Array<{
     id: string,
     type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration' | 'unlabeled',
     length: number,
-    points: atlas.data.Position[],
-    label: string
+    start: atlas.data.Position,
+    end: atlas.data.Position,
+    segmentId: string,
+    edgeIndex: number
   }>>([]);
   const [featureDataSource, setFeatureDataSource] = useState<atlas.source.DataSource | null>(null);
   const [showFeatureTypeModal, setShowFeatureTypeModal] = useState(false);
-  const [pendingFeature, setPendingFeature] = useState<atlas.data.Position[] | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
@@ -65,7 +66,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       return;
     }
 
-    console.log('Map clicked:', position, 'Drawing mode:', isDrawingMode, 'Drawing feature:', isDrawingFeature);
+    console.log('Map clicked:', position, 'Drawing mode:', isDrawingMode, 'Labeling mode:', isLabelingMode);
 
     if (isDrawingMode) {
       console.log('Adding point to segment');
@@ -77,11 +78,17 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       return;
     }
 
-    if (isDrawingFeature) {
-      console.log('Adding point to feature');
-      setCurrentFeatureLine(prev => [...prev, position]);
+    if (isLabelingMode && e.shapes && e.shapes.length > 0) {
+      const shape = e.shapes[0];
+      const edgeId = shape.getProperties()?.edgeId;
+
+      if (edgeId) {
+        console.log('Edge clicked:', edgeId);
+        setSelectedEdgeId(edgeId);
+        setShowFeatureTypeModal(true);
+      }
     }
-  }, [isDrawingMode, isDrawingFeature]);
+  }, [isDrawingMode, isLabelingMode]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -296,43 +303,76 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       unlabeled: '#94a3b8'
     };
 
-    roofFeatures.forEach((feature) => {
-      if (feature.points.length < 2) return;
-
-      const line = new atlas.data.LineString(feature.points);
+    roofEdges.forEach((edge) => {
+      const line = new atlas.data.LineString([edge.start, edge.end]);
       const lineFeature = new atlas.data.Feature(line, {
-        color: featureColors[feature.type],
-        type: feature.type
+        color: featureColors[edge.type],
+        type: edge.type,
+        edgeId: edge.id
       });
       featureDataSource.add(lineFeature);
 
-      const midIndex = Math.floor(feature.points.length / 2);
-      const midPoint = feature.points[midIndex];
-      const labelFeature = new atlas.data.Feature(new atlas.data.Point(midPoint), {
-        label: feature.label,
-        color: featureColors[feature.type]
-      });
-      featureDataSource.add(labelFeature);
+      if (edge.type !== 'unlabeled') {
+        const midPoint: atlas.data.Position = [
+          (edge.start[0] + edge.end[0]) / 2,
+          (edge.start[1] + edge.end[1]) / 2
+        ];
+        const featureLabels: Record<string, string> = {
+          ridge: 'Ridge',
+          hip: 'Hip',
+          valley: 'Valley',
+          eave: 'Eave',
+          rake: 'Rake',
+          penetration: 'Pen',
+          unlabeled: ''
+        };
+        const labelFeature = new atlas.data.Feature(new atlas.data.Point(midPoint), {
+          label: `${featureLabels[edge.type]}: ${edge.length}'`,
+          color: featureColors[edge.type]
+        });
+        featureDataSource.add(labelFeature);
+      }
+    });
+  }, [roofEdges, azureMap, featureDataSource]);
+
+  useEffect(() => {
+    if (segments.length === 0) {
+      setRoofEdges([]);
+      return;
+    }
+
+    const edges: typeof roofEdges = [];
+
+    segments.forEach((segment) => {
+      const positions = segment.geometry.map(pt => [pt.lng, pt.lat] as atlas.data.Position);
+
+      for (let i = 0; i < positions.length; i++) {
+        const start = positions[i];
+        const end = positions[(i + 1) % positions.length];
+        const length = calculateEdgeLength(start, end);
+
+        const edgeId = `${segment.id}-edge-${i}`;
+
+        edges.push({
+          id: edgeId,
+          type: 'unlabeled',
+          length,
+          start,
+          end,
+          segmentId: segment.id,
+          edgeIndex: i
+        });
+      }
     });
 
-    if (currentFeatureLine.length > 0) {
-      currentFeatureLine.forEach(pos => {
-        const point = new atlas.data.Feature(new atlas.data.Point(pos), {
-          title: ''
-        });
-        featureDataSource.add(point);
+    setRoofEdges(prev => {
+      const newEdges = edges.map(edge => {
+        const existingEdge = prev.find(e => e.id === edge.id);
+        return existingEdge ? { ...edge, type: existingEdge.type } : edge;
       });
-
-      if (currentFeatureLine.length > 1) {
-        const line = new atlas.data.LineString(currentFeatureLine);
-        const tempLine = new atlas.data.Feature(line, {
-          color: '#3b82f6',
-          type: 'temp'
-        });
-        featureDataSource.add(tempLine);
-      }
-    }
-  }, [roofFeatures, currentFeatureLine, azureMap, featureDataSource]);
+      return newEdges;
+    });
+  }, [segments]);
 
   const calculateDistance = (point1: atlas.data.Position, point2: atlas.data.Position): number => {
     const R = 6371000;
@@ -348,84 +388,37 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     return R * c;
   };
 
-  const calculateLineLength = (points: atlas.data.Position[]): number => {
-    let totalDistance = 0;
-    for (let i = 0; i < points.length - 1; i++) {
-      totalDistance += calculateDistance(points[i], points[i + 1]);
-    }
-    return Math.round(totalDistance * 3.28084);
+  const calculateEdgeLength = (start: atlas.data.Position, end: atlas.data.Position): number => {
+    const distanceMeters = calculateDistance(start, end);
+    return Math.round(distanceMeters * 3.28084);
   };
 
-  const getTotalFeatureLength = (type: string) => {
-    return roofFeatures
-      .filter(f => f.type === type)
-      .reduce((sum, f) => sum + f.length, 0);
+  const getTotalEdgeLength = (type: string) => {
+    return roofEdges
+      .filter(e => e.type === type)
+      .reduce((sum, e) => sum + e.length, 0);
   };
 
-  const undoLastFeaturePoint = () => {
-    if (currentFeatureLine.length > 0) {
-      setCurrentFeatureLine(prev => prev.slice(0, -1));
-    }
-  };
+  const assignEdgeType = (type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration') => {
+    if (!selectedEdgeId) return;
 
-  const finishFeatureLine = () => {
-    if (currentFeatureLine.length < 2) {
-      alert('A feature line needs at least 2 points');
-      return;
-    }
+    setRoofEdges(prev => prev.map(edge => {
+      if (edge.id === selectedEdgeId) {
+        return { ...edge, type };
+      }
+      return edge;
+    }));
 
-    setPendingFeature(currentFeatureLine);
-    setShowFeatureTypeModal(true);
-    setIsDrawingFeature(false);
-  };
-
-  const assignFeatureType = (type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration') => {
-    if (!pendingFeature) return;
-
-    const length = calculateLineLength(pendingFeature);
-    const featureLabels: Record<string, string> = {
-      ridge: 'Ridge',
-      hip: 'Hip',
-      valley: 'Valley',
-      eave: 'Eave',
-      rake: 'Rake',
-      penetration: 'Pen'
-    };
-
-    const newFeature = {
-      id: crypto.randomUUID(),
-      type,
-      length,
-      points: pendingFeature,
-      label: `${featureLabels[type]}: ${length}'`
-    };
-
-    setRoofFeatures(prev => [...prev, newFeature]);
-    setCurrentFeatureLine([]);
-    setPendingFeature(null);
+    setSelectedEdgeId(null);
     setShowFeatureTypeModal(false);
   };
 
-  const deleteFeature = (featureId: string) => {
-    setRoofFeatures(prev => prev.filter(f => f.id !== featureId));
-  };
-
-  const updateFeatureType = (featureId: string, newType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration') => {
-    setRoofFeatures(prev => prev.map(f => {
-      if (f.id !== featureId) return f;
-      const featureLabels: Record<string, string> = {
-        ridge: 'Ridge',
-        hip: 'Hip',
-        valley: 'Valley',
-        eave: 'Eave',
-        rake: 'Rake',
-        penetration: 'Pen'
-      };
-      return {
-        ...f,
-        type: newType,
-        label: `${featureLabels[newType]}: ${f.length}'`
-      };
+  const updateEdgeType = (edgeId: string, newType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration' | 'unlabeled') => {
+    setRoofEdges(prev => prev.map(edge => {
+      if (edge.id === edgeId) {
+        return { ...edge, type: newType };
+      }
+      return edge;
     }));
   };
 
@@ -594,11 +587,11 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       imagerySource,
       totalAreaSqft: totalArea,
       segments,
-      ridgeLength: getTotalFeatureLength('ridge'),
-      hipLength: getTotalFeatureLength('hip'),
-      valleyLength: getTotalFeatureLength('valley'),
-      rakeLength: getTotalFeatureLength('rake'),
-      eaveLength: getTotalFeatureLength('eave'),
+      ridgeLength: getTotalEdgeLength('ridge'),
+      hipLength: getTotalEdgeLength('hip'),
+      valleyLength: getTotalEdgeLength('valley'),
+      rakeLength: getTotalEdgeLength('rake'),
+      eaveLength: getTotalEdgeLength('eave'),
       perimeter: 0,
       wasteFactor: 10,
       measurementDate: new Date().toISOString(),
@@ -613,7 +606,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
     setViewMode('list');
     setSegments([]);
-    setRoofFeatures([]);
+    setRoofEdges([]);
     setAddress('');
     if (azureMap) {
       azureMap.dispose();
@@ -724,7 +717,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               <Eye size={20} />
               Bird's Eye
             </button>
-            {!isDrawingMode && !isDrawingFeature ? (
+            {!isDrawingMode && !isLabelingMode ? (
               <>
                 <button
                   onClick={() => setIsDrawingMode(true)}
@@ -734,11 +727,12 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   Draw Segment
                 </button>
                 <button
-                  onClick={() => setIsDrawingFeature(true)}
+                  onClick={() => setIsLabelingMode(true)}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                  disabled={segments.length === 0}
                 >
                   <Ruler size={20} />
-                  Draw Feature
+                  Label Features
                 </button>
               </>
             ) : isDrawingMode ? (
@@ -772,29 +766,11 @@ const Measurements: React.FC<MeasurementsProps> = () => {
             ) : (
               <div className="flex gap-2">
                 <button
-                  onClick={undoLastFeaturePoint}
-                  className="px-3 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700"
-                  disabled={currentFeatureLine.length === 0}
-                  title="Undo last point"
-                >
-                  Undo
-                </button>
-                <button
-                  onClick={finishFeatureLine}
+                  onClick={() => setIsLabelingMode(false)}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-                  disabled={currentFeatureLine.length < 2}
                 >
                   <Check size={20} />
-                  Finish ({currentFeatureLine.length} points)
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentFeatureLine([]);
-                    setIsDrawingFeature(false);
-                  }}
-                  className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
-                >
-                  Cancel
+                  Done Labeling
                 </button>
               </div>
             )}
@@ -830,18 +806,18 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               </div>
             )}
 
-            {isDrawingFeature && (
+            {isLabelingMode && (
               <div className="absolute top-4 left-4 bg-purple-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
                 <p className="font-semibold mb-1 flex items-center gap-2">
                   <Ruler size={16} />
-                  Drawing Roof Feature
+                  Label Roof Features
                 </p>
-                <p className="text-sm mb-2">Click on the map to draw ridges, hips, valleys, etc.</p>
+                <p className="text-sm mb-2">Click on any edge line to label it as ridge, valley, hip, etc.</p>
                 <div className="text-xs space-y-1 bg-purple-700 bg-opacity-50 p-2 rounded">
-                  <p>• Click to add points ({currentFeatureLine.length} added)</p>
-                  <p>• Need at least 2 points to finish</p>
-                  <p>• You'll label the feature type after finishing</p>
-                  <p>• Use Undo to remove last point</p>
+                  <p>• Click directly on a segment edge</p>
+                  <p>• Select the feature type (ridge, valley, hip, etc.)</p>
+                  <p>• Labeled edges will be color-coded</p>
+                  <p>• Click "Done Labeling" when finished</p>
                 </div>
               </div>
             )}
@@ -919,14 +895,14 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               </div>
             )}
 
-            {roofFeatures.length > 0 && (
+            {roofEdges.filter(e => e.type !== 'unlabeled').length > 0 && (
               <div className="mt-4 border-t border-slate-200 pt-4">
                 <h4 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
                   <Ruler size={16} />
-                  Roof Features ({roofFeatures.length})
+                  Labeled Edges ({roofEdges.filter(e => e.type !== 'unlabeled').length})
                 </h4>
                 <div className="space-y-2 text-xs">
-                  {roofFeatures.map((feature) => {
+                  {roofEdges.filter(e => e.type !== 'unlabeled').map((edge) => {
                     const featureColors: Record<string, { bg: string, border: string, dot: string }> = {
                       ridge: { bg: 'bg-red-50', border: 'border-red-200', dot: 'bg-red-500' },
                       hip: { bg: 'bg-amber-50', border: 'border-amber-200', dot: 'bg-amber-500' },
@@ -936,14 +912,14 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                       penetration: { bg: 'bg-pink-50', border: 'border-pink-200', dot: 'bg-pink-500' },
                       unlabeled: { bg: 'bg-slate-50', border: 'border-slate-200', dot: 'bg-slate-500' }
                     };
-                    const colors = featureColors[feature.type];
+                    const colors = featureColors[edge.type];
                     return (
-                      <div key={feature.id} className={`flex justify-between items-center p-2 rounded border ${colors.bg} ${colors.border}`}>
+                      <div key={edge.id} className={`flex justify-between items-center p-2 rounded border ${colors.bg} ${colors.border}`}>
                         <div className="flex items-center gap-2 flex-1">
                           <div className={`w-3 h-3 rounded-full ${colors.dot}`}></div>
                           <select
-                            value={feature.type}
-                            onChange={(e) => updateFeatureType(feature.id, e.target.value as any)}
+                            value={edge.type}
+                            onChange={(e) => updateEdgeType(edge.id, e.target.value as any)}
                             className="text-xs font-semibold bg-transparent border-none focus:outline-none cursor-pointer"
                           >
                             <option value="ridge">Ridge</option>
@@ -952,48 +928,43 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                             <option value="eave">Eave</option>
                             <option value="rake">Rake</option>
                             <option value="penetration">Penetration</option>
+                            <option value="unlabeled">Unlabeled</option>
                           </select>
-                          <span className="font-bold text-slate-900 ml-auto">{feature.length} ft</span>
+                          <span className="font-bold text-slate-900 ml-auto">{edge.length} ft</span>
                         </div>
-                        <button
-                          onClick={() => deleteFeature(feature.id)}
-                          className="ml-2 p-1 text-red-600 hover:bg-red-100 rounded"
-                        >
-                          <Trash2 size={14} />
-                        </button>
                       </div>
                     );
                   })}
                 </div>
                 <div className="mt-3 p-3 bg-slate-100 rounded space-y-1 text-xs">
-                  {getTotalFeatureLength('ridge') > 0 && (
+                  {getTotalEdgeLength('ridge') > 0 && (
                     <div className="flex justify-between">
                       <span className="text-slate-600">Ridge Total:</span>
-                      <span className="font-bold">{getTotalFeatureLength('ridge')} ft</span>
+                      <span className="font-bold">{getTotalEdgeLength('ridge')} ft</span>
                     </div>
                   )}
-                  {getTotalFeatureLength('hip') > 0 && (
+                  {getTotalEdgeLength('hip') > 0 && (
                     <div className="flex justify-between">
                       <span className="text-slate-600">Hip Total:</span>
-                      <span className="font-bold">{getTotalFeatureLength('hip')} ft</span>
+                      <span className="font-bold">{getTotalEdgeLength('hip')} ft</span>
                     </div>
                   )}
-                  {getTotalFeatureLength('valley') > 0 && (
+                  {getTotalEdgeLength('valley') > 0 && (
                     <div className="flex justify-between">
                       <span className="text-slate-600">Valley Total:</span>
-                      <span className="font-bold">{getTotalFeatureLength('valley')} ft</span>
+                      <span className="font-bold">{getTotalEdgeLength('valley')} ft</span>
                     </div>
                   )}
-                  {getTotalFeatureLength('eave') > 0 && (
+                  {getTotalEdgeLength('eave') > 0 && (
                     <div className="flex justify-between">
                       <span className="text-slate-600">Eave Total:</span>
-                      <span className="font-bold">{getTotalFeatureLength('eave')} ft</span>
+                      <span className="font-bold">{getTotalEdgeLength('eave')} ft</span>
                     </div>
                   )}
-                  {getTotalFeatureLength('rake') > 0 && (
+                  {getTotalEdgeLength('rake') > 0 && (
                     <div className="flex justify-between">
                       <span className="text-slate-600">Rake Total:</span>
-                      <span className="font-bold">{getTotalFeatureLength('rake')} ft</span>
+                      <span className="font-bold">{getTotalEdgeLength('rake')} ft</span>
                     </div>
                   )}
                 </div>
@@ -1011,10 +982,10 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   <span className="text-slate-600">Segments:</span>
                   <span className="font-semibold">{segments.length}</span>
                 </div>
-                {roofFeatures.length > 0 && (
+                {roofEdges.filter(e => e.type !== 'unlabeled').length > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-slate-600">Roof Features:</span>
-                    <span className="font-semibold">{roofFeatures.length}</span>
+                    <span className="text-slate-600">Labeled Edges:</span>
+                    <span className="font-semibold">{roofEdges.filter(e => e.type !== 'unlabeled').length}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
@@ -1208,50 +1179,50 @@ const Measurements: React.FC<MeasurementsProps> = () => {
             <div className="p-6 border-b border-slate-200">
               <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                 <Ruler size={24} />
-                Select Feature Type
+                Label This Edge
               </h2>
               <p className="text-slate-600 mt-1 text-sm">
-                What type of roof feature did you just draw?
+                What type of roof feature is this edge?
               </p>
             </div>
             <div className="p-6 grid grid-cols-2 gap-3">
               <button
-                onClick={() => assignFeatureType('ridge')}
+                onClick={() => assignEdgeType('ridge')}
                 className="p-4 bg-red-50 hover:bg-red-100 border-2 border-red-200 rounded-lg transition-colors flex flex-col items-center gap-2"
               >
                 <div className="w-6 h-6 rounded-full bg-red-500"></div>
                 <span className="font-semibold text-slate-900">Ridge</span>
               </button>
               <button
-                onClick={() => assignFeatureType('hip')}
+                onClick={() => assignEdgeType('hip')}
                 className="p-4 bg-amber-50 hover:bg-amber-100 border-2 border-amber-200 rounded-lg transition-colors flex flex-col items-center gap-2"
               >
                 <div className="w-6 h-6 rounded-full bg-amber-500"></div>
                 <span className="font-semibold text-slate-900">Hip</span>
               </button>
               <button
-                onClick={() => assignFeatureType('valley')}
+                onClick={() => assignEdgeType('valley')}
                 className="p-4 bg-blue-50 hover:bg-blue-100 border-2 border-blue-200 rounded-lg transition-colors flex flex-col items-center gap-2"
               >
                 <div className="w-6 h-6 rounded-full bg-blue-500"></div>
                 <span className="font-semibold text-slate-900">Valley</span>
               </button>
               <button
-                onClick={() => assignFeatureType('eave')}
+                onClick={() => assignEdgeType('eave')}
                 className="p-4 bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-200 rounded-lg transition-colors flex flex-col items-center gap-2"
               >
                 <div className="w-6 h-6 rounded-full bg-emerald-500"></div>
                 <span className="font-semibold text-slate-900">Eave</span>
               </button>
               <button
-                onClick={() => assignFeatureType('rake')}
+                onClick={() => assignEdgeType('rake')}
                 className="p-4 bg-purple-50 hover:bg-purple-100 border-2 border-purple-200 rounded-lg transition-colors flex flex-col items-center gap-2"
               >
                 <div className="w-6 h-6 rounded-full bg-purple-500"></div>
                 <span className="font-semibold text-slate-900">Rake</span>
               </button>
               <button
-                onClick={() => assignFeatureType('penetration')}
+                onClick={() => assignEdgeType('penetration')}
                 className="p-4 bg-pink-50 hover:bg-pink-100 border-2 border-pink-200 rounded-lg transition-colors flex flex-col items-center gap-2"
               >
                 <div className="w-6 h-6 rounded-full bg-pink-500"></div>
@@ -1262,8 +1233,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               <button
                 onClick={() => {
                   setShowFeatureTypeModal(false);
-                  setPendingFeature(null);
-                  setCurrentFeatureLine([]);
+                  setSelectedEdgeId(null);
                 }}
                 className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
               >
