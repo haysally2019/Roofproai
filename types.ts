@@ -91,18 +91,51 @@ export interface Lead {
   history?: LeadActivity[];
 }
 
+export interface MeasurementSegment {
+  id: string;
+  measurementId: string;
+  name: string;
+  areaSqft: number;
+  pitch?: string;
+  pitchDegrees?: number;
+  geometry: { lat: number; lng: number }[];
+  materialType?: 'Shingle' | 'Metal' | 'Tile' | 'Flat' | 'Other';
+  condition?: 'Good' | 'Fair' | 'Poor' | 'Unknown';
+  notes?: string;
+  displayOrder: number;
+}
+
 export interface RoofMeasurement {
-  totalAreaSqFt: number;
-  pitch: string;
-  solarPotential: string;
-  segments: number;
-  maxSunlightHours: number;
-  // Detailed Geometry
-  ridgeLen: number;
-  hipLen: number;
-  valleyLen: number;
-  rakeLen: number;
-  eaveLen: number;
+  id: string;
+  companyId: string;
+  leadId?: string;
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  imagerySource: 'Vexcel' | 'Bing' | 'Google' | 'Nearmap';
+  imageryDate?: string;
+  totalAreaSqft: number;
+  pitch?: string;
+  pitchDegrees?: number;
+  segments: MeasurementSegment[];
+  ridgeLength: number;
+  hipLength: number;
+  valleyLength: number;
+  rakeLength: number;
+  eaveLength: number;
+  perimeter: number;
+  wasteFactor: number;
+  measurementDate: string;
+  measuredBy?: string;
+  status: 'Draft' | 'Completed' | 'Approved';
+  notes?: string;
+  reportUrl?: string;
+  createdAt?: string;
+  updatedAt?: string;
+
+  // Legacy fields for backward compatibility
+  solarPotential?: string;
+  maxSunlightHours?: number;
 }
 
 export enum RoofType {
@@ -499,6 +532,7 @@ export enum Tab {
   CLAIMS = 'Claims',
   JOBS = 'Jobs',
   ESTIMATES = 'Estimates',
+  MEASUREMENTS = 'Measurements',
   TASKS = 'Tasks',
   MATERIAL_ORDERS = 'Materials',
   LABOR_ORDERS = 'Labor',

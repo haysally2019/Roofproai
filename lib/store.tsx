@@ -3,7 +3,7 @@ import {
   User, Company, Lead, CalendarEvent, Task, Invoice,
   Notification, UserRole, SubscriptionTier, LeadStatus, Tab, Toast,
   CallLog, AutomationRule,
-  Supplier, MaterialOrder, SoftwareLead, PriceBookItem, Proposal
+  Supplier, MaterialOrder, SoftwareLead, PriceBookItem, Proposal, RoofMeasurement
 } from '../types';
 import { supabase } from './supabase';
 
@@ -25,6 +25,7 @@ interface StoreContextType {
   orders: MaterialOrder[];
   priceBook: PriceBookItem[];
   proposals: Proposal[];
+  measurements: RoofMeasurement[];
 
   login: (email: string, password: string) => Promise<boolean>;
   register: (companyName: string, name: string, email: string, password: string, referralCode?: string | null) => Promise<boolean>;
@@ -58,6 +59,9 @@ interface StoreContextType {
   addProposal: (proposal: Proposal) => Promise<void>;
   updateProposal: (proposal: Proposal) => Promise<void>;
   deleteProposal: (id: string) => Promise<void>;
+  addMeasurement: (measurement: RoofMeasurement) => Promise<void>;
+  updateMeasurement: (measurement: RoofMeasurement) => Promise<void>;
+  deleteMeasurement: (id: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -88,6 +92,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [orders, setOrders] = useState<MaterialOrder[]>([]);
   const [priceBook, setPriceBook] = useState<PriceBookItem[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [measurements, setMeasurements] = useState<RoofMeasurement[]>([]);
   
   // UI State
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -238,7 +243,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
       const [
         usersRes, leadsRes, tasksRes, eventsRes, invoicesRes, callLogsRes,
-        automationsRes, ordersRes, priceBookRes, proposalsRes
+        automationsRes, ordersRes, priceBookRes, proposalsRes, measurementsRes
       ] = await Promise.all([
         supabase.from('users').select('*').eq('company_id', companyId),
         supabase.from('leads').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
@@ -249,7 +254,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         supabase.from('automations').select('*').eq('company_id', companyId),
         supabase.from('material_orders').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
         supabase.from('price_book_items').select('*').eq('company_id', companyId).order('name', { ascending: true }),
-        supabase.from('proposals').select('*, proposal_options(*)').eq('company_id', companyId).order('created_at', { ascending: false })
+        supabase.from('proposals').select('*, proposal_options(*)').eq('company_id', companyId).order('created_at', { ascending: false }),
+        supabase.from('roof_measurements').select('*, measurement_segments(*)').eq('company_id', companyId).order('created_at', { ascending: false })
       ]);
 
       if (usersRes.data) {
@@ -445,6 +451,49 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setProposals(proposalsWithLeadData);
       }
 
+      if (measurementsRes.data) {
+        setMeasurements(measurementsRes.data.map((m: any) => ({
+          id: m.id,
+          companyId: m.company_id,
+          leadId: m.lead_id,
+          address: m.address,
+          latitude: m.latitude,
+          longitude: m.longitude,
+          imagerySource: m.imagery_source,
+          imageryDate: m.imagery_date,
+          totalAreaSqft: m.total_area_sqft,
+          pitch: m.pitch,
+          pitchDegrees: m.pitch_degrees,
+          segments: (m.measurement_segments || []).map((seg: any) => ({
+            id: seg.id,
+            measurementId: seg.measurement_id,
+            name: seg.name,
+            areaSqft: seg.area_sqft,
+            pitch: seg.pitch,
+            pitchDegrees: seg.pitch_degrees,
+            geometry: seg.geometry,
+            materialType: seg.material_type,
+            condition: seg.condition,
+            notes: seg.notes,
+            displayOrder: seg.display_order
+          })),
+          ridgeLength: m.ridge_length,
+          hipLength: m.hip_length,
+          valleyLength: m.valley_length,
+          rakeLength: m.rake_length,
+          eaveLength: m.eave_length,
+          perimeter: m.perimeter,
+          wasteFactor: m.waste_factor,
+          measurementDate: m.measurement_date,
+          measuredBy: m.measured_by,
+          status: m.status,
+          notes: m.notes,
+          reportUrl: m.report_url,
+          createdAt: m.created_at,
+          updatedAt: m.updated_at
+        })));
+      }
+
     } catch (error) {
       console.error('Error loading company data:', error);
       addToast('Error loading data', 'error');
@@ -516,7 +565,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const logout = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
-    setLeads([]); setTasks([]); setEvents([]); setInvoices([]); setCallLogs([]); setAutomations([]); setOrders([]); setPriceBook([]); setProposals([]);
+    setLeads([]); setTasks([]); setEvents([]); setInvoices([]); setCallLogs([]); setAutomations([]); setOrders([]); setPriceBook([]); setProposals([]); setMeasurements([]);
     setCompanies([]); setUsers([]); setSoftwareLeads([]);
   };
 
@@ -753,6 +802,138 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const addMeasurement = async (measurement: RoofMeasurement) => {
+    if (!currentUser?.companyId) return;
+
+    try {
+      const { data: measurementData, error: measurementError } = await supabase
+        .from('roof_measurements')
+        .insert({
+          id: measurement.id,
+          company_id: currentUser.companyId,
+          lead_id: measurement.leadId,
+          address: measurement.address,
+          latitude: measurement.latitude,
+          longitude: measurement.longitude,
+          imagery_source: measurement.imagerySource,
+          imagery_date: measurement.imageryDate,
+          total_area_sqft: measurement.totalAreaSqft,
+          pitch: measurement.pitch,
+          pitch_degrees: measurement.pitchDegrees,
+          ridge_length: measurement.ridgeLength,
+          hip_length: measurement.hipLength,
+          valley_length: measurement.valleyLength,
+          rake_length: measurement.rakeLength,
+          eave_length: measurement.eaveLength,
+          perimeter: measurement.perimeter,
+          waste_factor: measurement.wasteFactor,
+          measurement_date: measurement.measurementDate,
+          measured_by: currentUser.id,
+          status: measurement.status,
+          notes: measurement.notes,
+          report_url: measurement.reportUrl
+        })
+        .select()
+        .single();
+
+      if (measurementError) throw measurementError;
+
+      const segmentsPromises = measurement.segments.map((segment) =>
+        supabase.from('measurement_segments').insert({
+          id: segment.id,
+          measurement_id: measurement.id,
+          name: segment.name,
+          area_sqft: segment.areaSqft,
+          pitch: segment.pitch,
+          pitch_degrees: segment.pitchDegrees,
+          geometry: segment.geometry,
+          material_type: segment.materialType,
+          condition: segment.condition,
+          notes: segment.notes,
+          display_order: segment.displayOrder
+        })
+      );
+
+      await Promise.all(segmentsPromises);
+
+      setMeasurements(prev => [measurement, ...prev]);
+      addToast('Measurement saved successfully', 'success');
+    } catch (error: any) {
+      console.error('Error saving measurement:', error);
+      addToast(`Failed to save measurement: ${error.message}`, 'error');
+    }
+  };
+
+  const updateMeasurement = async (measurement: RoofMeasurement) => {
+    try {
+      const { error: measurementError } = await supabase
+        .from('roof_measurements')
+        .update({
+          lead_id: measurement.leadId,
+          address: measurement.address,
+          latitude: measurement.latitude,
+          longitude: measurement.longitude,
+          imagery_source: measurement.imagerySource,
+          imagery_date: measurement.imageryDate,
+          total_area_sqft: measurement.totalAreaSqft,
+          pitch: measurement.pitch,
+          pitch_degrees: measurement.pitchDegrees,
+          ridge_length: measurement.ridgeLength,
+          hip_length: measurement.hipLength,
+          valley_length: measurement.valleyLength,
+          rake_length: measurement.rakeLength,
+          eave_length: measurement.eaveLength,
+          perimeter: measurement.perimeter,
+          waste_factor: measurement.wasteFactor,
+          status: measurement.status,
+          notes: measurement.notes,
+          report_url: measurement.reportUrl
+        })
+        .eq('id', measurement.id);
+
+      if (measurementError) throw measurementError;
+
+      await supabase.from('measurement_segments').delete().eq('measurement_id', measurement.id);
+
+      const segmentsPromises = measurement.segments.map((segment) =>
+        supabase.from('measurement_segments').insert({
+          id: segment.id,
+          measurement_id: measurement.id,
+          name: segment.name,
+          area_sqft: segment.areaSqft,
+          pitch: segment.pitch,
+          pitch_degrees: segment.pitchDegrees,
+          geometry: segment.geometry,
+          material_type: segment.materialType,
+          condition: segment.condition,
+          notes: segment.notes,
+          display_order: segment.displayOrder
+        })
+      );
+
+      await Promise.all(segmentsPromises);
+
+      setMeasurements(prev => prev.map(m => m.id === measurement.id ? measurement : m));
+      addToast('Measurement updated successfully', 'success');
+    } catch (error: any) {
+      console.error('Error updating measurement:', error);
+      addToast(`Failed to update measurement: ${error.message}`, 'error');
+    }
+  };
+
+  const deleteMeasurement = async (id: string) => {
+    try {
+      const { error } = await supabase.from('roof_measurements').delete().eq('id', id);
+      if (error) throw error;
+
+      setMeasurements(prev => prev.filter(m => m.id !== id));
+      addToast('Measurement deleted successfully', 'success');
+    } catch (error: any) {
+      console.error('Error deleting measurement:', error);
+      addToast(`Failed to delete measurement: ${error.message}`, 'error');
+    }
+  };
+
   const safeValue: StoreContextType = {
       currentUser, activeTab, 
       companies: companies || [], 
@@ -770,13 +951,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       orders: orders || [],
       priceBook,
       proposals: proposals || [],
+      measurements: measurements || [],
       login, register, logout, setTab, addToast, removeToast, 
       updateLead, addLead, createCompany, updateCompany, deleteCompany, updateUser, 
       addAutomation, toggleAutomation, deleteAutomation, addOrder,
       addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
       addUser, removeUser,
       addSoftwareLead, updateSoftwareLead, deleteSoftwareLead,
-      addProposal, updateProposal, deleteProposal
+      addProposal, updateProposal, deleteProposal,
+      addMeasurement, updateMeasurement, deleteMeasurement
   };
 
   return <StoreContext.Provider value={safeValue}>{children}</StoreContext.Provider>;

@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Umbrella, FileText, Briefcase, CheckSquare,
   Receipt, Tag, UserCheck, Settings as SettingsIcon, Globe, Building2,
   Hexagon, Hammer, LogOut, ChevronDown, ChevronRight, X, Calendar, Headset, Mic, Zap,
-  Package, HardHat, CreditCard, FileSignature, ScrollText
+  Package, HardHat, CreditCard, FileSignature, ScrollText, Ruler
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { UserRole, Tab } from '../types';
@@ -121,6 +121,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
                         <NavItem tab={Tab.JOBS} icon={Briefcase} />
                         <NavItem tab={Tab.TASKS} icon={CheckSquare} />
                         <NavItem tab={Tab.ESTIMATES} icon={FileText} />
+                        <NavItem tab={Tab.MEASUREMENTS} icon={Ruler} />
                         <NavItem tab={Tab.MATERIAL_ORDERS} icon={Package} label="Materials" />
                         <NavItem tab={Tab.LABOR_ORDERS} icon={HardHat} label="Labor" />
                     </div>
