@@ -302,19 +302,35 @@ export interface InvoiceItem {
   total: number;
 }
 
+export interface Payment {
+  id: string;
+  invoiceId: string;
+  amount: number;
+  method: 'Card' | 'ACH' | 'Check' | 'Cash';
+  status: 'Pending' | 'Completed' | 'Failed' | 'Refunded';
+  date: string;
+  stripePaymentId?: string;
+  processingFee: number;
+  platformFee: number;
+  netAmount: number;
+}
+
 export interface Invoice {
   id: string;
   leadId: string;
-  leadName: string; // Denormalized for easier display
+  leadName: string;
   number: string;
-  status: 'Draft' | 'Sent' | 'Paid' | 'Overdue';
+  status: 'Draft' | 'Sent' | 'Paid' | 'Overdue' | 'Partially Paid';
   dateIssued: string;
   dateDue: string;
   items: InvoiceItem[];
   subtotal: number;
   tax: number;
   total: number;
+  amountPaid?: number;
   companyId?: string;
+  paymentLink?: string;
+  payments?: Payment[];
 }
 
 export interface PriceBookItem {
@@ -412,7 +428,7 @@ export enum Tab {
   TASKS = 'Tasks',
   MATERIAL_ORDERS = 'Materials',
   LABOR_ORDERS = 'Labor',
-  INVOICES = 'Invoices',
+  INVOICES = 'Invoices & Payments',
   PRICE_BOOK = 'Price Book',
   TEAM = 'Team',
   SETTINGS = 'Settings',
