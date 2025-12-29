@@ -4,7 +4,8 @@ import { Lead, LeadStatus, LeadDocument, ProductionStep, LogicArgument, Company 
 import {
   X, MapPin, Phone, Mail, Shield, Briefcase, FileText, Image as ImageIcon,
   CheckSquare, Calendar, DollarSign, Upload, MoreVertical, Hammer, AlertTriangle,
-  BrainCircuit, ArrowRight, Send, MessageSquare, Clock, Download
+  BrainCircuit, ArrowRight, Send, MessageSquare, Clock, Download, Package, ListChecks,
+  Receipt, ClipboardList, Ruler
 } from 'lucide-react';
 import { analyzeScopeOfLoss, generateSupplementArgument, draftClientEmail } from '../services/geminiService';
 import { EstimateTemplate } from './EstimateTemplate';
@@ -19,8 +20,8 @@ interface LeadDetailPanelProps {
 }
 
 const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpdate, onDraftEmail }) => {
-  const { companies, currentUser, addToast } = useStore();
-  const [activeTab, setActiveTab] = useState<'overview' | 'docs' | 'claim' | 'intelligence' | 'production' | 'financials' | 'communication'>('overview');
+  const { companies, currentUser, addToast, proposals, measurements, orders, tasks, events, invoices } = useStore();
+  const [activeTab, setActiveTab] = useState<'overview' | 'docs' | 'claim' | 'intelligence' | 'production' | 'financials' | 'communication' | 'proposals' | 'measurements' | 'materials' | 'tasks' | 'calendar'>('overview');
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState<Partial<Lead>>(lead);
 
@@ -196,7 +197,12 @@ const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpda
         <div className="px-4 md:px-6 border-b border-slate-200 flex gap-6 overflow-x-auto no-scrollbar bg-white shrink-0">
            {[
              {id: 'overview', label: 'Overview', icon: FileText},
+             {id: 'proposals', label: 'Proposals', icon: ClipboardList},
+             {id: 'measurements', label: 'Measurements', icon: Ruler},
              {id: 'docs', label: 'Photos', icon: ImageIcon},
+             {id: 'materials', label: 'Materials', icon: Package},
+             {id: 'tasks', label: 'Tasks', icon: ListChecks},
+             {id: 'calendar', label: 'Events', icon: Calendar},
              {id: 'communication', label: 'Comm', icon: MessageSquare},
              {id: 'claim', label: 'Claim', icon: Shield},
              {id: 'intelligence', label: 'Intelligence', icon: BrainCircuit},
@@ -586,6 +592,229 @@ const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpda
              </div>
           )}
 
+           {/* PROPOSALS TAB */}
+           {activeTab === 'proposals' && (
+             <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                   <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide">Proposals</h3>
+                </div>
+                {proposals.filter(p => p.leadId === lead.id).length > 0 ? (
+                   <div className="space-y-3">
+                      {proposals.filter(p => p.leadId === lead.id).map(proposal => (
+                         <div key={proposal.id} className="p-4 bg-white border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-start mb-2">
+                               <div>
+                                  <p className="text-sm font-bold text-slate-800">{proposal.title}</p>
+                                  <p className="text-xs text-slate-500">#{proposal.number}</p>
+                               </div>
+                               <span className={`px-2 py-1 text-xs font-medium rounded ${
+                                  proposal.status === 'Accepted' ? 'bg-emerald-100 text-emerald-700' :
+                                  proposal.status === 'Sent' ? 'bg-blue-100 text-blue-700' :
+                                  proposal.status === 'Viewed' ? 'bg-amber-100 text-amber-700' :
+                                  proposal.status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                  'bg-slate-100 text-slate-700'
+                               }`}>{proposal.status}</span>
+                            </div>
+                            <p className="text-xs text-slate-600 mb-2">{proposal.projectDescription}</p>
+                            <div className="flex justify-between items-center text-xs text-slate-500">
+                               <span>Created: {new Date(proposal.createdDate).toLocaleDateString()}</span>
+                               {proposal.sentDate && <span>Sent: {new Date(proposal.sentDate).toLocaleDateString()}</span>}
+                            </div>
+                            <div className="mt-2 pt-2 border-t border-slate-100">
+                               <p className="text-xs font-medium text-slate-700">{proposal.options.length} Options • Valid until {new Date(proposal.validUntil).toLocaleDateString()}</p>
+                            </div>
+                         </div>
+                      ))}
+                   </div>
+                ) : (
+                   <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                      <ClipboardList className="mx-auto text-slate-300 mb-2" size={32}/>
+                      <p className="text-sm text-slate-400">No proposals created for this lead yet.</p>
+                   </div>
+                )}
+             </div>
+           )}
+
+           {/* MEASUREMENTS TAB */}
+           {activeTab === 'measurements' && (
+             <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                   <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide">Roof Measurements</h3>
+                </div>
+                {measurements.filter(m => m.leadId === lead.id).length > 0 ? (
+                   <div className="space-y-3">
+                      {measurements.filter(m => m.leadId === lead.id).map(measurement => (
+                         <div key={measurement.id} className="p-4 bg-white border border-slate-200 rounded-lg shadow-sm">
+                            <div className="flex justify-between items-start mb-3">
+                               <div>
+                                  <p className="text-sm font-bold text-slate-800">{measurement.address}</p>
+                                  <p className="text-xs text-slate-500">Measured: {new Date(measurement.measurementDate).toLocaleDateString()}</p>
+                               </div>
+                               <span className={`px-2 py-1 text-xs font-medium rounded ${
+                                  measurement.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
+                                  measurement.status === 'Approved' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-slate-100 text-slate-700'
+                               }`}>{measurement.status}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                               <div className="p-2 bg-slate-50 rounded">
+                                  <p className="text-[10px] text-slate-500 uppercase">Total Area</p>
+                                  <p className="text-sm font-bold text-slate-800">{measurement.totalAreaSqft.toLocaleString()} sq ft</p>
+                               </div>
+                               <div className="p-2 bg-slate-50 rounded">
+                                  <p className="text-[10px] text-slate-500 uppercase">Pitch</p>
+                                  <p className="text-sm font-bold text-slate-800">{measurement.pitch || 'N/A'}</p>
+                               </div>
+                               <div className="p-2 bg-slate-50 rounded">
+                                  <p className="text-[10px] text-slate-500 uppercase">Perimeter</p>
+                                  <p className="text-sm font-bold text-slate-800">{measurement.perimeter.toFixed(1)} ft</p>
+                               </div>
+                               <div className="p-2 bg-slate-50 rounded">
+                                  <p className="text-[10px] text-slate-500 uppercase">Segments</p>
+                                  <p className="text-sm font-bold text-slate-800">{measurement.segments.length}</p>
+                               </div>
+                            </div>
+                            <div className="text-xs text-slate-500">
+                               <p>Source: {measurement.imagerySource} • Waste: {measurement.wasteFactor}%</p>
+                            </div>
+                         </div>
+                      ))}
+                   </div>
+                ) : (
+                   <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                      <Ruler className="mx-auto text-slate-300 mb-2" size={32}/>
+                      <p className="text-sm text-slate-400">No measurements created for this lead yet.</p>
+                   </div>
+                )}
+             </div>
+           )}
+
+           {/* MATERIALS TAB */}
+           {activeTab === 'materials' && (
+             <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                   <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide">Material Orders</h3>
+                </div>
+                {orders.filter(o => o.leadId === lead.id).length > 0 ? (
+                   <div className="space-y-3">
+                      {orders.filter(o => o.leadId === lead.id).map(order => (
+                         <div key={order.id} className="p-4 bg-white border border-slate-200 rounded-lg shadow-sm">
+                            <div className="flex justify-between items-start mb-2">
+                               <div>
+                                  <p className="text-sm font-bold text-slate-800">PO #{order.poNumber}</p>
+                                  <p className="text-xs text-slate-500">Ordered: {new Date(order.dateOrdered).toLocaleDateString()}</p>
+                               </div>
+                               <span className={`px-2 py-1 text-xs font-medium rounded ${
+                                  order.status === 'Delivered' ? 'bg-emerald-100 text-emerald-700' :
+                                  order.status === 'Ordered' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-red-100 text-red-700'
+                               }`}>{order.status}</span>
+                            </div>
+                            <div className="mb-2">
+                               <p className="text-xs text-slate-500 mb-1">Items:</p>
+                               <div className="space-y-1">
+                                  {order.items.map((item, idx) => (
+                                     <div key={idx} className="text-xs text-slate-700 flex justify-between">
+                                        <span>{item.description} ({item.quantity} {item.unit})</span>
+                                        <span className="font-medium">${item.total.toFixed(2)}</span>
+                                     </div>
+                                  ))}
+                               </div>
+                            </div>
+                            <div className="pt-2 border-t border-slate-100 text-xs">
+                               <p className="text-slate-600">Delivery: {new Date(order.deliveryDate).toLocaleDateString()}</p>
+                            </div>
+                         </div>
+                      ))}
+                   </div>
+                ) : (
+                   <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                      <Package className="mx-auto text-slate-300 mb-2" size={32}/>
+                      <p className="text-sm text-slate-400">No material orders for this lead yet.</p>
+                   </div>
+                )}
+             </div>
+           )}
+
+           {/* TASKS TAB */}
+           {activeTab === 'tasks' && (
+             <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                   <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide">Tasks</h3>
+                </div>
+                {tasks.filter(t => t.relatedLeadId === lead.id).length > 0 ? (
+                   <div className="space-y-2">
+                      {tasks.filter(t => t.relatedLeadId === lead.id).map(task => (
+                         <div key={task.id} className={`p-3 rounded-lg border flex items-start gap-3 ${
+                            task.status === 'Done' ? 'bg-emerald-50 border-emerald-100' : 'bg-white border-slate-200'
+                         }`}>
+                            <div className={`w-5 h-5 rounded flex items-center justify-center border mt-0.5 shrink-0 ${
+                               task.status === 'Done' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300'
+                            }`}>
+                               {task.status === 'Done' && <CheckSquare size={14} />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                               <p className={`text-sm font-medium ${task.status === 'Done' ? 'text-emerald-900 line-through' : 'text-slate-800'}`}>
+                                  {task.title}
+                               </p>
+                               {task.description && (
+                                  <p className="text-xs text-slate-500 mt-1">{task.description}</p>
+                               )}
+                               <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                                  <span className={`px-1.5 py-0.5 rounded ${
+                                     task.priority === 'High' ? 'bg-red-100 text-red-700' :
+                                     task.priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                                     'bg-slate-100 text-slate-600'
+                                  }`}>{task.priority}</span>
+                                  <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
+                               </div>
+                            </div>
+                         </div>
+                      ))}
+                   </div>
+                ) : (
+                   <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                      <ListChecks className="mx-auto text-slate-300 mb-2" size={32}/>
+                      <p className="text-sm text-slate-400">No tasks created for this lead yet.</p>
+                   </div>
+                )}
+             </div>
+           )}
+
+           {/* CALENDAR TAB */}
+           {activeTab === 'calendar' && (
+             <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                   <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide">Scheduled Events</h3>
+                </div>
+                {events.filter(e => e.leadId === lead.id).length > 0 ? (
+                   <div className="space-y-2">
+                      {events.filter(e => e.leadId === lead.id).map(event => (
+                         <div key={event.id} className="p-4 bg-white border border-slate-200 rounded-lg shadow-sm">
+                            <div className="flex items-start gap-3">
+                               <div style={{backgroundColor: event.color}} className="w-1 h-full rounded-full shrink-0"></div>
+                               <div className="flex-1">
+                                  <p className="text-sm font-bold text-slate-800">{event.title}</p>
+                                  <p className="text-xs text-slate-500 mt-1">
+                                     {new Date(event.start).toLocaleDateString()} at {new Date(event.start).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
+                                  </p>
+                                  <span className="inline-block mt-2 px-2 py-1 text-xs font-medium rounded bg-slate-100 text-slate-700">
+                                     {event.type}
+                                  </span>
+                               </div>
+                            </div>
+                         </div>
+                      ))}
+                   </div>
+                ) : (
+                   <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                      <Calendar className="mx-auto text-slate-300 mb-2" size={32}/>
+                      <p className="text-sm text-slate-400">No events scheduled for this lead yet.</p>
+                   </div>
+                )}
+             </div>
+           )}
+
            {/* FINANCIALS TAB */}
            {activeTab === 'financials' && (
              <div className="space-y-4">
@@ -636,6 +865,40 @@ const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpda
                     ) : (
                        <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
                            <p className="text-sm text-slate-400 italic">No estimates saved for this lead.</p>
+                       </div>
+                    )}
+                 </div>
+
+                 <div>
+                    <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide mb-2">Invoices & Payments</h3>
+                    {invoices.filter(inv => inv.leadId === lead.id).length > 0 ? (
+                       <div className="space-y-2">
+                          {invoices.filter(inv => inv.leadId === lead.id).map(invoice => (
+                             <div key={invoice.id} className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
+                                <div className="flex justify-between items-start mb-2">
+                                   <div>
+                                      <p className="text-sm font-bold text-slate-800">Invoice #{invoice.number}</p>
+                                      <p className="text-xs text-slate-500">Issued: {new Date(invoice.dateIssued).toLocaleDateString()}</p>
+                                   </div>
+                                   <span className={`px-2 py-1 text-xs font-medium rounded ${
+                                      invoice.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' :
+                                      invoice.status === 'Partially Paid' ? 'bg-amber-100 text-amber-700' :
+                                      invoice.status === 'Overdue' ? 'bg-red-100 text-red-700' :
+                                      invoice.status === 'Sent' ? 'bg-blue-100 text-blue-700' :
+                                      'bg-slate-100 text-slate-700'
+                                   }`}>{invoice.status}</span>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+                                   <span className="text-xs text-slate-600">Due: {new Date(invoice.dateDue).toLocaleDateString()}</span>
+                                   <span className="text-sm font-bold text-slate-800">${invoice.total.toFixed(2)}</span>
+                                </div>
+                             </div>
+                          ))}
+                       </div>
+                    ) : (
+                       <div className="p-6 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                          <Receipt className="mx-auto text-slate-300 mb-2" size={24}/>
+                          <p className="text-xs text-slate-400">No invoices created for this lead.</p>
                        </div>
                     )}
                  </div>
