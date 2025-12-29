@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { X, Plus, Minus, CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react';
-import { Proposal, ProposalOption, Lead, InsuranceDamageReport } from '../types';
-import InsuranceDamageReportForm from './InsuranceDamageReportForm';
+import { X, Plus, Minus, CheckCircle, AlertCircle } from 'lucide-react';
+import { Proposal, ProposalOption, Lead } from '../types';
 
 interface ProposalBuilderProps {
   lead: Lead;
@@ -41,8 +40,6 @@ const ProposalBuilder: React.FC<ProposalBuilderProps> = ({
   const [timeline, setTimeline] = useState(existingProposal?.timeline || '4-6 business days from start date');
   const [warranty, setWarranty] = useState(existingProposal?.warranty || 'Lifetime Material + 10-Year Workmanship');
   const [validDays, setValidDays] = useState(30);
-  const [showDamageReport, setShowDamageReport] = useState(false);
-  const [damageReport, setDamageReport] = useState<InsuranceDamageReport | null>(null);
 
   const [goodOption, setGoodOption] = useState<Partial<ProposalOption>>(
     existingProposal?.options.find(o => o.tier === 'Good') || {
@@ -352,20 +349,9 @@ const ProposalBuilder: React.FC<ProposalBuilderProps> = ({
               For: {lead.name} - {lead.address}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {lead.projectType === 'Insurance' && (
-              <button
-                onClick={() => setShowDamageReport(true)}
-                className="px-3 py-2 border border-orange-300 text-orange-700 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors flex items-center gap-2 text-sm font-medium"
-              >
-                <AlertTriangle size={18} />
-                {damageReport ? 'Edit Damage Report' : 'Add Damage Report'}
-              </button>
-            )}
-            <button onClick={onCancel} className="text-slate-400 hover:text-slate-600">
-              <X size={24} />
-            </button>
-          </div>
+          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600">
+            <X size={24} />
+          </button>
         </div>
 
         <div className="p-6 space-y-6">
@@ -509,19 +495,6 @@ const ProposalBuilder: React.FC<ProposalBuilderProps> = ({
           </button>
         </div>
       </div>
-
-      {showDamageReport && (
-        <InsuranceDamageReportForm
-          lead={lead}
-          proposalId={existingProposal?.id}
-          existingReport={damageReport || undefined}
-          onSave={(report) => {
-            setDamageReport(report);
-            setShowDamageReport(false);
-          }}
-          onCancel={() => setShowDamageReport(false)}
-        />
-      )}
     </div>
   );
 };

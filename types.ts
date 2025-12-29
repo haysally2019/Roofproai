@@ -511,15 +511,35 @@ export interface ContractTemplate {
   companyId: string;
   name: string;
   description: string;
-  type: Contract['type'];
-  scopeOfWork: string[];
-  materials: string[];
-  terms: string[];
-  paymentScheduleTemplate: { milestone: string; percentage: number }[];
-  warrantyText: string;
+  pdfUrl: string;
+  formFields: FormField[];
+  signatureFields: SignatureField[];
   isDefault: boolean;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface FormField {
+  fieldId: string;
+  fieldType: 'text' | 'date' | 'number' | 'checkbox';
+  label: string;
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  required: boolean;
+}
+
+export interface SignatureField {
+  fieldId: string;
+  signerRole: 'client' | 'contractor';
+  label: string;
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface ProposalTemplate {

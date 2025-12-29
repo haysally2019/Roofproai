@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
-import { ScrollText, Plus, Search, Download, Send, CheckCircle, X, Eye, Edit, Trash2, Star, Shield, Clock, Settings } from 'lucide-react';
-import { Proposal, ProposalOption, Lead } from '../types';
+import React, { useState, useEffect } from 'react';
+import { ScrollText, Plus, Search, Download, Send, CheckCircle, X, Eye, Edit, Trash2, Star, Shield, Clock, Settings, AlertTriangle, FileText } from 'lucide-react';
+import { Proposal, ProposalOption, Lead, InsuranceDamageReport } from '../types';
 import { useStore } from '../lib/store';
 import ProposalBuilder from './ProposalBuilder';
 import { generateProposalPDF } from '../lib/proposalPdf';
 import ProposalTemplateManager from './ProposalTemplateManager';
+import InsuranceDamageReportForm from './InsuranceDamageReportForm';
+import { supabase } from '../lib/supabase';
 
 interface ProposalsProps {}
 
 const Proposals: React.FC<ProposalsProps> = () => {
-  const { proposals, leads, companies, addProposal, updateProposal, deleteProposal } = useStore();
+  const { proposals, leads, companies, addProposal, updateProposal, deleteProposal, currentUser, addToast } = useStore();
+  const [activeTab, setActiveTab] = useState<'proposals' | 'damage-reports'>('proposals');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [isCreating, setIsCreating] = useState(false);
@@ -19,6 +22,76 @@ const Proposals: React.FC<ProposalsProps> = () => {
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
   const [showLeadSelector, setShowLeadSelector] = useState(false);
   const [showTemplateManager, setShowTemplateManager] = useState(false);
+
+  const [damageReports, setDamageReports] = useState<InsuranceDamageReport[]>([]);
+  const [showDamageReportForm, setShowDamageReportForm] = useState(false);
+  const [selectedDamageReportLead, setSelectedDamageReportLead] = useState<Lead | null>(null);
+  const [editingDamageReport, setEditingDamageReport] = useState<InsuranceDamageReport | null>(null);
+  const [showDamageReportLeadSelector, setShowDamageReportLeadSelector] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'damage-reports') {
+      loadDamageReports();
+    }
+  }, [activeTab, currentUser?.companyId]);
+
+  const loadDamageReports = async () => {
+    if (!currentUser?.companyId) return;
+
+    const { data, error } = await supabase
+      .from('insurance_damage_reports')
+      .select(`
+        *,
+        leads (
+          id,
+          name,
+          email,
+          phone,
+          address
+        )
+      `)
+      .eq('company_id', currentUser.companyId)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setDamageReports(data.map((r: any) => ({
+        id: r.id,
+        proposalId: r.proposal_id,
+        companyId: r.company_id,
+        leadId: r.lead_id,
+        inspectionDate: r.inspection_date,
+        inspectorName: r.inspector_name,
+        weatherEventDate: r.weather_event_date,
+        weatherEventType: r.weather_event_type,
+        damagedAreas: r.damaged_areas || [],
+        damagePhotos: r.damage_photos || [],
+        estimatedDamage: r.estimated_damage,
+        insuranceCarrier: r.insurance_carrier,
+        claimNumber: r.claim_number,
+        adjusterName: r.adjuster_name,
+        adjusterContact: r.adjuster_contact,
+        notes: r.notes,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at
+      })));
+    }
+  };
+
+  const handleDeleteDamageReport = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this damage report?')) return;
+
+    const { error } = await supabase
+      .from('insurance_damage_reports')
+      .delete()
+      .eq('id', id);
+
+    if (!error) {
+      addToast('Damage report deleted successfully', 'success');
+      loadDamageReports();
+    } else {
+      addToast('Failed to delete damage report', 'error');
+    }
+  };
 
   const handleCreateProposal = (proposal: Proposal) => {
     addProposal(proposal);
@@ -603,33 +676,77 @@ const Proposals: React.FC<ProposalsProps> = () => {
         <div>
           <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
             <ScrollText className="text-blue-600" />
-            Proposals
+            Proposals & Claims
           </h1>
-          <p className="text-slate-500 mt-1">Create and send professional proposals with multiple options</p>
+          <p className="text-slate-500 mt-1">Create proposals and document insurance damage</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => setShowTemplateManager(true)}
-            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
-          >
-            <Settings size={20} />
-            Templates
-          </button>
-          <button
-            onClick={() => setShowLeadSelector(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
-          >
-            <Plus size={20} />
-            New Proposal
-          </button>
+          {activeTab === 'proposals' && (
+            <>
+              <button
+                onClick={() => setShowTemplateManager(true)}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
+              >
+                <Settings size={20} />
+                Templates
+              </button>
+              <button
+                onClick={() => setShowLeadSelector(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
+              >
+                <Plus size={20} />
+                New Proposal
+              </button>
+            </>
+          )}
+          {activeTab === 'damage-reports' && (
+            <button
+              onClick={() => setShowDamageReportLeadSelector(true)}
+              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <AlertTriangle size={20} />
+              New Damage Report
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-sm text-slate-500">Total Proposals</p>
-          <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
-        </div>
+      <div className="flex gap-2 border-b border-slate-200">
+        <button
+          onClick={() => setActiveTab('proposals')}
+          className={`px-4 py-2 font-medium transition-colors border-b-2 ${
+            activeTab === 'proposals'
+              ? 'text-blue-600 border-blue-600'
+              : 'text-slate-600 border-transparent hover:text-slate-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <FileText size={18} />
+            Proposals
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('damage-reports')}
+          className={`px-4 py-2 font-medium transition-colors border-b-2 ${
+            activeTab === 'damage-reports'
+              ? 'text-orange-600 border-orange-600'
+              : 'text-slate-600 border-transparent hover:text-slate-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={18} />
+            Damage Reports
+          </div>
+        </button>
+      </div>
+
+      {activeTab === 'proposals' && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-sm text-slate-500">Total Proposals</p>
+              <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
+            </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <p className="text-sm text-slate-500">Accepted</p>
           <p className="text-2xl font-bold text-emerald-600">{stats.accepted}</p>
@@ -841,6 +958,182 @@ const Proposals: React.FC<ProposalsProps> = () => {
           existingProposal={editingProposal}
           onSave={handleUpdateProposal}
           onCancel={() => setEditingProposal(null)}
+        />
+      )}
+        </>
+      )}
+
+      {activeTab === 'damage-reports' && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-sm text-slate-500">Total Reports</p>
+              <p className="text-2xl font-bold text-slate-900">{damageReports.length}</p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-sm text-slate-500">This Month</p>
+              <p className="text-2xl font-bold text-blue-600">
+                {damageReports.filter(r => {
+                  const reportDate = new Date(r.createdAt || '');
+                  const now = new Date();
+                  return reportDate.getMonth() === now.getMonth() && reportDate.getFullYear() === now.getFullYear();
+                }).length}
+              </p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-sm text-slate-500">Avg Damage</p>
+              <p className="text-2xl font-bold text-orange-600">
+                ${damageReports.length > 0
+                  ? Math.round(damageReports.reduce((sum, r) => sum + r.estimatedDamage, 0) / damageReports.length).toLocaleString()
+                  : 0}
+              </p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-sm text-slate-500">Total Damage</p>
+              <p className="text-2xl font-bold text-red-600">
+                ${damageReports.reduce((sum, r) => sum + r.estimatedDamage, 0).toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Report Date</th>
+                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Lead/Property</th>
+                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Event Type</th>
+                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Damaged Areas</th>
+                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Est. Damage</th>
+                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Insurance</th>
+                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {damageReports.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-500">
+                        <AlertTriangle size={48} className="mx-auto text-slate-300 mb-2" />
+                        <p>No damage reports yet</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    damageReports.map((report) => {
+                      const lead = leads.find(l => l.id === report.leadId);
+                      return (
+                        <tr key={report.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-4">
+                            <p className="font-medium text-slate-900">
+                              {new Date(report.inspectionDate).toLocaleDateString()}
+                            </p>
+                            <p className="text-sm text-slate-500">
+                              {report.inspectorName}
+                            </p>
+                          </td>
+                          <td className="p-4">
+                            <p className="font-medium text-slate-900">{lead?.name || 'Unknown'}</p>
+                            <p className="text-sm text-slate-500">{lead?.address || ''}</p>
+                          </td>
+                          <td className="p-4">
+                            <span className="inline-block px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                              {report.weatherEventType || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <p className="text-sm text-slate-700">{report.damagedAreas.length} areas</p>
+                          </td>
+                          <td className="p-4">
+                            <p className="font-semibold text-slate-900">
+                              ${report.estimatedDamage.toLocaleString()}
+                            </p>
+                          </td>
+                          <td className="p-4">
+                            <p className="text-sm text-slate-700">{report.insuranceCarrier || 'N/A'}</p>
+                            {report.claimNumber && (
+                              <p className="text-xs text-slate-500">#{report.claimNumber}</p>
+                            )}
+                          </td>
+                          <td className="p-4">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingDamageReport(report);
+                                  setSelectedDamageReportLead(lead || null);
+                                  setShowDamageReportForm(true);
+                                }}
+                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                title="Edit"
+                              >
+                                <Edit size={18} className="text-slate-600" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDamageReport(report.id)}
+                                className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Delete"
+                              >
+                                <Trash2 size={18} className="text-red-600" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {showDamageReportLeadSelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white">
+              <h2 className="text-2xl font-bold text-slate-900">Select Lead for Damage Report</h2>
+              <button onClick={() => setShowDamageReportLeadSelector(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="space-y-2">
+                {leads.map((lead) => (
+                  <button
+                    key={lead.id}
+                    onClick={() => {
+                      setSelectedDamageReportLead(lead);
+                      setShowDamageReportLeadSelector(false);
+                      setShowDamageReportForm(true);
+                    }}
+                    className="w-full text-left p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                  >
+                    <p className="font-semibold text-slate-900">{lead.name}</p>
+                    <p className="text-sm text-slate-600">{lead.address}</p>
+                    <p className="text-sm text-slate-500">{lead.projectType}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDamageReportForm && selectedDamageReportLead && (
+        <InsuranceDamageReportForm
+          lead={selectedDamageReportLead}
+          existingReport={editingDamageReport || undefined}
+          onSave={(report) => {
+            setShowDamageReportForm(false);
+            setSelectedDamageReportLead(null);
+            setEditingDamageReport(null);
+            loadDamageReports();
+          }}
+          onCancel={() => {
+            setShowDamageReportForm(false);
+            setSelectedDamageReportLead(null);
+            setEditingDamageReport(null);
+          }}
         />
       )}
 
