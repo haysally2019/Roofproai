@@ -17,6 +17,7 @@ interface AddressSuggestion {
 interface MeasurementsProps {}
 
 const Measurements: React.FC<MeasurementsProps> = () => {
+  console.log('Measurements component rendering');
   const { measurements, addMeasurement, updateMeasurement, deleteMeasurement } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewMeasurement, setShowNewMeasurement] = useState(false);
@@ -75,35 +76,47 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
   useEffect(() => {
     if (!azureApiKey || azureApiKey === 'YOUR_AZURE_MAPS_KEY_HERE' || !mapRef.current || viewMode !== 'measure') {
+      console.log('Map init skipped:', {
+        hasApiKey: !!azureApiKey,
+        hasMapRef: !!mapRef.current,
+        viewMode
+      });
       return;
     }
 
-    if (azureMap) return;
+    if (azureMap) {
+      console.log('Map already initialized');
+      return;
+    }
 
-    const map = new atlas.Map(mapRef.current, {
-      center: mapCenter,
-      zoom: 19,
-      style: 'satellite',
-      language: 'en-US',
-      authOptions: {
-        authType: atlas.AuthenticationType.subscriptionKey,
-        subscriptionKey: azureApiKey
-      }
-    });
+    console.log('Initializing Azure Maps...');
 
-    map.events.add('ready', () => {
-      const source = new atlas.source.DataSource();
-      map.sources.add(source);
-      setDataSource(source);
-
-      const featureSource = new atlas.source.DataSource();
-      map.sources.add(featureSource);
-      setFeatureDataSource(featureSource);
-
-      const polygonLayer = new atlas.layer.PolygonLayer(source, undefined, {
-        fillColor: 'rgba(59, 130, 246, 0.3)',
-        fillOpacity: 0.5
+    try {
+      const map = new atlas.Map(mapRef.current, {
+        center: mapCenter,
+        zoom: 19,
+        style: 'satellite_road_labels',
+        language: 'en-US',
+        authOptions: {
+          authType: atlas.AuthenticationType.subscriptionKey,
+          subscriptionKey: azureApiKey
+        }
       });
+
+      map.events.add('ready', () => {
+        console.log('Azure Maps ready!');
+        const source = new atlas.source.DataSource();
+        map.sources.add(source);
+        setDataSource(source);
+
+        const featureSource = new atlas.source.DataSource();
+        map.sources.add(featureSource);
+        setFeatureDataSource(featureSource);
+
+        const polygonLayer = new atlas.layer.PolygonLayer(source, undefined, {
+          fillColor: 'rgba(59, 130, 246, 0.3)',
+          fillOpacity: 0.5
+        });
       map.layers.add(polygonLayer);
 
       const lineLayer = new atlas.layer.LineLayer(source, undefined, {
@@ -152,20 +165,28 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       setAzureMap(map);
     });
 
-    return () => {
-      if (map) {
-        map.dispose();
-      }
-    };
+      return () => {
+        if (map) {
+          map.dispose();
+        }
+      };
+    } catch (error) {
+      console.error('Error initializing Azure Maps:', error);
+    }
   }, [azureApiKey, viewMode, mapCenter]);
 
   useEffect(() => {
-    if (!azureMap) return;
+    if (!azureMap) {
+      console.log('Map not ready for click handler');
+      return;
+    }
 
+    console.log('Adding click handler to map');
     azureMap.events.add('click', handleMapClick);
 
     return () => {
       if (azureMap) {
+        console.log('Removing click handler from map');
         azureMap.events.remove('click', handleMapClick);
       }
     };
@@ -277,14 +298,25 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
   const handleMapClick = useCallback((e: any) => {
     const position = e.position;
-    if (!position) return;
+    if (!position) {
+      console.log('No position in click event');
+      return;
+    }
+
+    console.log('Map clicked:', position, 'Drawing mode:', isDrawingMode, 'Drawing feature:', isDrawingFeature);
 
     if (isDrawingMode) {
-      setCurrentSegment(prev => [...prev, position]);
+      console.log('Adding point to segment');
+      setCurrentSegment(prev => {
+        const newSegment = [...prev, position];
+        console.log('New segment length:', newSegment.length);
+        return newSegment;
+      });
       return;
     }
 
     if (isDrawingFeature) {
+      console.log('Adding point to feature');
       setCurrentFeatureLine(prev => [...prev, position]);
     }
   }, [isDrawingMode, isDrawingFeature]);
