@@ -20,7 +20,7 @@ interface LeadDetailPanelProps {
 }
 
 const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpdate, onDraftEmail }) => {
-  const { companies, currentUser, addToast, proposals, measurements, orders, tasks, events, invoices } = useStore();
+  const { companies, currentUser, addToast, proposals, measurements, orders, tasks, events, invoices, addLeadActivity } = useStore();
   const [activeTab, setActiveTab] = useState<'overview' | 'docs' | 'claim' | 'intelligence' | 'production' | 'financials' | 'communication' | 'proposals' | 'measurements' | 'materials' | 'tasks' | 'calendar'>('overview');
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState<Partial<Lead>>(lead);
@@ -45,6 +45,9 @@ const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpda
   // PDF Generation State
   const [downloadingEstimateId, setDownloadingEstimateId] = useState<string | null>(null);
   const pdfTemplateRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  // Activity Note State
+  const [activityNote, setActivityNote] = useState('');
 
   const handleSave = () => {
     onUpdate({ ...lead, ...editData } as Lead);
@@ -279,23 +282,84 @@ const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpda
                   </div>
               </div>
 
-              {/* ACTIVITY LOG (New Feature) */}
+              {/* ACTIVITY LOG */}
               <div className="mt-8">
-                   <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide mb-4">Activity Timeline</h3>
-                   <div className="relative border-l border-slate-200 ml-3 space-y-6">
+                   <div className="flex items-center justify-between mb-4">
+                       <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                           <Clock size={20} className="text-indigo-600" />
+                           Activity Timeline
+                       </h3>
+                   </div>
+
+                   {/* Add Activity Form */}
+                   <div className="mb-6 bg-slate-50 rounded-lg p-4 border border-slate-200">
+                       <div className="flex gap-2">
+                           <input
+                               type="text"
+                               value={activityNote}
+                               onChange={(e) => setActivityNote(e.target.value)}
+                               placeholder="Add a note or activity..."
+                               className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                               onKeyDown={(e) => {
+                                   if (e.key === 'Enter' && activityNote.trim()) {
+                                       addLeadActivity(lead.id, 'Note Added', activityNote.trim());
+                                       setActivityNote('');
+                                   }
+                               }}
+                           />
+                           <button
+                               onClick={() => {
+                                   if (activityNote.trim()) {
+                                       addLeadActivity(lead.id, 'Note Added', activityNote.trim());
+                                       setActivityNote('');
+                                   }
+                               }}
+                               className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                               disabled={!activityNote.trim()}
+                           >
+                               Add Note
+                           </button>
+                       </div>
+                   </div>
+
+                   {/* Timeline */}
+                   <div className="relative border-l-2 border-slate-200 ml-4 space-y-6">
                         {lead.history && lead.history.length > 0 ? (
-                            lead.history.map(activity => (
-                                <div key={activity.id} className="relative pl-6">
-                                    <div className="absolute -left-1.5 top-1.5 w-3 h-3 rounded-full border-2 border-white bg-indigo-500 shadow-sm"></div>
-                                    <p className="text-sm font-medium text-slate-800">{activity.description}</p>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <span className="text-xs text-slate-500 flex items-center gap-1"><Clock size={10}/> {new Date(activity.timestamp).toLocaleDateString()} {new Date(activity.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                        <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-medium">{activity.user}</span>
+                            lead.history.map((activity, index) => {
+                                const typeColors = {
+                                    'Status Change': { bg: 'bg-blue-500', badge: 'bg-blue-100 text-blue-700' },
+                                    'Note Added': { bg: 'bg-green-500', badge: 'bg-green-100 text-green-700' },
+                                    'Email Sent': { bg: 'bg-purple-500', badge: 'bg-purple-100 text-purple-700' },
+                                    'File Uploaded': { bg: 'bg-orange-500', badge: 'bg-orange-100 text-orange-700' },
+                                    'Info Updated': { bg: 'bg-yellow-500', badge: 'bg-yellow-100 text-yellow-700' },
+                                    'System': { bg: 'bg-slate-500', badge: 'bg-slate-100 text-slate-700' }
+                                };
+                                const colors = typeColors[activity.type as keyof typeof typeColors] || typeColors['System'];
+
+                                return (
+                                    <div key={activity.id} className="relative pl-6 pb-2">
+                                        <div className={`absolute -left-2 top-1.5 w-4 h-4 rounded-full border-2 border-white ${colors.bg} shadow-md`}></div>
+                                        <div className="bg-white rounded-lg p-3 shadow-sm border border-slate-200">
+                                            <div className="flex items-start justify-between gap-2 mb-1">
+                                                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${colors.badge}`}>
+                                                    {activity.type}
+                                                </span>
+                                                <span className="text-xs text-slate-500 flex items-center gap-1">
+                                                    <Clock size={10} />
+                                                    {new Date(activity.timestamp).toLocaleDateString()} {new Date(activity.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm text-slate-700 mb-2">{activity.description}</p>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs text-slate-500">by</span>
+                                                <span className="text-xs font-medium text-slate-700">{activity.user}</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            ))
+                                );
+                            })
                         ) : (
-                            <div className="pl-6 text-sm text-slate-400 italic">No activity recorded yet.</div>
+                            <div className="pl-6 text-sm text-slate-400 italic py-4">No activity recorded yet. Add a note to get started.</div>
                         )}
                    </div>
               </div>

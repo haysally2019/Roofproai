@@ -37,6 +37,7 @@ interface StoreContextType {
   // Data Actions
   updateLead: (lead: Lead) => void;
   addLead: (lead: Lead) => void;
+  addLeadActivity: (leadId: string, type: string, description: string) => Promise<void>;
   createCompany: (company: Partial<Company>) => Promise<string | null>;
   updateCompany: (company: Partial<Company>) => void;
   deleteCompany: (companyId: string) => Promise<void>;
@@ -242,11 +243,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const loadCompanyData = async (companyId: string) => {
     try {
       const [
-        usersRes, leadsRes, tasksRes, eventsRes, invoicesRes, callLogsRes,
+        usersRes, leadsRes, activitiesRes, tasksRes, eventsRes, invoicesRes, callLogsRes,
         automationsRes, ordersRes, priceBookRes, proposalsRes, measurementsRes
       ] = await Promise.all([
         supabase.from('users').select('*').eq('company_id', companyId),
         supabase.from('leads').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
+        supabase.from('lead_activities').select('*').order('created_at', { ascending: false }),
         supabase.from('tasks').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
         supabase.from('events').select('*').eq('company_id', companyId).order('start_time', { ascending: true }),
         supabase.from('invoices').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
@@ -271,6 +273,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
 
       if (leadsRes.data) {
+        const activitiesByLead = (activitiesRes.data || []).reduce((acc: any, activity: any) => {
+          if (!acc[activity.lead_id]) acc[activity.lead_id] = [];
+          acc[activity.lead_id].push({
+            id: activity.id,
+            type: activity.type,
+            description: activity.description,
+            timestamp: activity.created_at,
+            user: activity.user_name || 'System'
+          });
+          return acc;
+        }, {});
+
         setLeads(leadsRes.data.map((lead: any) => ({
           id: lead.id,
           name: lead.name,
@@ -297,7 +311,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           paymentStatus: lead.payment_status,
           documents: lead.documents || [],
           productionSteps: lead.production_steps || [],
-          history: lead.history || [],
+          history: activitiesByLead[lead.id] || [],
           estimates: []
         })));
       }
@@ -576,8 +590,64 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const updateCompany = async (c: Partial<Company>) => { if (!c.id) return; const { error } = await supabase.from('companies').update({ name: c.name, address: c.address, phone: c.phone, logo_url: c.logoUrl, setup_complete: c.setupComplete, agent_config: c.agentConfig, integrations: c.integrations, status: c.status, tier: c.tier }).eq('id', c.id); if (error) { addToast(`Failed: ${error.message}`, 'error'); return; } setCompanies(prev => prev.map(x => x.id === c.id ? {...x, ...c} : x)); };
   const deleteCompany = async (id: string) => { if (currentUser?.role !== UserRole.SUPER_ADMIN) return; const { error } = await supabase.from('companies').delete().eq('id', id); if (error) { addToast(`Failed: ${error.message}`, 'error'); return; } setCompanies(prev => prev.filter(c => c.id !== id)); setUsers(prev => prev.filter(u => u.companyId !== id)); addToast('Deleted', 'success'); };
   const updateUser = async (u: Partial<User>) => { const targetId = u.id || currentUser?.id; if (!targetId) return; const { error } = await supabase.from('users').update({ name: u.name, role: u.role, email: u.email }).eq('id', targetId); if (error) { addToast(`Failed: ${error.message}`, 'error'); return; } setUsers(prev => prev.map(user => user.id === targetId ? { ...user, ...u } : user)); if (currentUser && targetId === currentUser.id) setCurrentUser(prev => prev ? { ...prev, ...u } : null); addToast('Updated', 'success'); };
-  const addLead = async (lead: Lead) => { if (!currentUser?.companyId) return; const { error } = await supabase.from('leads').insert({ id: lead.id, name: lead.name, address: lead.address, phone: lead.phone, email: lead.email, status: lead.status, project_type: lead.projectType, source: lead.source, notes: lead.notes, estimated_value: lead.estimatedValue, last_contact: lead.lastContact, assigned_to: lead.assignedTo, company_id: currentUser.companyId, insurance_carrier: lead.insuranceCarrier, policy_number: lead.policyNumber, claim_number: lead.claimNumber, adjuster_name: lead.adjusterName, adjuster_phone: lead.adjusterPhone, damage_date: lead.damageDate }); if (!error) setLeads(prev => [...prev, lead]); };
-  const updateLead = async (lead: Lead) => { const { error } = await supabase.from('leads').update({ name: lead.name, address: lead.address, phone: lead.phone, email: lead.email, status: lead.status, project_type: lead.projectType, source: lead.source, notes: lead.notes, estimated_value: lead.estimatedValue, last_contact: lead.lastContact, assigned_to: lead.assignedTo, insurance_carrier: lead.insuranceCarrier, policy_number: lead.policyNumber, claim_number: lead.claimNumber, adjuster_name: lead.adjusterName, adjuster_phone: lead.adjusterPhone, damage_date: lead.damageDate, project_manager_id: lead.projectManagerId, production_date: lead.productionDate, payment_status: lead.paymentStatus }).eq('id', lead.id); if (!error) setLeads(prev => prev.map(l => l.id === lead.id ? lead : l)); };
+  const addLead = async (lead: Lead) => {
+    if (!currentUser?.companyId) return;
+    const { error } = await supabase.from('leads').insert({
+      id: lead.id, name: lead.name, address: lead.address, phone: lead.phone, email: lead.email,
+      status: lead.status, project_type: lead.projectType, source: lead.source, notes: lead.notes,
+      estimated_value: lead.estimatedValue, last_contact: lead.lastContact, assigned_to: lead.assignedTo,
+      company_id: currentUser.companyId, insurance_carrier: lead.insuranceCarrier, policy_number: lead.policyNumber,
+      claim_number: lead.claimNumber, adjuster_name: lead.adjusterName, adjuster_phone: lead.adjusterPhone,
+      damage_date: lead.damageDate
+    });
+    if (!error) {
+      setLeads(prev => [...prev, lead]);
+      await addLeadActivity(lead.id, 'System', `Lead created by ${currentUser.name}`);
+    }
+  };
+
+  const addLeadActivity = async (leadId: string, type: string, description: string) => {
+    if (!currentUser) return;
+    const { error } = await supabase.from('lead_activities').insert({
+      lead_id: leadId,
+      type,
+      description,
+      user_name: currentUser.name
+    });
+    if (!error) {
+      const newActivity = {
+        id: Date.now().toString(),
+        type,
+        description,
+        timestamp: new Date().toISOString(),
+        user: currentUser.name
+      };
+      setLeads(prev => prev.map(l =>
+        l.id === leadId ? { ...l, history: [newActivity, ...(l.history || [])] } : l
+      ));
+    }
+  };
+
+  const updateLead = async (lead: Lead) => {
+    const oldLead = leads.find(l => l.id === lead.id);
+    const { error } = await supabase.from('leads').update({
+      name: lead.name, address: lead.address, phone: lead.phone, email: lead.email, status: lead.status,
+      project_type: lead.projectType, source: lead.source, notes: lead.notes, estimated_value: lead.estimatedValue,
+      last_contact: lead.lastContact, assigned_to: lead.assignedTo, insurance_carrier: lead.insuranceCarrier,
+      policy_number: lead.policyNumber, claim_number: lead.claimNumber, adjuster_name: lead.adjusterName,
+      adjuster_phone: lead.adjusterPhone, damage_date: lead.damageDate, project_manager_id: lead.projectManagerId,
+      production_date: lead.productionDate, payment_status: lead.paymentStatus
+    }).eq('id', lead.id);
+    if (!error) {
+      setLeads(prev => prev.map(l => l.id === lead.id ? lead : l));
+      if (oldLead && oldLead.status !== lead.status) {
+        await addLeadActivity(lead.id, 'Status Change', `Status changed from "${oldLead.status}" to "${lead.status}"`);
+      }
+      if (oldLead && oldLead.notes !== lead.notes) {
+        await addLeadActivity(lead.id, 'Note Added', 'Notes updated');
+      }
+    }
+  };
   const addTask = async (task: Partial<Task>) => { if (!currentUser?.companyId) return; const newTask = { ...task, id: Date.now().toString(), companyId: currentUser.companyId }; const { error } = await supabase.from('tasks').insert({ id: newTask.id, title: newTask.title, description: newTask.description, due_date: newTask.dueDate, priority: newTask.priority, status: newTask.status || 'To Do', assigned_to: newTask.assignedTo, related_lead_id: newTask.relatedLeadId, company_id: currentUser.companyId }); if (!error) setTasks(prev => [...prev, newTask as Task]); };
   const updateTask = async (task: Task) => { const { error } = await supabase.from('tasks').update({ title: task.title, description: task.description, due_date: task.dueDate, priority: task.priority, status: task.status, assigned_to: task.assignedTo, related_lead_id: task.relatedLeadId }).eq('id', task.id); if (!error) setTasks(prev => prev.map(t => t.id === task.id ? task : t)); };
   const deleteTask = async (id: string) => { const { error } = await supabase.from('tasks').delete().eq('id', id); if (!error) setTasks(prev => prev.filter(t => t.id !== id)); };
@@ -952,8 +1022,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       priceBook,
       proposals: proposals || [],
       measurements: measurements || [],
-      login, register, logout, setTab, addToast, removeToast, 
-      updateLead, addLead, createCompany, updateCompany, deleteCompany, updateUser, 
+      login, register, logout, setTab, addToast, removeToast,
+      updateLead, addLead, addLeadActivity, createCompany, updateCompany, deleteCompany, updateUser, 
       addAutomation, toggleAutomation, deleteAutomation, addOrder,
       addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
       addUser, removeUser,
