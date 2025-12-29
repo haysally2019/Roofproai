@@ -896,53 +896,6 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
                   </button>
 
                   <div className="border-t border-slate-200 my-1"></div>
-                  <p className="text-xs font-bold text-slate-500 uppercase px-2">Roof Features</p>
-
-                  <button
-                    onClick={() => startRoofFeatureMeasurement('ridge')}
-                    className={`px-4 py-2 ${measurementMode === 'ridge' ? 'bg-red-600 text-white' : 'bg-white text-slate-700 border-2 border-red-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-red-50`}
-                  >
-                    <div className="w-3 h-3 rounded-full bg-red-500"></div> Ridge
-                  </button>
-                  <button
-                    onClick={() => startRoofFeatureMeasurement('hip')}
-                    className={`px-4 py-2 ${measurementMode === 'hip' ? 'bg-amber-600 text-white' : 'bg-white text-slate-700 border-2 border-amber-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-amber-50`}
-                  >
-                    <div className="w-3 h-3 rounded-full bg-amber-500"></div> Hip
-                  </button>
-                  <button
-                    onClick={() => startRoofFeatureMeasurement('valley')}
-                    className={`px-4 py-2 ${measurementMode === 'valley' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 border-2 border-blue-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-blue-50`}
-                  >
-                    <div className="w-3 h-3 rounded-full bg-blue-500"></div> Valley
-                  </button>
-                  <button
-                    onClick={() => startRoofFeatureMeasurement('eave')}
-                    className={`px-4 py-2 ${measurementMode === 'eave' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-700 border-2 border-emerald-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-emerald-50`}
-                  >
-                    <div className="w-3 h-3 rounded-full bg-emerald-500"></div> Eave
-                  </button>
-                  <button
-                    onClick={() => startRoofFeatureMeasurement('rake')}
-                    className={`px-4 py-2 ${measurementMode === 'rake' ? 'bg-purple-600 text-white' : 'bg-white text-slate-700 border-2 border-purple-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-purple-50`}
-                  >
-                    <div className="w-3 h-3 rounded-full bg-purple-500"></div> Rake
-                  </button>
-                  <button
-                    onClick={() => startRoofFeatureMeasurement('penetration')}
-                    className={`px-4 py-2 ${measurementMode === 'penetration' ? 'bg-pink-600 text-white' : 'bg-white text-slate-700 border-2 border-pink-500'} rounded font-bold text-xs flex items-center gap-2 hover:bg-pink-50`}
-                  >
-                    <div className="w-3 h-3 rounded-full bg-pink-500"></div> Penetration
-                  </button>
-
-                  <div className="border-t border-slate-200 my-1"></div>
-                  <button
-                    onClick={undoLastFeature}
-                    disabled={roofFeatures.length === 0}
-                    className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-xs flex items-center gap-2 hover:bg-amber-50 disabled:opacity-50"
-                  >
-                    <Undo size={14}/> Undo Feature
-                  </button>
                   <button
                     onClick={undoLastPolygon}
                     disabled={polygons.length === 0}
@@ -952,7 +905,7 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
                   </button>
                   <button
                     onClick={clearAllPolygons}
-                    disabled={polygons.length === 0 && roofFeatures.length === 0}
+                    disabled={polygons.length === 0}
                     className="px-4 py-2 bg-white text-red-600 border border-red-200 rounded font-bold text-xs flex items-center gap-2 hover:bg-red-50 disabled:opacity-50"
                   >
                     <Trash2 size={14}/> Clear All
@@ -984,77 +937,6 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
                     <p className="text-xs font-bold text-slate-500 uppercase mb-1">Mode</p>
                     <p className="text-sm font-bold text-indigo-600">{measurementSource === 'api' ? '3D Auto' : 'Manual Trace'}</p>
                   </div>
-
-                  {roofFeatures.length > 0 && (
-                    <>
-                      <div className="border-t border-slate-200 my-2"></div>
-                      <p className="text-xs font-bold text-slate-500 uppercase mb-2">Roof Features</p>
-
-                      {getTotalFeatureLength('ridge') > 0 && (
-                        <div className="p-2 bg-red-50 rounded border border-red-200 flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                            <span className="text-xs font-bold text-slate-700">Ridge</span>
-                          </div>
-                          <span className="text-sm font-bold text-slate-900">{getTotalFeatureLength('ridge')} ft</span>
-                        </div>
-                      )}
-
-                      {getTotalFeatureLength('hip') > 0 && (
-                        <div className="p-2 bg-amber-50 rounded border border-amber-200 flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                            <span className="text-xs font-bold text-slate-700">Hip</span>
-                          </div>
-                          <span className="text-sm font-bold text-slate-900">{getTotalFeatureLength('hip')} ft</span>
-                        </div>
-                      )}
-
-                      {getTotalFeatureLength('valley') > 0 && (
-                        <div className="p-2 bg-blue-50 rounded border border-blue-200 flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                            <span className="text-xs font-bold text-slate-700">Valley</span>
-                          </div>
-                          <span className="text-sm font-bold text-slate-900">{getTotalFeatureLength('valley')} ft</span>
-                        </div>
-                      )}
-
-                      {getTotalFeatureLength('eave') > 0 && (
-                        <div className="p-2 bg-emerald-50 rounded border border-emerald-200 flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                            <span className="text-xs font-bold text-slate-700">Eave</span>
-                          </div>
-                          <span className="text-sm font-bold text-slate-900">{getTotalFeatureLength('eave')} ft</span>
-                        </div>
-                      )}
-
-                      {getTotalFeatureLength('rake') > 0 && (
-                        <div className="p-2 bg-purple-50 rounded border border-purple-200 flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                            <span className="text-xs font-bold text-slate-700">Rake</span>
-                          </div>
-                          <span className="text-sm font-bold text-slate-900">{getTotalFeatureLength('rake')} ft</span>
-                        </div>
-                      )}
-
-                      {getTotalFeatureLength('penetration') > 0 && (
-                        <div className="p-2 bg-pink-50 rounded border border-pink-200 flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-pink-500"></div>
-                            <span className="text-xs font-bold text-slate-700">Penetrations</span>
-                          </div>
-                          <span className="text-sm font-bold text-slate-900">{roofFeatures.filter(f => f.type === 'penetration').length}</span>
-                        </div>
-                      )}
-
-                      <div className="text-xs text-slate-500 mt-2 italic">
-                        {roofFeatures.length} feature{roofFeatures.length !== 1 ? 's' : ''} marked
-                      </div>
-                    </>
-                  )}
                 </div>
               </div>
 
@@ -1124,44 +1006,17 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
                           </button>
                       </div>
 
-                      <div className="mb-3">
-                          <p className="text-xs font-bold text-slate-500 uppercase mb-2 px-1">Roof Features</p>
-                          <div className="grid grid-cols-3 gap-1.5">
-                              <button onClick={() => startRoofFeatureMeasurement('ridge')} className="py-1.5 bg-white text-slate-700 border-2 border-red-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-red-50">
-                                  <div className="w-2 h-2 rounded-full bg-red-500"></div> Ridge
-                              </button>
-                              <button onClick={() => startRoofFeatureMeasurement('hip')} className="py-1.5 bg-white text-slate-700 border-2 border-amber-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-amber-50">
-                                  <div className="w-2 h-2 rounded-full bg-amber-500"></div> Hip
-                              </button>
-                              <button onClick={() => startRoofFeatureMeasurement('valley')} className="py-1.5 bg-white text-slate-700 border-2 border-blue-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-blue-50">
-                                  <div className="w-2 h-2 rounded-full bg-blue-500"></div> Valley
-                              </button>
-                              <button onClick={() => startRoofFeatureMeasurement('eave')} className="py-1.5 bg-white text-slate-700 border-2 border-emerald-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-emerald-50">
-                                  <div className="w-2 h-2 rounded-full bg-emerald-500"></div> Eave
-                              </button>
-                              <button onClick={() => startRoofFeatureMeasurement('rake')} className="py-1.5 bg-white text-slate-700 border-2 border-purple-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-purple-50">
-                                  <div className="w-2 h-2 rounded-full bg-purple-500"></div> Rake
-                              </button>
-                              <button onClick={() => startRoofFeatureMeasurement('penetration')} className="py-1.5 bg-white text-slate-700 border-2 border-pink-400 rounded text-xs font-bold flex justify-center items-center gap-1 hover:bg-pink-50">
-                                  <div className="w-2 h-2 rounded-full bg-pink-500"></div> Pen
-                              </button>
-                          </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 mb-3">
-                          <button onClick={undoLastFeature} disabled={roofFeatures.length === 0} className="py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-amber-50 disabled:opacity-50">
-                              <Undo size={10}/> Feature
-                          </button>
+                      <div className="grid grid-cols-2 gap-2 mb-3">
                           <button onClick={undoLastPolygon} disabled={polygons.length === 0} className="py-2 bg-white text-slate-700 border border-slate-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-amber-50 disabled:opacity-50">
-                              <Undo size={10}/> Area
+                              <Undo size={10}/> Undo Area
                           </button>
-                          <button onClick={clearAllPolygons} disabled={polygons.length === 0 && roofFeatures.length === 0} className="py-2 bg-white text-red-600 border border-red-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-red-50 disabled:opacity-50">
-                              <Trash2 size={10}/> Clear
+                          <button onClick={clearAllPolygons} disabled={polygons.length === 0} className="py-2 bg-white text-red-600 border border-red-200 rounded font-bold text-xs flex justify-center items-center gap-1 hover:bg-red-50 disabled:opacity-50">
+                              <Trash2 size={10}/> Clear All
                           </button>
                       </div>
 
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 mb-2">
-                          <div className="flex justify-between items-center mb-2">
+                          <div className="flex justify-between items-center">
                               <div>
                                   <p className="text-xs font-bold text-slate-400 uppercase">Total Area</p>
                                   <p className="text-xl font-extrabold text-slate-800">{totalSurfaceArea.toLocaleString()} <span className="text-xs font-normal text-slate-500">sqft</span></p>
@@ -1171,50 +1026,6 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
                                   <span className="text-sm font-bold text-indigo-600">{polygons.length}</span>
                               </div>
                           </div>
-
-                          {roofFeatures.length > 0 && (
-                              <>
-                                  <div className="border-t border-slate-200 my-2"></div>
-                                  <div className="space-y-1">
-                                      {getTotalFeatureLength('ridge') > 0 && (
-                                          <div className="flex justify-between text-xs">
-                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-500"></div>Ridge</span>
-                                              <span className="font-bold text-slate-800">{getTotalFeatureLength('ridge')} ft</span>
-                                          </div>
-                                      )}
-                                      {getTotalFeatureLength('hip') > 0 && (
-                                          <div className="flex justify-between text-xs">
-                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-500"></div>Hip</span>
-                                              <span className="font-bold text-slate-800">{getTotalFeatureLength('hip')} ft</span>
-                                          </div>
-                                      )}
-                                      {getTotalFeatureLength('valley') > 0 && (
-                                          <div className="flex justify-between text-xs">
-                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div>Valley</span>
-                                              <span className="font-bold text-slate-800">{getTotalFeatureLength('valley')} ft</span>
-                                          </div>
-                                      )}
-                                      {getTotalFeatureLength('eave') > 0 && (
-                                          <div className="flex justify-between text-xs">
-                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div>Eave</span>
-                                              <span className="font-bold text-slate-800">{getTotalFeatureLength('eave')} ft</span>
-                                          </div>
-                                      )}
-                                      {getTotalFeatureLength('rake') > 0 && (
-                                          <div className="flex justify-between text-xs">
-                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div>Rake</span>
-                                              <span className="font-bold text-slate-800">{getTotalFeatureLength('rake')} ft</span>
-                                          </div>
-                                      )}
-                                      {roofFeatures.filter(f => f.type === 'penetration').length > 0 && (
-                                          <div className="flex justify-between text-xs">
-                                              <span className="text-slate-600 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-pink-500"></div>Penetrations</span>
-                                              <span className="font-bold text-slate-800">{roofFeatures.filter(f => f.type === 'penetration').length}</span>
-                                          </div>
-                                      )}
-                                  </div>
-                              </>
-                          )}
                       </div>
 
                       <div className="flex gap-2">
