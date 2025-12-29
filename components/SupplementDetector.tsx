@@ -1,6 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { FileText, AlertTriangle, CheckCircle, Sparkles, Upload, X } from 'lucide-react';
 import { analyzeScopeOfLoss, analyzeScopeFromImage } from '../services/geminiService';
+import * as pdfjsLib from 'pdfjs-dist';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 const SupplementDetector: React.FC = () => {
   const [scopeText, setScopeText] = useState<string>('');
@@ -39,8 +42,30 @@ const SupplementDetector: React.FC = () => {
       };
       reader.readAsDataURL(file);
     } else if (fileType === 'application/pdf') {
-      setAnalysis('PDF support coming soon. Please extract text and paste it, or upload as an image screenshot.');
-      setUploadedFile(null);
+      setIsAnalyzing(true);
+      setAnalysis('');
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = '';
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items
+            .map((item: any) => item.str)
+            .join(' ');
+          fullText += pageText + '\n\n';
+        }
+
+        setScopeText(fullText.trim());
+        setIsAnalyzing(false);
+      } catch (error) {
+        console.error('Error parsing PDF:', error);
+        setAnalysis('Error reading PDF file. Please try again or use a text file.');
+        setUploadedFile(null);
+        setIsAnalyzing(false);
+      }
     }
   };
 
