@@ -544,6 +544,8 @@ export enum Tab {
   SETTINGS = 'Settings',
   AI_RECEPTIONIST = 'AI Receptionist',
   AUTOMATIONS = 'Automations',
+  SUPPLEMENT_DETECTOR = 'Supplement Detector',
+  AI_INTELLIGENCE = 'AI Intelligence',
 
   // Admin Tabs
   ADMIN_OVERVIEW = 'Overview',

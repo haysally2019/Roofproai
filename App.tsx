@@ -27,7 +27,9 @@ import MaterialOrders from './components/MaterialOrders';
 import LaborOrders from './components/LaborOrders';
 import Contracts from './components/Contracts';
 import Proposals from './components/Proposals';
-import Measurements from './components/Measurements'; 
+import Measurements from './components/Measurements';
+import SupplementDetector from './components/SupplementDetector';
+import AIIntelligence from './components/AIIntelligence';
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -226,6 +228,8 @@ const AppLayout: React.FC = () => {
                   {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}
                   {activeTab === Tab.AI_RECEPTIONIST && <AIReceptionist />}
                   {activeTab === Tab.AUTOMATIONS && <Automations />}
+                  {activeTab === Tab.SUPPLEMENT_DETECTOR && <SupplementDetector />}
+                  {activeTab === Tab.AI_INTELLIGENCE && <AIIntelligence />}
                   {activeTab === Tab.TEAM && currentCompany && (
                     selectedUserForAnalytics ? (
                       <UserAnalytics

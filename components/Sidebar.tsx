@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Umbrella, FileText, Briefcase, CheckSquare,
   Receipt, Tag, UserCheck, Settings as SettingsIcon, Globe, Building2,
   Hexagon, Hammer, LogOut, ChevronDown, ChevronRight, X, Calendar, Headset, Mic, Zap,
-  Package, HardHat, CreditCard, FileSignature, ScrollText, Ruler
+  Package, HardHat, CreditCard, FileSignature, ScrollText, Ruler, AlertTriangle, BrainCircuit
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { UserRole, Tab } from '../types';
@@ -105,6 +105,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               {currentUser.role === UserRole.COMPANY_ADMIN && (
                 <NavItem tab={Tab.AI_RECEPTIONIST} icon={Mic} label="AI Receptionist" />
               )}
+
+              {/* AI Tools Section */}
+              <div className="mt-3 px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">AI Tools</div>
+              <NavItem tab={Tab.SUPPLEMENT_DETECTOR} icon={AlertTriangle} label="Supplement Detector" />
+              <NavItem tab={Tab.AI_INTELLIGENCE} icon={BrainCircuit} label="AI Intelligence" />
 
               {/* Collapsible Section: Production */}
               <div className="mt-3">
