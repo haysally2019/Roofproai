@@ -36,6 +36,17 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
 
+  const [featureMeasurementMode, setFeatureMeasurementMode] = useState<'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration' | null>(null);
+  const [roofFeatures, setRoofFeatures] = useState<Array<{
+    type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration',
+    length: number,
+    startPoint: atlas.data.Position,
+    endPoint: atlas.data.Position,
+    label: string
+  }>>([]);
+  const [tempFeatureStart, setTempFeatureStart] = useState<atlas.data.Position | null>(null);
+  const [featureDataSource, setFeatureDataSource] = useState<atlas.source.DataSource | null>(null);
+
   const mapRef = useRef<HTMLDivElement>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -82,6 +93,10 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       map.sources.add(source);
       setDataSource(source);
 
+      const featureSource = new atlas.source.DataSource();
+      map.sources.add(featureSource);
+      setFeatureDataSource(featureSource);
+
       const polygonLayer = new atlas.layer.PolygonLayer(source, undefined, {
         fillColor: 'rgba(59, 130, 246, 0.3)',
         fillOpacity: 0.5
@@ -110,13 +125,28 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       });
       map.layers.add(symbolLayer);
 
-      map.events.add('click', (e) => {
-        if (!isDrawingMode) return;
-        const position = e.position;
-        if (position) {
-          setCurrentSegment(prev => [...prev, position]);
+      const featureLineLayer = new atlas.layer.LineLayer(featureSource, undefined, {
+        strokeColor: ['get', 'color'],
+        strokeWidth: 4
+      });
+      map.layers.add(featureLineLayer);
+
+      const featureSymbolLayer = new atlas.layer.SymbolLayer(featureSource, undefined, {
+        iconOptions: {
+          image: 'none'
+        },
+        textOptions: {
+          textField: ['get', 'label'],
+          offset: [0, 0],
+          color: '#ffffff',
+          haloColor: ['get', 'color'],
+          haloWidth: 2,
+          size: 12
         }
       });
+      map.layers.add(featureSymbolLayer);
+
+      map.events.add('click', handleMapClick);
 
       setAzureMap(map);
     });
@@ -168,6 +198,125 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       }
     }
   }, [segments, currentSegment, azureMap, dataSource]);
+
+  useEffect(() => {
+    if (!azureMap || !featureDataSource) return;
+
+    featureDataSource.clear();
+
+    const featureColors: Record<string, string> = {
+      ridge: '#ef4444',
+      hip: '#f59e0b',
+      valley: '#3b82f6',
+      eave: '#10b981',
+      rake: '#8b5cf6',
+      penetration: '#ec4899'
+    };
+
+    roofFeatures.forEach((feature) => {
+      const line = new atlas.data.LineString([feature.startPoint, feature.endPoint]);
+      const lineFeature = new atlas.data.Feature(line, {
+        color: featureColors[feature.type],
+        type: feature.type
+      });
+      featureDataSource.add(lineFeature);
+
+      const midPoint: atlas.data.Position = [
+        (feature.startPoint[0] + feature.endPoint[0]) / 2,
+        (feature.startPoint[1] + feature.endPoint[1]) / 2
+      ];
+      const labelFeature = new atlas.data.Feature(new atlas.data.Point(midPoint), {
+        label: feature.label,
+        color: featureColors[feature.type]
+      });
+      featureDataSource.add(labelFeature);
+    });
+
+    if (tempFeatureStart) {
+      const startMarker = new atlas.data.Feature(new atlas.data.Point(tempFeatureStart), {
+        label: 'Start',
+        color: '#ffffff'
+      });
+      featureDataSource.add(startMarker);
+    }
+  }, [roofFeatures, tempFeatureStart, azureMap, featureDataSource]);
+
+  const handleMapClick = (e: any) => {
+    const position = e.position;
+    if (!position) return;
+
+    if (isDrawingMode) {
+      setCurrentSegment(prev => [...prev, position]);
+      return;
+    }
+
+    if (featureMeasurementMode) {
+      if (!tempFeatureStart) {
+        setTempFeatureStart(position);
+      } else {
+        const distance = calculateDistance(tempFeatureStart, position);
+        const distanceFeet = Math.round(distance * 3.28084);
+
+        const featureColors: Record<string, string> = {
+          ridge: '#ef4444',
+          hip: '#f59e0b',
+          valley: '#3b82f6',
+          eave: '#10b981',
+          rake: '#8b5cf6',
+          penetration: '#ec4899'
+        };
+
+        const featureLabels: Record<string, string> = {
+          ridge: 'Ridge',
+          hip: 'Hip',
+          valley: 'Valley',
+          eave: 'Eave',
+          rake: 'Rake',
+          penetration: 'Pen'
+        };
+
+        setRoofFeatures(prev => [...prev, {
+          type: featureMeasurementMode,
+          length: distanceFeet,
+          startPoint: tempFeatureStart,
+          endPoint: position,
+          label: `${featureLabels[featureMeasurementMode]}: ${distanceFeet}'`
+        }]);
+
+        setTempFeatureStart(null);
+        setFeatureMeasurementMode(null);
+      }
+    }
+  };
+
+  const calculateDistance = (point1: atlas.data.Position, point2: atlas.data.Position): number => {
+    const R = 6371000;
+    const lat1 = point1[1] * Math.PI / 180;
+    const lat2 = point2[1] * Math.PI / 180;
+    const deltaLat = (point2[1] - point1[1]) * Math.PI / 180;
+    const deltaLng = (point2[0] - point1[0]) * Math.PI / 180;
+
+    const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+      Math.cos(lat1) * Math.cos(lat2) *
+      Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const getTotalFeatureLength = (type: string) => {
+    return roofFeatures
+      .filter(f => f.type === type)
+      .reduce((sum, f) => sum + f.length, 0);
+  };
+
+  const undoLastFeature = () => {
+    if (roofFeatures.length > 0) {
+      setRoofFeatures(prev => prev.slice(0, -1));
+    } else if (tempFeatureStart) {
+      setTempFeatureStart(null);
+      setFeatureMeasurementMode(null);
+    }
+  };
 
   const getCenterOfPolygon = (positions: atlas.data.Position[]): atlas.data.Position => {
     let sumLng = 0;
@@ -334,11 +483,11 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       imagerySource,
       totalAreaSqft: totalArea,
       segments,
-      ridgeLength: 0,
-      hipLength: 0,
-      valleyLength: 0,
-      rakeLength: 0,
-      eaveLength: 0,
+      ridgeLength: getTotalFeatureLength('ridge'),
+      hipLength: getTotalFeatureLength('hip'),
+      valleyLength: getTotalFeatureLength('valley'),
+      rakeLength: getTotalFeatureLength('rake'),
+      eaveLength: getTotalFeatureLength('eave'),
       perimeter: 0,
       wasteFactor: 10,
       measurementDate: new Date().toISOString(),
@@ -353,6 +502,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
     setViewMode('list');
     setSegments([]);
+    setRoofFeatures([]);
     setAddress('');
     if (azureMap) {
       azureMap.dispose();
@@ -428,15 +578,62 @@ const Measurements: React.FC<MeasurementsProps> = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            {!isDrawingMode ? (
-              <button
-                onClick={() => setIsDrawingMode(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-              >
-                <Square size={20} />
-                Draw Segment
-              </button>
-            ) : (
+            {!isDrawingMode && !featureMeasurementMode ? (
+              <>
+                <button
+                  onClick={() => setIsDrawingMode(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                >
+                  <Square size={20} />
+                  Draw Segment
+                </button>
+
+                <div className="flex gap-1 border-l border-slate-200 pl-2">
+                  <button
+                    onClick={() => setFeatureMeasurementMode('ridge')}
+                    className="px-3 py-2 bg-red-500 text-white text-xs rounded hover:bg-red-600 font-semibold"
+                    title="Measure Ridge"
+                  >
+                    Ridge
+                  </button>
+                  <button
+                    onClick={() => setFeatureMeasurementMode('hip')}
+                    className="px-3 py-2 bg-amber-500 text-white text-xs rounded hover:bg-amber-600 font-semibold"
+                    title="Measure Hip"
+                  >
+                    Hip
+                  </button>
+                  <button
+                    onClick={() => setFeatureMeasurementMode('valley')}
+                    className="px-3 py-2 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 font-semibold"
+                    title="Measure Valley"
+                  >
+                    Valley
+                  </button>
+                  <button
+                    onClick={() => setFeatureMeasurementMode('eave')}
+                    className="px-3 py-2 bg-emerald-500 text-white text-xs rounded hover:bg-emerald-600 font-semibold"
+                    title="Measure Eave"
+                  >
+                    Eave
+                  </button>
+                  <button
+                    onClick={() => setFeatureMeasurementMode('rake')}
+                    className="px-3 py-2 bg-purple-500 text-white text-xs rounded hover:bg-purple-600 font-semibold"
+                    title="Measure Rake"
+                  >
+                    Rake
+                  </button>
+                  <button
+                    onClick={() => setFeatureMeasurementMode('penetration')}
+                    className="px-3 py-2 bg-pink-500 text-white text-xs rounded hover:bg-pink-600 font-semibold"
+                    title="Mark Penetration"
+                  >
+                    Pen
+                  </button>
+                </div>
+              </>
+            ) : isDrawingMode ? (
               <div className="flex gap-2">
                 <button
                   onClick={undoLastPoint}
@@ -458,6 +655,28 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   onClick={() => {
                     setCurrentSegment([]);
                     setIsDrawingMode(false);
+                  }}
+                  className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <span className="px-4 py-2 bg-blue-100 text-blue-900 rounded-lg font-semibold text-sm">
+                  {featureMeasurementMode && `Measuring ${featureMeasurementMode.charAt(0).toUpperCase() + featureMeasurementMode.slice(1)}`}
+                  {tempFeatureStart ? ' - Click end point' : ' - Click start point'}
+                </span>
+                <button
+                  onClick={undoLastFeature}
+                  className="px-3 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700"
+                >
+                  Undo
+                </button>
+                <button
+                  onClick={() => {
+                    setFeatureMeasurementMode(null);
+                    setTempFeatureStart(null);
                   }}
                   className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
                 >
@@ -493,6 +712,24 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   <p>• Need at least 3 points to finish</p>
                   <p>• Use Undo to remove last point</p>
                   <p>• Click Finish when done</p>
+                </div>
+              </div>
+            )}
+
+            {featureMeasurementMode && (
+              <div className="absolute top-4 left-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
+                <p className="font-semibold mb-1 flex items-center gap-2">
+                  <Ruler size={16} />
+                  Measuring {featureMeasurementMode.charAt(0).toUpperCase() + featureMeasurementMode.slice(1)}
+                </p>
+                <p className="text-sm mb-2">
+                  {tempFeatureStart ? 'Click the end point on the map' : 'Click the start point on the map'}
+                </p>
+                <div className="text-xs space-y-1 bg-indigo-700 bg-opacity-50 p-2 rounded">
+                  <p>• Click once for start point</p>
+                  <p>• Click again for end point</p>
+                  <p>• Distance calculated automatically</p>
+                  <p>• Use Cancel to exit measurement mode</p>
                 </div>
               </div>
             )}
@@ -570,7 +807,75 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               </div>
             )}
 
-            <div className="mt-6 p-4 bg-slate-50 rounded-lg">
+            {roofFeatures.length > 0 && (
+              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <h4 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                  <Ruler size={16} />
+                  Roof Features
+                </h4>
+                <div className="space-y-2 text-xs">
+                  {getTotalFeatureLength('ridge') > 0 && (
+                    <div className="flex justify-between items-center p-2 bg-red-50 rounded border border-red-200">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                        <span className="font-semibold text-slate-700">Ridge</span>
+                      </div>
+                      <span className="font-bold text-slate-900">{getTotalFeatureLength('ridge')} ft</span>
+                    </div>
+                  )}
+                  {getTotalFeatureLength('hip') > 0 && (
+                    <div className="flex justify-between items-center p-2 bg-amber-50 rounded border border-amber-200">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                        <span className="font-semibold text-slate-700">Hip</span>
+                      </div>
+                      <span className="font-bold text-slate-900">{getTotalFeatureLength('hip')} ft</span>
+                    </div>
+                  )}
+                  {getTotalFeatureLength('valley') > 0 && (
+                    <div className="flex justify-between items-center p-2 bg-blue-50 rounded border border-blue-200">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                        <span className="font-semibold text-slate-700">Valley</span>
+                      </div>
+                      <span className="font-bold text-slate-900">{getTotalFeatureLength('valley')} ft</span>
+                    </div>
+                  )}
+                  {getTotalFeatureLength('eave') > 0 && (
+                    <div className="flex justify-between items-center p-2 bg-emerald-50 rounded border border-emerald-200">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+                        <span className="font-semibold text-slate-700">Eave</span>
+                      </div>
+                      <span className="font-bold text-slate-900">{getTotalFeatureLength('eave')} ft</span>
+                    </div>
+                  )}
+                  {getTotalFeatureLength('rake') > 0 && (
+                    <div className="flex justify-between items-center p-2 bg-purple-50 rounded border border-purple-200">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                        <span className="font-semibold text-slate-700">Rake</span>
+                      </div>
+                      <span className="font-bold text-slate-900">{getTotalFeatureLength('rake')} ft</span>
+                    </div>
+                  )}
+                  {roofFeatures.filter(f => f.type === 'penetration').length > 0 && (
+                    <div className="flex justify-between items-center p-2 bg-pink-50 rounded border border-pink-200">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-pink-500"></div>
+                        <span className="font-semibold text-slate-700">Penetrations</span>
+                      </div>
+                      <span className="font-bold text-slate-900">{roofFeatures.filter(f => f.type === 'penetration').length}</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-slate-500 mt-2 italic text-center">
+                    {roofFeatures.length} feature{roofFeatures.length !== 1 ? 's' : ''} marked
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 p-4 bg-slate-50 rounded-lg">
               <h4 className="font-semibold text-slate-900 mb-2">Summary</h4>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
@@ -581,6 +886,12 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   <span className="text-slate-600">Segments:</span>
                   <span className="font-semibold">{segments.length}</span>
                 </div>
+                {roofFeatures.length > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Roof Features:</span>
+                    <span className="font-semibold">{roofFeatures.length}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-slate-600">Waste Factor:</span>
                   <span className="font-semibold">10%</span>
