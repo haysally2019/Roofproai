@@ -1,12 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Ruler, Plus, Search, Save, Trash2, MapPin, Square, Satellite, Download, Eye, X, Edit, Check, Layers } from 'lucide-react';
+import { Ruler, Plus, Search, Save, Trash2, MapPin, Square, Download, X, Edit, Check, Layers, AlertCircle } from 'lucide-react';
 import { RoofMeasurement, MeasurementSegment } from '../types';
 import { useStore } from '../lib/store';
 
 interface MeasurementsProps {}
 
+declare global {
+  interface Window {
+    Microsoft: any;
+  }
+}
+
 const Measurements: React.FC<MeasurementsProps> = () => {
-  const { leads, measurements, addMeasurement, updateMeasurement, deleteMeasurement } = useStore();
+  const { measurements, addMeasurement, updateMeasurement, deleteMeasurement } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewMeasurement, setShowNewMeasurement] = useState(false);
   const [address, setAddress] = useState('');
@@ -17,54 +23,164 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [currentSegment, setCurrentSegment] = useState<{ lat: number; lng: number }[]>([]);
   const [segments, setSegments] = useState<MeasurementSegment[]>([]);
-  const [selectedSegment, setSelectedSegment] = useState<MeasurementSegment | null>(null);
   const [mapCenter, setMapCenter] = useState({ lat: 32.7767, lng: -96.7970 });
-  const [zoom, setZoom] = useState(20);
+  const [bingMap, setBingMap] = useState<any>(null);
+  const [bingMapLoaded, setBingMapLoaded] = useState(false);
+  const [drawingLayer, setDrawingLayer] = useState<any>(null);
+  const [isGeocoding, setIsGeocoding] = useState(false);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const bingApiKey = import.meta.env.VITE_BING_MAPS_API_KEY;
 
-  const handleAddressSearch = () => {
+  useEffect(() => {
+    if (!bingApiKey || bingApiKey === 'YOUR_BING_MAPS_KEY_HERE') {
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://www.bing.com/api/maps/mapcontrol?key=${bingApiKey}`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      setBingMapLoaded(true);
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+  }, [bingApiKey]);
+
+  useEffect(() => {
+    if (!bingMapLoaded || !mapRef.current || !window.Microsoft || viewMode !== 'measure') return;
+
+    if (bingMap) return;
+
+    const map = new window.Microsoft.Maps.Map(mapRef.current, {
+      center: new window.Microsoft.Maps.Location(mapCenter.lat, mapCenter.lng),
+      zoom: 20,
+      mapTypeId: window.Microsoft.Maps.MapTypeId.aerial,
+      showDashboard: false,
+      showZoomButtons: true,
+      showMapTypeSelector: false,
+      showScalebar: true,
+      disableStreetside: true,
+      enableClickableLogo: false,
+      navigationBarMode: window.Microsoft.Maps.NavigationBarMode.minified
+    });
+
+    setBingMap(map);
+
+    const layer = new window.Microsoft.Maps.Layer();
+    map.layers.insert(layer);
+    setDrawingLayer(layer);
+
+    window.Microsoft.Maps.Events.addHandler(map, 'click', (e: any) => {
+      if (!isDrawingMode) return;
+
+      const point = new window.Microsoft.Maps.Point(e.getX(), e.getY());
+      const loc = e.target.tryPixelToLocation(point);
+
+      if (loc) {
+        setCurrentSegment(prev => [...prev, { lat: loc.latitude, lng: loc.longitude }]);
+      }
+    });
+
+  }, [bingMapLoaded, mapRef.current, viewMode]);
+
+  useEffect(() => {
+    if (!bingMap || !drawingLayer || !window.Microsoft) return;
+
+    drawingLayer.clear();
+
+    segments.forEach((segment) => {
+      if (segment.geometry.length < 3) return;
+
+      const locations = segment.geometry.map(
+        point => new window.Microsoft.Maps.Location(point.lat, point.lng)
+      );
+
+      const polygon = new window.Microsoft.Maps.Polygon(locations, {
+        fillColor: 'rgba(59, 130, 246, 0.3)',
+        strokeColor: 'rgba(59, 130, 246, 0.8)',
+        strokeThickness: 2
+      });
+
+      drawingLayer.add(polygon);
+
+      const centerLat = segment.geometry.reduce((sum, p) => sum + p.lat, 0) / segment.geometry.length;
+      const centerLng = segment.geometry.reduce((sum, p) => sum + p.lng, 0) / segment.geometry.length;
+
+      const pushpin = new window.Microsoft.Maps.Pushpin(
+        new window.Microsoft.Maps.Location(centerLat, centerLng),
+        {
+          text: `${segment.areaSqft.toFixed(0)} ft²`,
+          color: 'rgba(59, 130, 246, 0.9)',
+          title: segment.name
+        }
+      );
+
+      drawingLayer.add(pushpin);
+    });
+
+    if (currentSegment.length > 0) {
+      const locations = currentSegment.map(
+        point => new window.Microsoft.Maps.Location(point.lat, point.lng)
+      );
+
+      locations.forEach(loc => {
+        const pushpin = new window.Microsoft.Maps.Pushpin(loc, {
+          color: 'rgba(16, 185, 129, 1)'
+        });
+        drawingLayer.add(pushpin);
+      });
+
+      if (locations.length > 1) {
+        const polyline = new window.Microsoft.Maps.Polyline(locations, {
+          strokeColor: 'rgba(16, 185, 129, 0.8)',
+          strokeThickness: 2
+        });
+        drawingLayer.add(polyline);
+      }
+    }
+
+  }, [segments, currentSegment, bingMap, drawingLayer]);
+
+  const handleAddressSearch = async () => {
     if (!address.trim()) return;
 
-    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.length > 0) {
-          setMapCenter({
-            lat: parseFloat(data[0].lat),
-            lng: parseFloat(data[0].lon)
-          });
-          setViewMode('measure');
-          loadSatelliteImagery();
-        } else {
-          alert('Address not found. Please try a different address.');
-        }
-      })
-      .catch(err => {
-        console.error('Geocoding error:', err);
-        alert('Error finding address. Please try again.');
-      });
-  };
+    setIsGeocoding(true);
 
-  const loadSatelliteImagery = () => {
-    setImageLoaded(true);
-  };
+    try {
+      const response = await fetch(
+        `https://dev.virtualearth.net/REST/v1/Locations?query=${encodeURIComponent(address)}&key=${bingApiKey}`
+      );
+      const data = await response.json();
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawingMode) return;
+      if (data.resourceSets?.[0]?.resources?.length > 0) {
+        const location = data.resourceSets[0].resources[0].point.coordinates;
+        setMapCenter({ lat: location[0], lng: location[1] });
+        setViewMode('measure');
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const lat = mapCenter.lat + ((canvas.height / 2 - y) / canvas.height) * 0.001;
-    const lng = mapCenter.lng + ((x - canvas.width / 2) / canvas.width) * 0.001;
-
-    setCurrentSegment([...currentSegment, { lat, lng }]);
+        setTimeout(() => {
+          if (bingMap) {
+            bingMap.setView({
+              center: new window.Microsoft.Maps.Location(location[0], location[1]),
+              zoom: 20
+            });
+          }
+        }, 100);
+      } else {
+        alert('Address not found. Please try a different address.');
+      }
+    } catch (err) {
+      console.error('Geocoding error:', err);
+      alert('Error finding address. Please try again.');
+    } finally {
+      setIsGeocoding(false);
+    }
   };
 
   const finishSegment = () => {
@@ -94,15 +210,23 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const calculatePolygonArea = (points: { lat: number; lng: number }[]): number => {
     if (points.length < 3) return 0;
 
+    const R = 6371000;
     let area = 0;
-    for (let i = 0; i < points.length; i++) {
-      const j = (i + 1) % points.length;
-      area += points[i].lng * points[j].lat;
-      area -= points[j].lng * points[i].lat;
-    }
-    area = Math.abs(area / 2);
 
-    const sqft = area * 364000 * 364000;
+    for (let i = 0; i < points.length; i++) {
+      const p1 = points[i];
+      const p2 = points[(i + 1) % points.length];
+
+      const lat1 = p1.lat * Math.PI / 180;
+      const lat2 = p2.lat * Math.PI / 180;
+      const lng1 = p1.lng * Math.PI / 180;
+      const lng2 = p2.lng * Math.PI / 180;
+
+      area += (lng2 - lng1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+    }
+
+    area = Math.abs(area * R * R / 2);
+    const sqft = area * 10.7639;
     return Math.round(sqft * 100) / 100;
   };
 
@@ -142,96 +266,48 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     setViewMode('list');
     setSegments([]);
     setAddress('');
+    setBingMap(null);
   };
 
   const deleteSegment = (segmentId: string) => {
     setSegments(segments.filter(s => s.id !== segmentId));
   };
 
-  useEffect(() => {
-    if (!canvasRef.current || !imageLoaded) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = '#334155';
-    ctx.font = '14px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${imagerySource} Satellite Imagery`, canvas.width / 2, canvas.height / 2 - 20);
-    ctx.fillText(`${address}`, canvas.width / 2, canvas.height / 2 + 10);
-    ctx.fillText('Draw segments by clicking points on the roof', canvas.width / 2, canvas.height / 2 + 40);
-
-    segments.forEach((segment, idx) => {
-      if (segment.geometry.length === 0) return;
-
-      ctx.beginPath();
-      ctx.fillStyle = `rgba(59, 130, 246, 0.3)`;
-      ctx.strokeStyle = `rgba(59, 130, 246, 0.8)`;
-      ctx.lineWidth = 2;
-
-      segment.geometry.forEach((point, i) => {
-        const x = canvas.width / 2 + ((point.lng - mapCenter.lng) / 0.001) * canvas.width;
-        const y = canvas.height / 2 - ((point.lat - mapCenter.lat) / 0.001) * canvas.height;
-
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      });
-
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-
-      const centerX = segment.geometry.reduce((sum, p) => sum + p.lng, 0) / segment.geometry.length;
-      const centerY = segment.geometry.reduce((sum, p) => sum + p.lat, 0) / segment.geometry.length;
-      const labelX = canvas.width / 2 + ((centerX - mapCenter.lng) / 0.001) * canvas.width;
-      const labelY = canvas.height / 2 - ((centerY - mapCenter.lat) / 0.001) * canvas.height;
-
-      ctx.fillStyle = 'white';
-      ctx.font = 'bold 12px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${segment.name}`, labelX, labelY - 5);
-      ctx.font = '11px Arial';
-      ctx.fillText(`${segment.areaSqft.toFixed(0)} sq ft`, labelX, labelY + 10);
-    });
-
-    if (currentSegment.length > 0) {
-      ctx.beginPath();
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
-      ctx.lineWidth = 2;
-
-      currentSegment.forEach((point, i) => {
-        const x = canvas.width / 2 + ((point.lng - mapCenter.lng) / 0.001) * canvas.width;
-        const y = canvas.height / 2 - ((point.lat - mapCenter.lat) / 0.001) * canvas.height;
-
-        ctx.arc(x, y, 4, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(16, 185, 129, 1)';
-        ctx.fill();
-
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      });
-
-      ctx.stroke();
-    }
-  }, [segments, currentSegment, imageLoaded, address, imagerySource, mapCenter]);
-
   const filteredMeasurements = measurements.filter(m =>
     m.address.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const hasValidApiKey = bingApiKey && bingApiKey !== 'YOUR_BING_MAPS_KEY_HERE';
+
   if (viewMode === 'measure') {
+    if (!hasValidApiKey) {
+      return (
+        <div className="h-full flex items-center justify-center bg-slate-50">
+          <div className="text-center max-w-md p-8 bg-white rounded-xl shadow-lg border border-slate-200">
+            <AlertCircle className="mx-auto text-yellow-500 mb-4" size={48} />
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Bing Maps API Key Required</h2>
+            <p className="text-slate-600 mb-4">
+              To use satellite imagery measurements, you need to add a Bing Maps API key to your environment variables.
+            </p>
+            <div className="text-left bg-slate-50 p-4 rounded-lg text-sm space-y-2">
+              <p className="font-semibold text-slate-900">Setup Instructions:</p>
+              <ol className="list-decimal list-inside space-y-1 text-slate-700">
+                <li>Get a key from Bing Maps Dev Center</li>
+                <li>Add to .env: VITE_BING_MAPS_API_KEY</li>
+                <li>Restart the dev server</li>
+              </ol>
+            </div>
+            <button
+              onClick={() => setViewMode('list')}
+              className="mt-6 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Back to List
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-white">
@@ -242,6 +318,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                 setSegments([]);
                 setCurrentSegment([]);
                 setIsDrawingMode(false);
+                setBingMap(null);
               }}
               className="text-blue-600 hover:text-blue-700"
             >
@@ -256,17 +333,6 @@ const Measurements: React.FC<MeasurementsProps> = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <select
-              value={imagerySource}
-              onChange={(e) => setImagerySource(e.target.value as any)}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
-            >
-              <option value="Bing">Bing Maps</option>
-              <option value="Vexcel">Vexcel</option>
-              <option value="Google">Google</option>
-              <option value="Nearmap">Nearmap</option>
-            </select>
-
             {!isDrawingMode ? (
               <button
                 onClick={() => setIsDrawingMode(true)}
@@ -280,9 +346,10 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                 <button
                   onClick={finishSegment}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                  disabled={currentSegment.length < 3}
                 >
                   <Check size={20} />
-                  Finish Segment
+                  Finish ({currentSegment.length} points)
                 </button>
                 <button
                   onClick={() => {
@@ -308,17 +375,18 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         </div>
 
         <div className="flex-1 flex">
-          <div className="flex-1 p-4 bg-slate-100">
-            <div className="bg-white rounded-lg shadow-lg overflow-hidden h-full">
-              <canvas
-                ref={canvasRef}
-                width={1200}
-                height={800}
-                onClick={handleCanvasClick}
-                className="w-full h-full cursor-crosshair"
-                style={{ maxHeight: 'calc(100vh - 200px)' }}
-              />
-            </div>
+          <div className="flex-1 relative">
+            <div
+              ref={mapRef}
+              className="w-full h-full"
+              style={{ minHeight: '600px' }}
+            />
+            {isDrawingMode && (
+              <div className="absolute top-4 left-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg">
+                <p className="font-semibold">Drawing Mode Active</p>
+                <p className="text-sm">Click on the map to add points to your roof segment</p>
+              </div>
+            )}
           </div>
 
           <div className="w-80 bg-white border-l border-slate-200 p-4 overflow-y-auto">
@@ -329,11 +397,11 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
             {isDrawingMode && (
               <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-900 font-semibold mb-1">Drawing Mode Active</p>
+                <p className="text-sm text-blue-900 font-semibold mb-1">Drawing Mode</p>
                 <p className="text-xs text-blue-700">
-                  Click on the map to add points. Need at least 3 points.
+                  Click on the satellite image to add points.
                   <br />
-                  Current points: {currentSegment.length}
+                  Current points: {currentSegment.length} (need 3 minimum)
                 </p>
               </div>
             )}
@@ -410,7 +478,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
             <Ruler className="text-blue-600" />
             Roof Measurements
           </h1>
-          <p className="text-slate-500 mt-1">DIY satellite measurements with Vexcel and Bing imagery</p>
+          <p className="text-slate-500 mt-1">DIY satellite measurements with Bing imagery</p>
         </div>
         <button
           onClick={() => setShowNewMeasurement(true)}
@@ -420,6 +488,18 @@ const Measurements: React.FC<MeasurementsProps> = () => {
           New Measurement
         </button>
       </div>
+
+      {!hasValidApiKey && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3">
+          <AlertCircle className="text-yellow-600 shrink-0 mt-0.5" size={20} />
+          <div>
+            <p className="font-semibold text-yellow-900">Bing Maps API Key Not Configured</p>
+            <p className="text-sm text-yellow-700 mt-1">
+              Add your Bing Maps API key to the .env file as VITE_BING_MAPS_API_KEY to enable satellite imagery measurements.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -468,6 +548,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
             <button
               onClick={() => setShowNewMeasurement(true)}
               className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 mx-auto"
+              disabled={!hasValidApiKey}
             >
               <Plus size={20} />
               Create First Measurement
@@ -528,6 +609,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                           }}
                           className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
                           title="Edit"
+                          disabled={!hasValidApiKey}
                         >
                           <Edit size={18} className="text-slate-600" />
                         </button>
@@ -578,30 +660,15 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="123 Main St, Dallas, TX 75201"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isGeocoding}
                 />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Imagery Source
-                </label>
-                <select
-                  value={imagerySource}
-                  onChange={(e) => setImagerySource(e.target.value as any)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="Bing">Bing Maps</option>
-                  <option value="Vexcel">Vexcel</option>
-                  <option value="Google">Google</option>
-                  <option value="Nearmap">Nearmap</option>
-                </select>
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-sm text-blue-900 font-semibold mb-1">How it works:</p>
                 <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
                   <li>Enter the property address</li>
-                  <li>Select your preferred satellite imagery provider</li>
+                  <li>Click to view Bing satellite imagery</li>
                   <li>Draw segments around each roof section</li>
                   <li>Areas are automatically calculated</li>
                   <li>Save and export your measurements</li>
@@ -613,6 +680,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               <button
                 onClick={() => setShowNewMeasurement(false)}
                 className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                disabled={isGeocoding}
               >
                 Cancel
               </button>
@@ -621,11 +689,17 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   setShowNewMeasurement(false);
                   handleAddressSearch();
                 }}
-                disabled={!address.trim()}
+                disabled={!address.trim() || !hasValidApiKey || isGeocoding}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <MapPin size={20} />
-                Load Imagery
+                {isGeocoding ? (
+                  <>Loading...</>
+                ) : (
+                  <>
+                    <MapPin size={20} />
+                    Load Imagery
+                  </>
+                )}
               </button>
             </div>
           </div>
