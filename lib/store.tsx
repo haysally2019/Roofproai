@@ -3,7 +3,7 @@ import {
   User, Company, Lead, CalendarEvent, Task, Invoice,
   Notification, UserRole, SubscriptionTier, LeadStatus, Tab, Toast,
   CallLog, AutomationRule,
-  Supplier, MaterialOrder, SoftwareLead, PriceBookItem
+  Supplier, MaterialOrder, SoftwareLead, PriceBookItem, Proposal
 } from '../types';
 import { supabase } from './supabase';
 
@@ -23,8 +23,9 @@ interface StoreContextType {
   automations: AutomationRule[];
   suppliers: Supplier[];
   orders: MaterialOrder[];
-  priceBook: PriceBookItem[]; // <--- NEW: Price Book State
-  
+  priceBook: PriceBookItem[];
+  proposals: Proposal[];
+
   login: (email: string, password: string) => Promise<boolean>;
   register: (companyName: string, name: string, email: string, password: string, referralCode?: string | null) => Promise<boolean>;
   logout: () => void;
@@ -54,6 +55,9 @@ interface StoreContextType {
   addSoftwareLead: (lead: SoftwareLead) => void;
   updateSoftwareLead: (lead: SoftwareLead) => void;
   deleteSoftwareLead: (id: string) => void;
+  addProposal: (proposal: Proposal) => Promise<void>;
+  updateProposal: (proposal: Proposal) => Promise<void>;
+  deleteProposal: (id: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -82,7 +86,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [automations, setAutomations] = useState<AutomationRule[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [orders, setOrders] = useState<MaterialOrder[]>([]);
-  const [priceBook, setPriceBook] = useState<PriceBookItem[]>([]); // <--- NEW STATE
+  const [priceBook, setPriceBook] = useState<PriceBookItem[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
   
   // UI State
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -232,8 +237,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const loadCompanyData = async (companyId: string) => {
     try {
       const [
-        usersRes, leadsRes, tasksRes, eventsRes, invoicesRes, callLogsRes, 
-        automationsRes, ordersRes, priceBookRes // <--- Added priceBookRes
+        usersRes, leadsRes, tasksRes, eventsRes, invoicesRes, callLogsRes,
+        automationsRes, ordersRes, priceBookRes, proposalsRes
       ] = await Promise.all([
         supabase.from('users').select('*').eq('company_id', companyId),
         supabase.from('leads').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
@@ -243,7 +248,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         supabase.from('call_logs').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
         supabase.from('automations').select('*').eq('company_id', companyId),
         supabase.from('material_orders').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
-        supabase.from('price_book_items').select('*').eq('company_id', companyId).order('name', { ascending: true }) // <--- FETCH
+        supabase.from('price_book_items').select('*').eq('company_id', companyId).order('name', { ascending: true }),
+        supabase.from('proposals').select('*, proposal_options(*)').eq('company_id', companyId).order('created_at', { ascending: false })
       ]);
 
       if (usersRes.data) {
@@ -372,7 +378,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         })));
       }
 
-      // --- MAP PRICE BOOK ---
       if (priceBookRes.data) {
           setPriceBook(priceBookRes.data.map((item: any) => ({
               id: item.id,
@@ -383,6 +388,61 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               cost: item.cost,
               description: item.description
           })));
+      }
+
+      if (proposalsRes.data) {
+        const proposalsWithLeadData = await Promise.all(
+          proposalsRes.data.map(async (prop: any) => {
+            const { data: leadData } = await supabase
+              .from('leads')
+              .select('name, email, phone, address')
+              .eq('id', prop.lead_id)
+              .maybeSingle();
+
+            return {
+              id: prop.id,
+              leadId: prop.lead_id,
+              leadName: leadData?.name || '',
+              leadEmail: leadData?.email || '',
+              leadPhone: leadData?.phone || '',
+              leadAddress: leadData?.address || '',
+              number: prop.number,
+              title: prop.title,
+              status: prop.status,
+              createdDate: prop.created_date,
+              sentDate: prop.sent_date,
+              viewedDate: prop.viewed_date,
+              respondedDate: prop.responded_date,
+              validUntil: prop.valid_until,
+              projectType: prop.project_type,
+              projectDescription: prop.project_description,
+              scopeOfWork: prop.scope_of_work || [],
+              options: (prop.proposal_options || []).map((opt: any) => ({
+                id: opt.id,
+                tier: opt.tier,
+                name: opt.name,
+                description: opt.description,
+                materials: opt.materials || [],
+                features: opt.features || [],
+                warranty: opt.warranty,
+                timeline: opt.timeline,
+                price: opt.price,
+                savings: opt.savings,
+                isRecommended: opt.is_recommended
+              })),
+              selectedOptionId: prop.selected_option_id,
+              terms: prop.terms || [],
+              timeline: prop.timeline,
+              warranty: prop.warranty,
+              companyId: prop.company_id,
+              contractId: prop.contract_id,
+              viewCount: prop.view_count,
+              lastViewed: prop.last_viewed,
+              clientNotes: prop.client_notes
+            };
+          })
+        );
+        setProposals(proposalsWithLeadData);
       }
 
     } catch (error) {
@@ -456,7 +516,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const logout = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
-    setLeads([]); setTasks([]); setEvents([]); setInvoices([]); setCallLogs([]); setAutomations([]); setOrders([]); setPriceBook([]);
+    setLeads([]); setTasks([]); setEvents([]); setInvoices([]); setCallLogs([]); setAutomations([]); setOrders([]); setPriceBook([]); setProposals([]);
     setCompanies([]); setUsers([]); setSoftwareLeads([]);
   };
 
@@ -560,6 +620,139 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const addProposal = async (proposal: Proposal) => {
+    if (!currentUser?.companyId) return;
+
+    try {
+      const { data: proposalData, error: proposalError } = await supabase
+        .from('proposals')
+        .insert({
+          id: proposal.id,
+          company_id: currentUser.companyId,
+          lead_id: proposal.leadId,
+          number: proposal.number,
+          title: proposal.title,
+          status: proposal.status,
+          created_date: proposal.createdDate,
+          sent_date: proposal.sentDate,
+          viewed_date: proposal.viewedDate,
+          responded_date: proposal.respondedDate,
+          valid_until: proposal.validUntil,
+          project_type: proposal.projectType,
+          project_description: proposal.projectDescription,
+          scope_of_work: proposal.scopeOfWork,
+          terms: proposal.terms,
+          timeline: proposal.timeline,
+          warranty: proposal.warranty,
+          selected_option_id: proposal.selectedOptionId,
+          view_count: proposal.viewCount || 0,
+          last_viewed: proposal.lastViewed,
+          client_notes: proposal.clientNotes,
+          contract_id: proposal.contractId
+        })
+        .select()
+        .single();
+
+      if (proposalError) throw proposalError;
+
+      const optionsPromises = proposal.options.map((option, index) =>
+        supabase.from('proposal_options').insert({
+          id: option.id,
+          proposal_id: proposal.id,
+          tier: option.tier,
+          name: option.name,
+          description: option.description,
+          materials: option.materials,
+          features: option.features,
+          warranty: option.warranty,
+          timeline: option.timeline,
+          price: option.price,
+          savings: option.savings,
+          is_recommended: option.isRecommended || false,
+          display_order: index
+        })
+      );
+
+      await Promise.all(optionsPromises);
+
+      setProposals(prev => [proposal, ...prev]);
+      addToast('Proposal created successfully', 'success');
+    } catch (error: any) {
+      console.error('Error creating proposal:', error);
+      addToast(`Failed to create proposal: ${error.message}`, 'error');
+    }
+  };
+
+  const updateProposal = async (proposal: Proposal) => {
+    try {
+      const { error: proposalError } = await supabase
+        .from('proposals')
+        .update({
+          title: proposal.title,
+          status: proposal.status,
+          sent_date: proposal.sentDate,
+          viewed_date: proposal.viewedDate,
+          responded_date: proposal.respondedDate,
+          valid_until: proposal.validUntil,
+          project_type: proposal.projectType,
+          project_description: proposal.projectDescription,
+          scope_of_work: proposal.scopeOfWork,
+          terms: proposal.terms,
+          timeline: proposal.timeline,
+          warranty: proposal.warranty,
+          selected_option_id: proposal.selectedOptionId,
+          view_count: proposal.viewCount,
+          last_viewed: proposal.lastViewed,
+          client_notes: proposal.clientNotes,
+          contract_id: proposal.contractId
+        })
+        .eq('id', proposal.id);
+
+      if (proposalError) throw proposalError;
+
+      await supabase.from('proposal_options').delete().eq('proposal_id', proposal.id);
+
+      const optionsPromises = proposal.options.map((option, index) =>
+        supabase.from('proposal_options').insert({
+          id: option.id,
+          proposal_id: proposal.id,
+          tier: option.tier,
+          name: option.name,
+          description: option.description,
+          materials: option.materials,
+          features: option.features,
+          warranty: option.warranty,
+          timeline: option.timeline,
+          price: option.price,
+          savings: option.savings,
+          is_recommended: option.isRecommended || false,
+          display_order: index
+        })
+      );
+
+      await Promise.all(optionsPromises);
+
+      setProposals(prev => prev.map(p => p.id === proposal.id ? proposal : p));
+      addToast('Proposal updated successfully', 'success');
+    } catch (error: any) {
+      console.error('Error updating proposal:', error);
+      addToast(`Failed to update proposal: ${error.message}`, 'error');
+    }
+  };
+
+  const deleteProposal = async (id: string) => {
+    try {
+      const { error } = await supabase.from('proposals').delete().eq('id', id);
+      if (error) throw error;
+
+      setProposals(prev => prev.filter(p => p.id !== id));
+      addToast('Proposal deleted successfully', 'success');
+    } catch (error: any) {
+      console.error('Error deleting proposal:', error);
+      addToast(`Failed to delete proposal: ${error.message}`, 'error');
+    }
+  };
+
   const safeValue: StoreContextType = {
       currentUser, activeTab, 
       companies: companies || [], 
@@ -573,15 +766,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       notifications: notifications || [], 
       callLogs: callLogs || [], 
       automations: automations || [], 
-      suppliers: suppliers || [], 
+      suppliers: suppliers || [],
       orders: orders || [],
-      priceBook, // <--- EXPORTING NEW STATE
+      priceBook,
+      proposals: proposals || [],
       login, register, logout, setTab, addToast, removeToast, 
       updateLead, addLead, createCompany, updateCompany, deleteCompany, updateUser, 
-      addAutomation, toggleAutomation, deleteAutomation, addOrder, 
-      addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus, 
-      addUser, removeUser, 
-      addSoftwareLead, updateSoftwareLead, deleteSoftwareLead
+      addAutomation, toggleAutomation, deleteAutomation, addOrder,
+      addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
+      addUser, removeUser,
+      addSoftwareLead, updateSoftwareLead, deleteSoftwareLead,
+      addProposal, updateProposal, deleteProposal
   };
 
   return <StoreContext.Provider value={safeValue}>{children}</StoreContext.Provider>;

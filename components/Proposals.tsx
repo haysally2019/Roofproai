@@ -1,25 +1,57 @@
 import React, { useState } from 'react';
-import { ScrollText, Plus, Search, Download, Send, CheckCircle, X, Eye, TrendingUp, Star, Shield, Clock, DollarSign, Award } from 'lucide-react';
+import { ScrollText, Plus, Search, Download, Send, CheckCircle, X, Eye, Edit, Trash2, Star, Shield, Clock } from 'lucide-react';
 import { Proposal, ProposalOption, Lead } from '../types';
+import { useStore } from '../lib/store';
+import ProposalBuilder from './ProposalBuilder';
+import { generateProposalPDF } from '../lib/proposalPdf';
 
-interface ProposalsProps {
-  proposals?: Proposal[];
-  leads?: Lead[];
-  onCreateProposal?: (proposal: Proposal) => void;
-  onUpdateProposal?: (proposal: Proposal) => void;
-}
+interface ProposalsProps {}
 
-const Proposals: React.FC<ProposalsProps> = ({
-  proposals = [],
-  leads = [],
-  onCreateProposal,
-  onUpdateProposal
-}) => {
+const Proposals: React.FC<ProposalsProps> = () => {
+  const { proposals, leads, companies, addProposal, updateProposal, deleteProposal } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [isCreating, setIsCreating] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [editingProposal, setEditingProposal] = useState<Proposal | null>(null);
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
+  const [showLeadSelector, setShowLeadSelector] = useState(false);
+
+  const handleCreateProposal = (proposal: Proposal) => {
+    addProposal(proposal);
+    setIsCreating(false);
+    setSelectedLead(null);
+  };
+
+  const handleUpdateProposal = (proposal: Proposal) => {
+    updateProposal(proposal);
+    setEditingProposal(null);
+    if (selectedProposal && selectedProposal.id === proposal.id) {
+      setSelectedProposal(proposal);
+    }
+  };
+
+  const handleDeleteProposal = (id: string) => {
+    if (confirm('Are you sure you want to delete this proposal?')) {
+      deleteProposal(id);
+    }
+  };
+
+  const handleSendProposal = (proposal: Proposal) => {
+    const updatedProposal = {
+      ...proposal,
+      status: 'Sent' as const,
+      sentDate: new Date().toISOString()
+    };
+    updateProposal(updatedProposal);
+    alert('Proposal sent successfully! (In production, this would send an email to the client)');
+  };
+
+  const handleDownloadPDF = (proposal: Proposal) => {
+    const company = companies.find(c => c.id === proposal.companyId);
+    generateProposalPDF(proposal, company?.name || 'RoofPro AI');
+  };
 
   const mockProposals: Proposal[] = proposals.length > 0 ? proposals : [
     {
@@ -358,11 +390,24 @@ const Proposals: React.FC<ProposalsProps> = ({
             ← Back to Proposals
           </button>
           <div className="flex gap-2">
-            <button className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2">
+            <button
+              onClick={() => setEditingProposal(selectedProposal)}
+              className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
+            >
+              <Edit size={20} />
+              Edit
+            </button>
+            <button
+              onClick={() => selectedProposal && handleDownloadPDF(selectedProposal)}
+              className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
+            >
               <Download size={20} />
               Download PDF
             </button>
-            <button className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2">
+            <button
+              onClick={() => selectedProposal && handleSendProposal(selectedProposal)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            >
               <Send size={20} />
               Send to Client
             </button>
@@ -561,7 +606,7 @@ const Proposals: React.FC<ProposalsProps> = ({
           <p className="text-slate-500 mt-1">Create and send professional proposals with multiple options</p>
         </div>
         <button
-          onClick={() => setIsCreating(true)}
+          onClick={() => setShowLeadSelector(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
         >
           <Plus size={20} />
@@ -679,11 +724,33 @@ const Proposals: React.FC<ProposalsProps> = ({
                       >
                         <Eye size={18} className="text-slate-600" />
                       </button>
-                      <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors" title="Download">
+                      <button
+                        onClick={() => handleDownloadPDF(proposal)}
+                        className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                        title="Download PDF"
+                      >
                         <Download size={18} className="text-slate-600" />
                       </button>
-                      <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors" title="Send">
+                      <button
+                        onClick={() => setEditingProposal(proposal)}
+                        className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                        title="Edit"
+                      >
+                        <Edit size={18} className="text-slate-600" />
+                      </button>
+                      <button
+                        onClick={() => handleSendProposal(proposal)}
+                        className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                        title="Send"
+                      >
                         <Send size={18} className="text-slate-600" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProposal(proposal.id)}
+                        className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 size={18} className="text-red-600" />
                       </button>
                     </div>
                   </td>
@@ -694,32 +761,76 @@ const Proposals: React.FC<ProposalsProps> = ({
         </div>
       </div>
 
-      {isCreating && (
+      {showLeadSelector && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white">
-              <h2 className="text-2xl font-bold text-slate-900">Create New Proposal</h2>
-              <button onClick={() => setIsCreating(false)} className="text-slate-400 hover:text-slate-600">
+              <h2 className="text-2xl font-bold text-slate-900">Select Lead</h2>
+              <button onClick={() => setShowLeadSelector(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={24} />
               </button>
             </div>
-            <div className="p-6 space-y-6">
-              <div className="text-center py-8">
-                <ScrollText size={64} className="mx-auto text-slate-300 mb-4" />
-                <h3 className="text-xl font-semibold text-slate-900 mb-2">Proposal Builder Coming Soon</h3>
-                <p className="text-slate-600">
-                  Create professional proposals with Good, Better, Best pricing tiers
-                </p>
+            <div className="p-6">
+              <p className="text-sm text-slate-600 mb-4">Choose which lead to create a proposal for:</p>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {leads.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">
+                    <p>No leads available. Create a lead first.</p>
+                  </div>
+                ) : (
+                  leads.map((lead) => (
+                    <button
+                      key={lead.id}
+                      onClick={() => {
+                        setSelectedLead(lead);
+                        setShowLeadSelector(false);
+                        setIsCreating(true);
+                      }}
+                      className="w-full p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors text-left"
+                    >
+                      <p className="font-semibold text-slate-900">{lead.name}</p>
+                      <p className="text-sm text-slate-600">{lead.address}</p>
+                      <p className="text-sm text-slate-500">{lead.phone}</p>
+                    </button>
+                  ))
+                )}
               </div>
-              <button
-                onClick={() => setIsCreating(false)}
-                className="w-full px-4 py-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors font-semibold text-slate-700"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
+      )}
+
+      {isCreating && selectedLead && (
+        <ProposalBuilder
+          lead={selectedLead}
+          onSave={handleCreateProposal}
+          onCancel={() => {
+            setIsCreating(false);
+            setSelectedLead(null);
+          }}
+        />
+      )}
+
+      {editingProposal && (
+        <ProposalBuilder
+          lead={leads.find(l => l.id === editingProposal.leadId) || {
+            id: editingProposal.leadId,
+            name: editingProposal.leadName,
+            address: editingProposal.leadAddress,
+            phone: editingProposal.leadPhone,
+            email: editingProposal.leadEmail,
+            status: 'New Lead' as any,
+            projectType: editingProposal.projectType,
+            source: undefined,
+            notes: '',
+            estimatedValue: 0,
+            lastContact: '',
+            companyId: editingProposal.companyId
+          }}
+          existingProposal={editingProposal}
+          onSave={handleUpdateProposal}
+          onCancel={() => setEditingProposal(null)}
+        />
       )}
     </div>
   );
