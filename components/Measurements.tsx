@@ -2,14 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Ruler, Plus, Search, Save, Trash2, MapPin, Square, Download, X, Edit, Check, Layers, AlertCircle } from 'lucide-react';
 import { RoofMeasurement, MeasurementSegment } from '../types';
 import { useStore } from '../lib/store';
+import * as atlas from 'azure-maps-control';
+import 'azure-maps-control/dist/atlas.min.css';
 
 interface MeasurementsProps {}
-
-declare global {
-  interface Window {
-    Microsoft: any;
-  }
-}
 
 const Measurements: React.FC<MeasurementsProps> = () => {
   const { measurements, addMeasurement, updateMeasurement, deleteMeasurement } = useStore();
@@ -19,134 +15,137 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const [selectedMeasurement, setSelectedMeasurement] = useState<RoofMeasurement | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'measure'>('list');
 
-  const [imagerySource, setImagerySource] = useState<'Vexcel' | 'Bing' | 'Google' | 'Nearmap'>('Bing');
+  const [imagerySource] = useState<'Vexcel' | 'Bing' | 'Google' | 'Nearmap'>('Bing');
   const [isDrawingMode, setIsDrawingMode] = useState(false);
-  const [currentSegment, setCurrentSegment] = useState<{ lat: number; lng: number }[]>([]);
+  const [currentSegment, setCurrentSegment] = useState<atlas.data.Position[]>([]);
   const [segments, setSegments] = useState<MeasurementSegment[]>([]);
-  const [mapCenter, setMapCenter] = useState({ lat: 32.7767, lng: -96.7970 });
-  const [bingMap, setBingMap] = useState<any>(null);
-  const [bingMapLoaded, setBingMapLoaded] = useState(false);
-  const [drawingLayer, setDrawingLayer] = useState<any>(null);
+  const [mapCenter, setMapCenter] = useState<atlas.data.Position>([-96.7970, 32.7767]);
+  const [azureMap, setAzureMap] = useState<atlas.Map | null>(null);
+  const [dataSource, setDataSource] = useState<atlas.source.DataSource | null>(null);
   const [isGeocoding, setIsGeocoding] = useState(false);
 
   const mapRef = useRef<HTMLDivElement>(null);
-  const bingApiKey = import.meta.env.VITE_BING_MAPS_API_KEY;
+  const azureApiKey = import.meta.env.VITE_AZURE_MAPS_KEY;
 
   useEffect(() => {
-    if (!bingApiKey || bingApiKey === 'YOUR_BING_MAPS_KEY_HERE') {
+    if (!azureApiKey || azureApiKey === 'YOUR_AZURE_MAPS_KEY_HERE' || !mapRef.current || viewMode !== 'measure') {
       return;
     }
 
-    const script = document.createElement('script');
-    script.src = `https://www.bing.com/api/maps/mapcontrol?key=${bingApiKey}`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      setBingMapLoaded(true);
-    };
-    document.head.appendChild(script);
+    if (azureMap) return;
+
+    const map = new atlas.Map(mapRef.current, {
+      center: mapCenter,
+      zoom: 19,
+      style: 'satellite',
+      language: 'en-US',
+      authOptions: {
+        authType: atlas.AuthenticationType.subscriptionKey,
+        subscriptionKey: azureApiKey
+      }
+    });
+
+    map.events.add('ready', () => {
+      const source = new atlas.source.DataSource();
+      map.sources.add(source);
+      setDataSource(source);
+
+      const polygonLayer = new atlas.layer.PolygonLayer(source, undefined, {
+        fillColor: 'rgba(59, 130, 246, 0.3)',
+        fillOpacity: 0.5
+      });
+      map.layers.add(polygonLayer);
+
+      const lineLayer = new atlas.layer.LineLayer(source, undefined, {
+        strokeColor: 'rgba(59, 130, 246, 0.8)',
+        strokeWidth: 2
+      });
+      map.layers.add(lineLayer);
+
+      const symbolLayer = new atlas.layer.SymbolLayer(source, undefined, {
+        iconOptions: {
+          image: 'marker-blue',
+          allowOverlap: true,
+          ignorePlacement: true
+        },
+        textOptions: {
+          textField: ['get', 'title'],
+          offset: [0, 1.5],
+          color: '#ffffff',
+          haloColor: '#000000',
+          haloWidth: 2
+        }
+      });
+      map.layers.add(symbolLayer);
+
+      map.events.add('click', (e) => {
+        if (!isDrawingMode) return;
+        const position = e.position;
+        if (position) {
+          setCurrentSegment(prev => [...prev, position]);
+        }
+      });
+
+      setAzureMap(map);
+    });
 
     return () => {
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
+      if (map) {
+        map.dispose();
       }
     };
-  }, [bingApiKey]);
+  }, [azureApiKey, viewMode, mapCenter]);
 
   useEffect(() => {
-    if (!bingMapLoaded || !mapRef.current || !window.Microsoft || viewMode !== 'measure') return;
+    if (!azureMap || !dataSource) return;
 
-    if (bingMap) return;
-
-    const map = new window.Microsoft.Maps.Map(mapRef.current, {
-      center: new window.Microsoft.Maps.Location(mapCenter.lat, mapCenter.lng),
-      zoom: 20,
-      mapTypeId: window.Microsoft.Maps.MapTypeId.aerial,
-      showDashboard: false,
-      showZoomButtons: true,
-      showMapTypeSelector: false,
-      showScalebar: true,
-      disableStreetside: true,
-      enableClickableLogo: false,
-      navigationBarMode: window.Microsoft.Maps.NavigationBarMode.minified
-    });
-
-    setBingMap(map);
-
-    const layer = new window.Microsoft.Maps.Layer();
-    map.layers.insert(layer);
-    setDrawingLayer(layer);
-
-    window.Microsoft.Maps.Events.addHandler(map, 'click', (e: any) => {
-      if (!isDrawingMode) return;
-
-      const point = new window.Microsoft.Maps.Point(e.getX(), e.getY());
-      const loc = e.target.tryPixelToLocation(point);
-
-      if (loc) {
-        setCurrentSegment(prev => [...prev, { lat: loc.latitude, lng: loc.longitude }]);
-      }
-    });
-
-  }, [bingMapLoaded, mapRef.current, viewMode]);
-
-  useEffect(() => {
-    if (!bingMap || !drawingLayer || !window.Microsoft) return;
-
-    drawingLayer.clear();
+    dataSource.clear();
 
     segments.forEach((segment) => {
       if (segment.geometry.length < 3) return;
 
-      const locations = segment.geometry.map(
-        point => new window.Microsoft.Maps.Location(point.lat, point.lng)
+      const positions: atlas.data.Position[] = segment.geometry.map(
+        point => [point.lng, point.lat]
       );
 
-      const polygon = new window.Microsoft.Maps.Polygon(locations, {
-        fillColor: 'rgba(59, 130, 246, 0.3)',
-        strokeColor: 'rgba(59, 130, 246, 0.8)',
-        strokeThickness: 2
+      const polygon = new atlas.data.Polygon([positions]);
+      const polygonFeature = new atlas.data.Feature(polygon, {
+        name: segment.name,
+        area: segment.areaSqft
       });
+      dataSource.add(polygonFeature);
 
-      drawingLayer.add(polygon);
-
-      const centerLat = segment.geometry.reduce((sum, p) => sum + p.lat, 0) / segment.geometry.length;
-      const centerLng = segment.geometry.reduce((sum, p) => sum + p.lng, 0) / segment.geometry.length;
-
-      const pushpin = new window.Microsoft.Maps.Pushpin(
-        new window.Microsoft.Maps.Location(centerLat, centerLng),
-        {
-          text: `${segment.areaSqft.toFixed(0)} ft²`,
-          color: 'rgba(59, 130, 246, 0.9)',
-          title: segment.name
-        }
-      );
-
-      drawingLayer.add(pushpin);
+      const center = getCenterOfPolygon(positions);
+      const marker = new atlas.data.Feature(new atlas.data.Point(center), {
+        title: `${segment.areaSqft.toFixed(0)} ft²`
+      });
+      dataSource.add(marker);
     });
 
     if (currentSegment.length > 0) {
-      const locations = currentSegment.map(
-        point => new window.Microsoft.Maps.Location(point.lat, point.lng)
-      );
-
-      locations.forEach(loc => {
-        const pushpin = new window.Microsoft.Maps.Pushpin(loc, {
-          color: 'rgba(16, 185, 129, 1)'
+      currentSegment.forEach(pos => {
+        const point = new atlas.data.Feature(new atlas.data.Point(pos), {
+          title: ''
         });
-        drawingLayer.add(pushpin);
+        dataSource.add(point);
       });
 
-      if (locations.length > 1) {
-        const polyline = new window.Microsoft.Maps.Polyline(locations, {
-          strokeColor: 'rgba(16, 185, 129, 0.8)',
-          strokeThickness: 2
-        });
-        drawingLayer.add(polyline);
+      if (currentSegment.length > 1) {
+        const line = new atlas.data.LineString(currentSegment);
+        dataSource.add(new atlas.data.Feature(line));
       }
     }
+  }, [segments, currentSegment, azureMap, dataSource]);
 
-  }, [segments, currentSegment, bingMap, drawingLayer]);
+  const getCenterOfPolygon = (positions: atlas.data.Position[]): atlas.data.Position => {
+    let sumLng = 0;
+    let sumLat = 0;
+    positions.forEach(pos => {
+      sumLng += pos[0];
+      sumLat += pos[1];
+    });
+    return [sumLng / positions.length, sumLat / positions.length];
+  };
 
   const handleAddressSearch = async () => {
     if (!address.trim()) return;
@@ -155,20 +154,20 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
     try {
       const response = await fetch(
-        `https://dev.virtualearth.net/REST/v1/Locations?query=${encodeURIComponent(address)}&key=${bingApiKey}`
+        `https://atlas.microsoft.com/search/address/json?api-version=1.0&subscription-key=${azureApiKey}&query=${encodeURIComponent(address)}`
       );
       const data = await response.json();
 
-      if (data.resourceSets?.[0]?.resources?.length > 0) {
-        const location = data.resourceSets[0].resources[0].point.coordinates;
-        setMapCenter({ lat: location[0], lng: location[1] });
+      if (data.results && data.results.length > 0) {
+        const location = data.results[0].position;
+        setMapCenter([location.lon, location.lat]);
         setViewMode('measure');
 
         setTimeout(() => {
-          if (bingMap) {
-            bingMap.setView({
-              center: new window.Microsoft.Maps.Location(location[0], location[1]),
-              zoom: 20
+          if (azureMap) {
+            azureMap.setCamera({
+              center: [location.lon, location.lat],
+              zoom: 19
             });
           }
         }, 100);
@@ -196,7 +195,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       measurementId: selectedMeasurement?.id || '',
       name: `Segment ${segments.length + 1}`,
       areaSqft: area,
-      geometry: currentSegment,
+      geometry: currentSegment.map(pos => ({ lat: pos[1], lng: pos[0] })),
       displayOrder: segments.length,
       materialType: 'Shingle',
       condition: 'Good'
@@ -207,20 +206,20 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     setIsDrawingMode(false);
   };
 
-  const calculatePolygonArea = (points: { lat: number; lng: number }[]): number => {
-    if (points.length < 3) return 0;
+  const calculatePolygonArea = (positions: atlas.data.Position[]): number => {
+    if (positions.length < 3) return 0;
 
     const R = 6371000;
     let area = 0;
 
-    for (let i = 0; i < points.length; i++) {
-      const p1 = points[i];
-      const p2 = points[(i + 1) % points.length];
+    for (let i = 0; i < positions.length; i++) {
+      const p1 = positions[i];
+      const p2 = positions[(i + 1) % positions.length];
 
-      const lat1 = p1.lat * Math.PI / 180;
-      const lat2 = p2.lat * Math.PI / 180;
-      const lng1 = p1.lng * Math.PI / 180;
-      const lng2 = p2.lng * Math.PI / 180;
+      const lat1 = p1[1] * Math.PI / 180;
+      const lat2 = p2[1] * Math.PI / 180;
+      const lng1 = p1[0] * Math.PI / 180;
+      const lng2 = p2[0] * Math.PI / 180;
 
       area += (lng2 - lng1) * (2 + Math.sin(lat1) + Math.sin(lat2));
     }
@@ -241,8 +240,8 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       id: selectedMeasurement?.id || crypto.randomUUID(),
       companyId: '',
       address,
-      latitude: mapCenter.lat,
-      longitude: mapCenter.lng,
+      latitude: mapCenter[1],
+      longitude: mapCenter[0],
       imagerySource,
       totalAreaSqft: totalArea,
       segments,
@@ -266,7 +265,10 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     setViewMode('list');
     setSegments([]);
     setAddress('');
-    setBingMap(null);
+    if (azureMap) {
+      azureMap.dispose();
+      setAzureMap(null);
+    }
   };
 
   const deleteSegment = (segmentId: string) => {
@@ -277,7 +279,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     m.address.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const hasValidApiKey = bingApiKey && bingApiKey !== 'YOUR_BING_MAPS_KEY_HERE';
+  const hasValidApiKey = azureApiKey && azureApiKey !== 'YOUR_AZURE_MAPS_KEY_HERE';
 
   if (viewMode === 'measure') {
     if (!hasValidApiKey) {
@@ -285,15 +287,16 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         <div className="h-full flex items-center justify-center bg-slate-50">
           <div className="text-center max-w-md p-8 bg-white rounded-xl shadow-lg border border-slate-200">
             <AlertCircle className="mx-auto text-yellow-500 mb-4" size={48} />
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Bing Maps API Key Required</h2>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Azure Maps Key Required</h2>
             <p className="text-slate-600 mb-4">
-              To use satellite imagery measurements, you need to add a Bing Maps API key to your environment variables.
+              To use satellite imagery measurements, you need to add an Azure Maps subscription key.
             </p>
             <div className="text-left bg-slate-50 p-4 rounded-lg text-sm space-y-2">
               <p className="font-semibold text-slate-900">Setup Instructions:</p>
               <ol className="list-decimal list-inside space-y-1 text-slate-700">
-                <li>Get a key from Bing Maps Dev Center</li>
-                <li>Add to .env: VITE_BING_MAPS_API_KEY</li>
+                <li>Create Azure Maps account at portal.azure.com</li>
+                <li>Get subscription key from your Azure Maps resource</li>
+                <li>Add to .env: VITE_AZURE_MAPS_KEY</li>
                 <li>Restart the dev server</li>
               </ol>
             </div>
@@ -318,7 +321,10 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                 setSegments([]);
                 setCurrentSegment([]);
                 setIsDrawingMode(false);
-                setBingMap(null);
+                if (azureMap) {
+                  azureMap.dispose();
+                  setAzureMap(null);
+                }
               }}
               className="text-blue-600 hover:text-blue-700"
             >
@@ -382,7 +388,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               style={{ minHeight: '600px' }}
             />
             {isDrawingMode && (
-              <div className="absolute top-4 left-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg">
+              <div className="absolute top-4 left-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-10">
                 <p className="font-semibold">Drawing Mode Active</p>
                 <p className="text-sm">Click on the map to add points to your roof segment</p>
               </div>
@@ -478,7 +484,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
             <Ruler className="text-blue-600" />
             Roof Measurements
           </h1>
-          <p className="text-slate-500 mt-1">DIY satellite measurements with Bing imagery</p>
+          <p className="text-slate-500 mt-1">DIY satellite measurements with Azure Maps imagery</p>
         </div>
         <button
           onClick={() => setShowNewMeasurement(true)}
@@ -493,9 +499,9 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3">
           <AlertCircle className="text-yellow-600 shrink-0 mt-0.5" size={20} />
           <div>
-            <p className="font-semibold text-yellow-900">Bing Maps API Key Not Configured</p>
+            <p className="font-semibold text-yellow-900">Azure Maps Key Not Configured</p>
             <p className="text-sm text-yellow-700 mt-1">
-              Add your Bing Maps API key to the .env file as VITE_BING_MAPS_API_KEY to enable satellite imagery measurements.
+              Add your Azure Maps subscription key to the .env file as VITE_AZURE_MAPS_KEY to enable satellite imagery measurements.
             </p>
           </div>
         </div>
@@ -600,10 +606,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                           onClick={() => {
                             setSelectedMeasurement(measurement);
                             setAddress(measurement.address);
-                            setMapCenter({
-                              lat: measurement.latitude || 0,
-                              lng: measurement.longitude || 0
-                            });
+                            setMapCenter([measurement.longitude || 0, measurement.latitude || 0]);
                             setSegments(measurement.segments);
                             setViewMode('measure');
                           }}
@@ -668,7 +671,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                 <p className="text-sm text-blue-900 font-semibold mb-1">How it works:</p>
                 <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
                   <li>Enter the property address</li>
-                  <li>Click to view Bing satellite imagery</li>
+                  <li>Click to view Azure Maps satellite imagery</li>
                   <li>Draw segments around each roof section</li>
                   <li>Areas are automatically calculated</li>
                   <li>Save and export your measurements</li>
