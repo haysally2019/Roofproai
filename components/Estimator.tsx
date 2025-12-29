@@ -63,7 +63,9 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
 
   // Map State
   const mapRef = useRef<HTMLDivElement>(null);
+  const fullscreenMapRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const fullscreenSearchRef = useRef<HTMLInputElement>(null);
   const [mapInstance, setMapInstance] = useState<any>(null);
   const [drawingManager, setDrawingManager] = useState<any>(null);
   const [polygons, setPolygons] = useState<any[]>([]);
@@ -126,10 +128,11 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
 
   const initMap = () => {
     // CRITICAL FIX: Check window.google.maps, not just window.google
-    if (!mapRef.current || !window.google?.maps) return;
+    const targetRef = isFullscreen ? fullscreenMapRef.current : mapRef.current;
+    if (!targetRef || !window.google?.maps) return;
 
     try {
-        const map = new window.google.maps.Map(mapRef.current, {
+        const map = new window.google.maps.Map(targetRef, {
             center: { lat: 39.8283, lng: -98.5795 },
             zoom: 4,
             mapTypeId: 'satellite',
@@ -180,8 +183,9 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
             }
         });
 
-        if (searchInputRef.current) {
-            const autocomplete = new window.google.maps.places.Autocomplete(searchInputRef.current, { types: ['address'] });
+        const activeSearchInput = isFullscreen ? fullscreenSearchRef.current : searchInputRef.current;
+        if (activeSearchInput) {
+            const autocomplete = new window.google.maps.places.Autocomplete(activeSearchInput, { types: ['address'] });
             autocomplete.bindTo('bounds', map);
             autocomplete.addListener('place_changed', () => {
                 const place = autocomplete.getPlace();
@@ -189,7 +193,7 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
 
                 if (place.geometry.viewport) map.fitBounds(place.geometry.viewport);
                 else { map.setCenter(place.geometry.location); map.setZoom(20); }
-                
+
                 const lat = place.geometry.location.lat();
                 const lng = place.geometry.location.lng();
                 fetchRoofData(lat, lng);
@@ -201,6 +205,110 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
         setMapError("Map Crash: " + err.message);
     }
   };
+
+  useEffect(() => {
+    if (isFullscreen && window.google?.maps && fullscreenMapRef.current) {
+      if (mapInstance) {
+        const currentCenter = mapInstance.getCenter();
+        const currentZoom = mapInstance.getZoom();
+
+        setTimeout(() => {
+          const newMap = new window.google.maps.Map(fullscreenMapRef.current!, {
+            center: currentCenter || { lat: 39.8283, lng: -98.5795 },
+            zoom: currentZoom || 4,
+            mapTypeId: mapInstance.getMapTypeId() || 'satellite',
+            tilt: 0,
+            fullscreenControl: false,
+            streetViewControl: false,
+            mapTypeControl: false,
+            rotateControl: false,
+            zoomControl: true,
+          });
+
+          polygons.forEach(poly => {
+            poly.setMap(newMap);
+          });
+
+          if (drawingManager) {
+            drawingManager.setMap(newMap);
+          }
+
+          setMapInstance(newMap);
+
+          newMap.addListener('idle', () => {
+            const center = newMap.getCenter();
+            if(center) setMapCenter({ lat: center.lat(), lng: center.lng() });
+          });
+
+          if (fullscreenSearchRef.current) {
+            const autocomplete = new window.google.maps.places.Autocomplete(fullscreenSearchRef.current, { types: ['address'] });
+            autocomplete.bindTo('bounds', newMap);
+            autocomplete.addListener('place_changed', () => {
+              const place = autocomplete.getPlace();
+              if (!place.geometry?.location) return;
+
+              if (place.geometry.viewport) newMap.fitBounds(place.geometry.viewport);
+              else { newMap.setCenter(place.geometry.location); newMap.setZoom(20); }
+
+              const lat = place.geometry.location.lat();
+              const lng = place.geometry.location.lng();
+              fetchRoofData(lat, lng);
+              setStaticImageUrl(`https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=20&size=400x400&maptype=satellite&key=${apiKey}`);
+            });
+          }
+        }, 100);
+      }
+    } else if (!isFullscreen && mapRef.current && mapInstance && window.google?.maps) {
+      const currentCenter = mapInstance.getCenter();
+      const currentZoom = mapInstance.getZoom();
+
+      setTimeout(() => {
+        const newMap = new window.google.maps.Map(mapRef.current!, {
+          center: currentCenter || { lat: 39.8283, lng: -98.5795 },
+          zoom: currentZoom || 4,
+          mapTypeId: mapInstance.getMapTypeId() || 'satellite',
+          tilt: 0,
+          fullscreenControl: false,
+          streetViewControl: false,
+          mapTypeControl: false,
+          rotateControl: false,
+          zoomControl: true,
+        });
+
+        polygons.forEach(poly => {
+          poly.setMap(newMap);
+        });
+
+        if (drawingManager) {
+          drawingManager.setMap(newMap);
+        }
+
+        setMapInstance(newMap);
+
+        newMap.addListener('idle', () => {
+          const center = newMap.getCenter();
+          if(center) setMapCenter({ lat: center.lat(), lng: center.lng() });
+        });
+
+        if (searchInputRef.current) {
+          const autocomplete = new window.google.maps.places.Autocomplete(searchInputRef.current, { types: ['address'] });
+          autocomplete.bindTo('bounds', newMap);
+          autocomplete.addListener('place_changed', () => {
+            const place = autocomplete.getPlace();
+            if (!place.geometry?.location) return;
+
+            if (place.geometry.viewport) newMap.fitBounds(place.geometry.viewport);
+            else { newMap.setCenter(place.geometry.location); newMap.setZoom(20); }
+
+            const lat = place.geometry.location.lat();
+            const lng = place.geometry.location.lng();
+            fetchRoofData(lat, lng);
+            setStaticImageUrl(`https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=20&size=400x400&maptype=satellite&key=${apiKey}`);
+          });
+        }
+      }, 100);
+    }
+  }, [isFullscreen]);
 
   const fetchRoofData = async (lat?: number, lng?: number) => {
       const targetLat = lat || mapCenter?.lat;
@@ -511,7 +619,7 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
               </h2>
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 text-slate-400" size={16}/>
-                <input ref={searchInputRef} placeholder="Search Address..." className="w-96 pl-9 pr-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-white placeholder-slate-400 outline-none focus:border-indigo-500"/>
+                <input ref={fullscreenSearchRef} placeholder="Search Address..." className="w-96 pl-9 pr-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-white placeholder-slate-400 outline-none focus:border-indigo-500"/>
               </div>
             </div>
             <button
@@ -526,7 +634,7 @@ const EstimatorContent: React.FC<EstimatorProps> = ({ leads, onSaveEstimate }) =
             {/* Map Container */}
             <div className="flex-1 relative">
               <div
-                ref={mapRef}
+                ref={fullscreenMapRef}
                 className="absolute inset-0 w-full h-full z-0 transition-[filter] duration-300"
                 style={{ filter: highContrast ? 'contrast(1.4) brightness(1.1) saturate(0.8)' : 'none' }}
               ></div>
