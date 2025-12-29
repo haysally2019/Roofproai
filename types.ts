@@ -333,6 +333,80 @@ export interface Invoice {
   payments?: Payment[];
 }
 
+export interface Contract {
+  id: string;
+  leadId: string;
+  leadName: string;
+  leadEmail: string;
+  leadPhone: string;
+  leadAddress: string;
+  number: string;
+  type: 'Residential Roofing' | 'Commercial Roofing' | 'Insurance Claim' | 'Warranty Work' | 'Repair';
+  status: 'Draft' | 'Sent' | 'Signed' | 'Active' | 'Completed' | 'Cancelled';
+  createdDate: string;
+  sentDate?: string;
+  signedDate?: string;
+  startDate?: string;
+  completionDate?: string;
+  projectDescription: string;
+  scopeOfWork: string[];
+  materials: string[];
+  totalAmount: number;
+  depositAmount: number;
+  paymentSchedule: { milestone: string; amount: number; status: 'Pending' | 'Paid' }[];
+  terms: string[];
+  warranty: string;
+  clientSignature?: string;
+  contractorSignature?: string;
+  companyId?: string;
+  proposalId?: string;
+  notes?: string;
+}
+
+export interface Proposal {
+  id: string;
+  leadId: string;
+  leadName: string;
+  leadEmail: string;
+  leadPhone: string;
+  leadAddress: string;
+  number: string;
+  title: string;
+  status: 'Draft' | 'Sent' | 'Viewed' | 'Accepted' | 'Rejected';
+  createdDate: string;
+  sentDate?: string;
+  viewedDate?: string;
+  respondedDate?: string;
+  validUntil: string;
+  projectType: ProjectType;
+  projectDescription: string;
+  scopeOfWork: string[];
+  options: ProposalOption[];
+  selectedOptionId?: string;
+  terms: string[];
+  timeline: string;
+  warranty: string;
+  companyId?: string;
+  contractId?: string;
+  viewCount: number;
+  lastViewed?: string;
+  clientNotes?: string;
+}
+
+export interface ProposalOption {
+  id: string;
+  tier: 'Good' | 'Better' | 'Best';
+  name: string;
+  description: string;
+  materials: string[];
+  features: string[];
+  warranty: string;
+  timeline: string;
+  price: number;
+  savings?: number;
+  isRecommended?: boolean;
+}
+
 export interface PriceBookItem {
   id: string;
   name: string;
