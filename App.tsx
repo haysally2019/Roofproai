@@ -28,6 +28,7 @@ import LaborOrders from './components/LaborOrders';
 import Contracts from './components/Contracts';
 import Proposals from './components/Proposals';
 import Measurements from './components/Measurements';
+import MeasurementsErrorBoundary from './components/MeasurementsWrapper';
 import SupplementDetector from './components/SupplementDetector';
 import AIIntelligence from './components/AIIntelligence';
 
@@ -217,7 +218,11 @@ const AppLayout: React.FC = () => {
                   {activeTab === Tab.CLAIMS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.CLAIM_FILED, LeadStatus.ADJUSTER_MEETING, LeadStatus.APPROVED, LeadStatus.SUPPLEMENTING].includes(l.status))} viewMode="claims" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
                   {activeTab === Tab.JOBS && <LeadBoard leads={companyLeads.filter(l => [LeadStatus.PRODUCTION, LeadStatus.CLOSED].includes(l.status))} viewMode="jobs" users={users || []} currentUser={currentUser} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} onAddLead={addLead}/>}
                   {activeTab === Tab.ESTIMATES && <Estimator leads={companyLeads} onSaveEstimate={(id, est) => { const lead = companyLeads.find(l => l.id === id); if(lead) updateLead({ ...lead, estimates: [...(lead.estimates||[]), est] }); }} />}
-                  {activeTab === Tab.MEASUREMENTS && <Measurements />}
+                  {activeTab === Tab.MEASUREMENTS && (
+                    <MeasurementsErrorBoundary>
+                      <Measurements />
+                    </MeasurementsErrorBoundary>
+                  )}
                   {activeTab === Tab.CALENDAR && <CalendarView events={events || []} currentUser={currentUser} onAddEvent={addEvent} />}
                   {activeTab === Tab.TASKS && <TaskBoard tasks={tasks || []} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
                   {activeTab === Tab.MATERIAL_ORDERS && <MaterialOrders />}

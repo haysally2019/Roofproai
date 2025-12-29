@@ -17,8 +17,10 @@ interface AddressSuggestion {
 interface MeasurementsProps {}
 
 const Measurements: React.FC<MeasurementsProps> = () => {
+  const [hasError, setHasError] = useState(false);
+
   console.log('Measurements component rendering');
-  const { measurements, addMeasurement, updateMeasurement, deleteMeasurement } = useStore();
+  const { measurements = [], addMeasurement, updateMeasurement, deleteMeasurement } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [showNewMeasurement, setShowNewMeasurement] = useState(false);
   const [address, setAddress] = useState('');
@@ -92,6 +94,12 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     console.log('Initializing Azure Maps...');
 
     try {
+      if (!atlas || !atlas.Map) {
+        console.error('Azure Maps library not loaded');
+        setHasError(true);
+        return;
+      }
+
       const map = new atlas.Map(mapRef.current, {
         center: mapCenter,
         zoom: 19,
@@ -167,11 +175,16 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
       return () => {
         if (map) {
-          map.dispose();
+          try {
+            map.dispose();
+          } catch (e) {
+            console.error('Error disposing map:', e);
+          }
         }
       };
     } catch (error) {
       console.error('Error initializing Azure Maps:', error);
+      setHasError(true);
     }
   }, [azureApiKey, viewMode, mapCenter]);
 
@@ -617,6 +630,29 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   );
 
   const hasValidApiKey = azureApiKey && azureApiKey !== 'YOUR_AZURE_MAPS_KEY_HERE';
+
+  if (hasError) {
+    return (
+      <div className="h-full flex items-center justify-center bg-slate-50">
+        <div className="text-center max-w-md p-8 bg-white rounded-xl shadow-lg border border-slate-200">
+          <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Component Error</h2>
+          <p className="text-slate-600 mb-4">
+            The measurements view encountered an error. Please try refreshing the page.
+          </p>
+          <button
+            onClick={() => {
+              setHasError(false);
+              setViewMode('list');
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (viewMode === 'measure') {
     if (!hasValidApiKey) {
