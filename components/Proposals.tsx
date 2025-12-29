@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { ScrollText, Plus, Search, Download, Send, CheckCircle, X, Eye, Edit, Trash2, Star, Shield, Clock } from 'lucide-react';
+import { ScrollText, Plus, Search, Download, Send, CheckCircle, X, Eye, Edit, Trash2, Star, Shield, Clock, Settings } from 'lucide-react';
 import { Proposal, ProposalOption, Lead } from '../types';
 import { useStore } from '../lib/store';
 import ProposalBuilder from './ProposalBuilder';
 import { generateProposalPDF } from '../lib/proposalPdf';
+import ProposalTemplateManager from './ProposalTemplateManager';
 
 interface ProposalsProps {}
 
@@ -17,6 +18,7 @@ const Proposals: React.FC<ProposalsProps> = () => {
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
   const [showLeadSelector, setShowLeadSelector] = useState(false);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
 
   const handleCreateProposal = (proposal: Proposal) => {
     addProposal(proposal);
@@ -605,13 +607,22 @@ const Proposals: React.FC<ProposalsProps> = () => {
           </h1>
           <p className="text-slate-500 mt-1">Create and send professional proposals with multiple options</p>
         </div>
-        <button
-          onClick={() => setShowLeadSelector(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
-        >
-          <Plus size={20} />
-          New Proposal
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowTemplateManager(true)}
+            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
+          >
+            <Settings size={20} />
+            Templates
+          </button>
+          <button
+            onClick={() => setShowLeadSelector(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
+          >
+            <Plus size={20} />
+            New Proposal
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -830,6 +841,12 @@ const Proposals: React.FC<ProposalsProps> = () => {
           existingProposal={editingProposal}
           onSave={handleUpdateProposal}
           onCancel={() => setEditingProposal(null)}
+        />
+      )}
+
+      {showTemplateManager && (
+        <ProposalTemplateManager
+          onClose={() => setShowTemplateManager(false)}
         />
       )}
     </div>

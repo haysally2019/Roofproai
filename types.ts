@@ -504,6 +504,76 @@ export interface AutomationRule {
   };
 }
 
+// --- Template Types ---
+
+export interface ContractTemplate {
+  id: string;
+  companyId: string;
+  name: string;
+  description: string;
+  type: Contract['type'];
+  scopeOfWork: string[];
+  materials: string[];
+  terms: string[];
+  paymentScheduleTemplate: { milestone: string; percentage: number }[];
+  warrantyText: string;
+  isDefault: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProposalTemplate {
+  id: string;
+  companyId: string;
+  name: string;
+  description: string;
+  projectDescription: string;
+  scopeOfWork: string[];
+  terms: string[];
+  timeline: string;
+  warranty: string;
+  goodOption: Partial<ProposalOption>;
+  betterOption: Partial<ProposalOption>;
+  bestOption: Partial<ProposalOption>;
+  isDefault: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface InsuranceDamageReport {
+  id: string;
+  proposalId?: string;
+  companyId: string;
+  leadId: string;
+  inspectionDate: string;
+  inspectorName: string;
+  weatherEventDate?: string;
+  weatherEventType: string;
+  damagedAreas: DamagedArea[];
+  damagePhotos: DamagePhoto[];
+  estimatedDamage: number;
+  insuranceCarrier: string;
+  claimNumber: string;
+  adjusterName: string;
+  adjusterContact: string;
+  notes: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DamagedArea {
+  location: string;
+  type: 'Shingles' | 'Flashing' | 'Gutters' | 'Vents' | 'Decking' | 'Other';
+  severity: 'Minor' | 'Moderate' | 'Severe';
+  description: string;
+}
+
+export interface DamagePhoto {
+  url: string;
+  caption: string;
+  timestamp: string;
+}
+
 // --- AI Infrastructure Types ---
 
 export interface GroundingResult {

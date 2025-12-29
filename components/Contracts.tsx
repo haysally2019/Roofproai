@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { FileSignature, Plus, Search, Filter, Download, Send, CheckCircle, X, Eye, Edit2, FileText, DollarSign, Calendar, AlertCircle, Copy } from 'lucide-react';
+import { FileSignature, Plus, Search, Filter, Download, Send, CheckCircle, X, Eye, Edit2, FileText, DollarSign, Calendar, AlertCircle, Copy, Settings } from 'lucide-react';
 import { Contract, Lead } from '../types';
+import ContractTemplateManager from './ContractTemplateManager';
 
 interface ContractsProps {
   contracts?: Contract[];
@@ -20,6 +21,7 @@ const Contracts: React.FC<ContractsProps> = ({
   const [isCreating, setIsCreating] = useState(false);
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
 
   const [formData, setFormData] = useState({
     leadId: '',
@@ -368,13 +370,22 @@ const Contracts: React.FC<ContractsProps> = ({
           </h1>
           <p className="text-slate-500 mt-1">Manage and track all your roofing contracts</p>
         </div>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
-        >
-          <Plus size={20} />
-          New Contract
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowTemplateManager(true)}
+            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
+          >
+            <Settings size={20} />
+            Templates
+          </button>
+          <button
+            onClick={() => setIsCreating(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
+          >
+            <Plus size={20} />
+            New Contract
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -604,6 +615,12 @@ const Contracts: React.FC<ContractsProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {showTemplateManager && (
+        <ContractTemplateManager
+          onClose={() => setShowTemplateManager(false)}
+        />
       )}
     </div>
   );
