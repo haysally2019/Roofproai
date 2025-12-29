@@ -155,18 +155,18 @@ const AppLayout: React.FC = () => {
   // --- VIEW: SETUP WIZARD ---
   const currentCompany = companies.find(c => c.id === currentUser.companyId);
   if (currentUser && currentCompany && !currentCompany.setupComplete) {
-      return <div className="h-screen w-full bg-slate-50"><Onboarding /></div>;
+      return <div className="h-full w-full bg-slate-50"><Onboarding /></div>;
   }
 
   // --- VIEW: DASHBOARD (Private) ---
   const companyLeads = leads || []; 
 
   return (
-    <div className="flex h-screen bg-[#F8FAFC]">
+    <div className="flex h-full w-full bg-[#F8FAFC]">
       <ToastContainer />
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Mobile Header */}
         <div className="md:hidden sticky top-0 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-20 shadow-sm">
             <button onClick={() => setIsSidebarOpen(true)} className="text-slate-600 p-2 -ml-2"><Menu size={24} /></button>
