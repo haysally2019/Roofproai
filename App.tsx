@@ -99,7 +99,7 @@ const AppLayout: React.FC = () => {
   // --- VIEW: LOGIN SCREEN ---
   if (!currentUser) {
       return (
-         <div className="h-full w-full bg-[#0F172A] relative overflow-y-auto flex flex-col">
+         <div className="h-full w-full bg-[#0F172A] relative overflow-hidden flex flex-col">
              <ToastContainer />
              <div className="fixed inset-0 overflow-hidden pointer-events-none">
                  <div className="absolute -top-[20%] -right-[10%] w-[50%] h-[50%] rounded-full bg-indigo-600/20 blur-[100px]"></div>
