@@ -80,6 +80,11 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     console.log('Map clicked:', position, 'Workflow step:', workflowStep);
 
     if (workflowStep === 'pivots') {
+      if (wouldLineIntersect(position, pivotPoints)) {
+        alert('Cannot add point: line would overlap with existing lines');
+        return;
+      }
+
       setPivotPoints(prev => [...prev, position]);
       return;
     }
@@ -112,6 +117,15 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
       const segment = segments.find(s => s.id === editingSegmentPoints);
       if (segment) {
+        const existingPositions: atlas.data.Position[] = segment.geometry.map(
+          point => [point.lng, point.lat]
+        );
+
+        if (wouldLineIntersect(position, existingPositions)) {
+          alert('Cannot add point: line would overlap with existing lines');
+          return;
+        }
+
         const updatedGeometry = [...segment.geometry, { lat: position[1], lng: position[0] }];
         setSegments(segments.map(s =>
           s.id === editingSegmentPoints
@@ -124,6 +138,12 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
     if (isDrawingMode) {
       console.log('Adding point to segment');
+
+      if (wouldLineIntersect(position, currentSegment)) {
+        alert('Cannot add point: line would overlap with existing lines');
+        return;
+      }
+
       setCurrentSegment(prev => {
         const newSegment = [...prev, position];
         console.log('New segment length:', newSegment.length);
@@ -658,6 +678,11 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       return;
     }
 
+    if (wouldPolygonHaveOverlaps(currentSegment)) {
+      alert('Cannot finish segment: closing line would overlap with existing lines');
+      return;
+    }
+
     const area = calculatePolygonArea(currentSegment);
 
     const newSegment: MeasurementSegment = {
@@ -693,6 +718,72 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     setSegments(segments.map(seg =>
       seg.id === segmentId ? { ...seg, name: newName } : seg
     ));
+  };
+
+  const doLinesIntersect = (
+    p1: atlas.data.Position,
+    p2: atlas.data.Position,
+    p3: atlas.data.Position,
+    p4: atlas.data.Position
+  ): boolean => {
+    const ccw = (A: atlas.data.Position, B: atlas.data.Position, C: atlas.data.Position) => {
+      return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0]);
+    };
+
+    if (
+      (p1[0] === p3[0] && p1[1] === p3[1]) ||
+      (p1[0] === p4[0] && p1[1] === p4[1]) ||
+      (p2[0] === p3[0] && p2[1] === p3[1]) ||
+      (p2[0] === p4[0] && p2[1] === p4[1])
+    ) {
+      return false;
+    }
+
+    return ccw(p1, p3, p4) !== ccw(p2, p3, p4) && ccw(p1, p2, p3) !== ccw(p1, p2, p4);
+  };
+
+  const wouldLineIntersect = (newPoint: atlas.data.Position, currentPoints: atlas.data.Position[]): boolean => {
+    if (currentPoints.length < 2) return false;
+
+    const lastPoint = currentPoints[currentPoints.length - 1];
+
+    for (let i = 0; i < currentPoints.length - 2; i++) {
+      const segmentStart = currentPoints[i];
+      const segmentEnd = currentPoints[i + 1];
+
+      if (doLinesIntersect(lastPoint, newPoint, segmentStart, segmentEnd)) {
+        return true;
+      }
+    }
+
+    if (currentPoints.length >= 3) {
+      const firstPoint = currentPoints[0];
+      if (doLinesIntersect(lastPoint, newPoint, currentPoints[currentPoints.length - 2], lastPoint)) {
+        return false;
+      }
+      for (let i = 1; i < currentPoints.length - 2; i++) {
+        if (doLinesIntersect(newPoint, firstPoint, currentPoints[i], currentPoints[i + 1])) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
+  const wouldPolygonHaveOverlaps = (points: atlas.data.Position[]): boolean => {
+    if (points.length < 3) return false;
+
+    const lastPoint = points[points.length - 1];
+    const firstPoint = points[0];
+
+    for (let i = 1; i < points.length - 2; i++) {
+      if (doLinesIntersect(lastPoint, firstPoint, points[i], points[i + 1])) {
+        return true;
+      }
+    }
+
+    return false;
   };
 
   const calculatePolygonArea = (positions: atlas.data.Position[]): number => {
@@ -1018,6 +1109,12 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                       alert('Need at least 3 pivot points to create a roof outline');
                       return;
                     }
+
+                    if (wouldPolygonHaveOverlaps(pivotPoints)) {
+                      alert('Cannot finish outline: closing line would overlap with existing lines');
+                      return;
+                    }
+
                     const edges: Array<{
                       id: string;
                       type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'penetration' | 'unlabeled';
