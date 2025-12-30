@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter } from 'react-router-dom'; // <--- Added Router
-import { Menu, Bell, X, CheckCircle, AlertTriangle, Info, Zap, Loader2 } from 'lucide-react';
+import { Menu, Bell, X, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Info, Zap, Loader as Loader2 } from 'lucide-react';
 
 // Context
 import { StoreProvider, useStore } from './lib/store';
