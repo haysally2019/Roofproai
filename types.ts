@@ -303,6 +303,26 @@ export interface SoftwareLead {
   lostReason?: string;
 }
 
+export type ApplicantStatus = 'New' | 'Reviewing' | 'Interview' | 'Approved' | 'Rejected';
+
+export interface SalesRepApplicant {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  location?: string;
+  experience?: string;
+  linkedIn?: string;
+  resume?: string;
+  coverLetter?: string;
+  status: ApplicantStatus;
+  notes?: string;
+  reviewedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // --- New Modules ---
 
 export interface CalendarEvent {
@@ -642,5 +662,6 @@ export enum Tab {
   ADMIN_LEADS = 'SaaS Leads',
   ADMIN_TEAM = 'Sales Team',
   ADMIN_TENANTS = 'Tenants',
-  ADMIN_AGENTS = 'AI Configuration'
+  ADMIN_AGENTS = 'AI Configuration',
+  ADMIN_APPLICANTS = 'Sales Rep Applicants'
 }

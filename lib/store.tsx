@@ -3,7 +3,8 @@ import {
   User, Company, Lead, CalendarEvent, Task, Invoice,
   Notification, UserRole, SubscriptionTier, LeadStatus, Tab, Toast,
   CallLog, AutomationRule,
-  Supplier, MaterialOrder, SoftwareLead, PriceBookItem, Proposal, RoofMeasurement
+  Supplier, MaterialOrder, SoftwareLead, PriceBookItem, Proposal, RoofMeasurement,
+  SalesRepApplicant
 } from '../types';
 import { supabase } from './supabase';
 
@@ -14,6 +15,7 @@ interface StoreContextType {
   users: User[];
   leads: Lead[];
   softwareLeads: SoftwareLead[];
+  applicants: SalesRepApplicant[];
   events: CalendarEvent[];
   tasks: Task[];
   invoices: Invoice[];
@@ -57,6 +59,7 @@ interface StoreContextType {
   addSoftwareLead: (lead: SoftwareLead) => void;
   updateSoftwareLead: (lead: SoftwareLead) => void;
   deleteSoftwareLead: (id: string) => void;
+  updateApplicant: (applicant: SalesRepApplicant) => void;
   addProposal: (proposal: Proposal) => Promise<void>;
   updateProposal: (proposal: Proposal) => Promise<void>;
   deleteProposal: (id: string) => Promise<void>;
@@ -84,6 +87,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [users, setUsers] = useState<User[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [softwareLeads, setSoftwareLeads] = useState<SoftwareLead[]>([]);
+  const [applicants, setApplicants] = useState<SalesRepApplicant[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -130,10 +134,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         // --- SUPER ADMIN & SAAS REP LOGIC ---
         if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.SAAS_REP) {
             setActiveTab(Tab.ADMIN_OVERVIEW);
-            const [companiesRes, usersRes, softwareLeadsRes] = await Promise.all([
+            const [companiesRes, usersRes, softwareLeadsRes, applicantsRes] = await Promise.all([
                 supabase.from('companies').select('*').order('created_at', { ascending: false }),
                 supabase.from('users').select('*').order('created_at', { ascending: false }),
-                supabase.from('software_leads').select('*').order('created_at', { ascending: false })
+                supabase.from('software_leads').select('*').order('created_at', { ascending: false }),
+                user.role === UserRole.SUPER_ADMIN
+                  ? supabase.from('sales_rep_applicants').select('*').order('created_at', { ascending: false })
+                  : { data: [], error: null }
             ]);
 
             if (companiesRes.data) {
@@ -201,6 +208,26 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                     activities: l.activities || [],
                     tags: l.tags || [],
                     lostReason: l.lost_reason
+                })));
+            }
+
+            if (applicantsRes.data) {
+                setApplicants(applicantsRes.data.map((a: any) => ({
+                    id: a.id,
+                    firstName: a.first_name,
+                    lastName: a.last_name,
+                    email: a.email,
+                    phone: a.phone,
+                    location: a.location,
+                    experience: a.experience,
+                    linkedIn: a.linkedin,
+                    resume: a.resume,
+                    coverLetter: a.cover_letter,
+                    status: a.status,
+                    notes: a.notes,
+                    reviewedBy: a.reviewed_by,
+                    createdAt: a.created_at,
+                    updatedAt: a.updated_at
                 })));
             }
         } else {
@@ -739,6 +766,31 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const updateApplicant = async (applicant: SalesRepApplicant) => {
+    const { error } = await supabase.from('sales_rep_applicants').update({
+      first_name: applicant.firstName,
+      last_name: applicant.lastName,
+      email: applicant.email,
+      phone: applicant.phone,
+      location: applicant.location,
+      experience: applicant.experience,
+      linkedin: applicant.linkedIn,
+      resume: applicant.resume,
+      cover_letter: applicant.coverLetter,
+      status: applicant.status,
+      notes: applicant.notes,
+      reviewed_by: currentUser?.id,
+      updated_at: applicant.updatedAt
+    }).eq('id', applicant.id);
+
+    if (!error) {
+      setApplicants(prev => prev.map(a => a.id === applicant.id ? applicant : a));
+      addToast('Applicant updated successfully', 'success');
+    } else {
+      addToast('Failed to update applicant', 'error');
+    }
+  };
+
   const addProposal = async (proposal: Proposal) => {
     if (!currentUser?.companyId) return;
 
@@ -1005,13 +1057,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const safeValue: StoreContextType = {
-      currentUser, activeTab, 
-      companies: companies || [], 
-      users: users || [], 
-      leads: leads || [], 
-      softwareLeads: softwareLeads || [], 
-      events: events || [], 
-      tasks: tasks || [], 
+      currentUser, activeTab,
+      companies: companies || [],
+      users: users || [],
+      leads: leads || [],
+      softwareLeads: softwareLeads || [],
+      applicants: applicants || [],
+      events: events || [],
+      tasks: tasks || [],
       invoices: invoices || [], 
       toasts: toasts || [], 
       notifications: notifications || [], 
@@ -1023,11 +1076,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       proposals: proposals || [],
       measurements: measurements || [],
       login, register, logout, setTab, addToast, removeToast,
-      updateLead, addLead, addLeadActivity, createCompany, updateCompany, deleteCompany, updateUser, 
+      updateLead, addLead, addLeadActivity, createCompany, updateCompany, deleteCompany, updateUser,
       addAutomation, toggleAutomation, deleteAutomation, addOrder,
       addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
       addUser, removeUser,
-      addSoftwareLead, updateSoftwareLead, deleteSoftwareLead,
+      addSoftwareLead, updateSoftwareLead, deleteSoftwareLead, updateApplicant,
       addProposal, updateProposal, deleteProposal,
       addMeasurement, updateMeasurement, deleteMeasurement
   };

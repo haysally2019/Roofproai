@@ -87,9 +87,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               
               {/* RESTRICTED: Only Super Admin can see Sales Team (Users Tab) */}
               {currentUser.role === UserRole.SUPER_ADMIN && (
-                <NavItem tab={Tab.ADMIN_TEAM} icon={UserCheck} label="Sales Team" />
+                <>
+                  <NavItem tab={Tab.ADMIN_TEAM} icon={UserCheck} label="Sales Team" />
+                  <NavItem tab={Tab.ADMIN_APPLICANTS} icon={Users} label="Applicants" />
+                </>
               )}
-              
+
               <NavItem tab={Tab.ADMIN_TENANTS} icon={Building2} label="Tenants" />
               <NavItem tab={Tab.ADMIN_AGENTS} icon={Headset} label="AI Configuration" />
               <div className="mt-4 px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">System</div>

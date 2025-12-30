@@ -60,8 +60,8 @@ const ToastContainer: React.FC = () => {
 const AppLayout: React.FC = () => {
   const {
       currentUser, activeTab, companies, leads, events, tasks, invoices, users, notifications,
-      updateLead, addLead, addToast, login, addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
-      addUser, removeUser, createCompany 
+      softwareLeads, applicants, updateLead, addLead, addToast, login, addTask, updateTask, deleteTask, addEvent, createInvoice, updateInvoiceStatus,
+      addUser, removeUser, createCompany, addSoftwareLead, updateSoftwareLead, updateApplicant
   } = useStore();
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -193,9 +193,11 @@ const AppLayout: React.FC = () => {
                     onAddUser={addUser}
                     onRemoveUser={removeUser}
                     currentUser={currentUser}
-                    softwareLeads={[]}
-                    onAddSoftwareLead={() => {}}
-                    onUpdateSoftwareLead={() => {}}
+                    softwareLeads={softwareLeads || []}
+                    onAddSoftwareLead={addSoftwareLead}
+                    onUpdateSoftwareLead={updateSoftwareLead}
+                    applicants={applicants || []}
+                    onUpdateApplicant={updateApplicant}
                   />
                 );
               }

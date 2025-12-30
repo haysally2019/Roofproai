@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Company, User, SoftwareLead, Tab, UserRole } from '../types';
+import { Company, User, SoftwareLead, Tab, UserRole, SalesRepApplicant } from '../types';
 import { useStore } from '../lib/store';
 import SuperAdminOverview from './super-admin/SuperAdminOverview';
 import SuperAdminTenants from './super-admin/SuperAdminTenants';
 import SuperAdminTeam from './super-admin/SuperAdminTeam';
 import SuperAdminLeads from './super-admin/SuperAdminLeads';
 import SuperAdminAIConfig from './super-admin/SuperAdminAIConfig';
+import SuperAdminApplicants from './super-admin/SuperAdminApplicants';
 
 interface SuperAdminDashboardProps {
   view: Tab;
@@ -18,11 +19,14 @@ interface SuperAdminDashboardProps {
   softwareLeads: SoftwareLead[];
   onAddSoftwareLead: (lead: SoftwareLead) => void;
   onUpdateSoftwareLead: (lead: SoftwareLead) => void;
+  applicants: SalesRepApplicant[];
+  onUpdateApplicant: (applicant: SalesRepApplicant) => void;
 }
 
-const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ 
+const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   view, companies, onAddCompany, users, onAddUser, onRemoveUser,
-  currentUser, softwareLeads, onAddSoftwareLead, onUpdateSoftwareLead
+  currentUser, softwareLeads, onAddSoftwareLead, onUpdateSoftwareLead,
+  applicants, onUpdateApplicant
 }) => {
   const { updateCompany, addToast, deleteSoftwareLead, setTab } = useStore();
   
@@ -77,10 +81,17 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       )}
 
       {view === Tab.ADMIN_AGENTS && (
-        <SuperAdminAIConfig 
-          companies={companies} 
-          updateCompany={updateCompany} 
+        <SuperAdminAIConfig
+          companies={companies}
+          updateCompany={updateCompany}
           addToast={addToast}
+        />
+      )}
+
+      {view === Tab.ADMIN_APPLICANTS && (
+        <SuperAdminApplicants
+          applicants={applicants}
+          onUpdateApplicant={onUpdateApplicant}
         />
       )}
     </div>
