@@ -379,9 +379,8 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       if ((isDrawingMode || workflowStep === 'pivots') && e.position) {
         setMousePosition(e.position);
 
-        const activePoints = isDrawingMode ? currentSegment : pivotPoints;
-        if (activePoints.length >= 3) {
-          const distanceToFirst = calculateEdgeLength(e.position, activePoints[0]);
+        if (isDrawingMode && currentSegment.length >= 3) {
+          const distanceToFirst = calculateEdgeLength(e.position, currentSegment[0]);
           setIsNearFirstPoint(distanceToFirst < 3);
         } else {
           setIsNearFirstPoint(false);
@@ -535,17 +534,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
             mousePosition,
             pivotPoints[0]
           ]);
-          dataSource.add(new atlas.data.Feature(closingPreviewLine, {
-            lineType: isNearFirstPoint ? 'snap' : 'preview'
-          }));
-
-          if (isNearFirstPoint) {
-            const snapIndicator = new atlas.data.Feature(new atlas.data.Point(pivotPoints[0]), {
-              title: 'Click to close',
-              pointType: 'snap'
-            });
-            dataSource.add(snapIndicator);
-          }
+          dataSource.add(new atlas.data.Feature(closingPreviewLine, { lineType: 'preview' }));
         }
       }
     }
@@ -1477,6 +1466,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   <p>• Click each corner to add point ({currentSegment.length} points)</p>
                   <p>• Straight lines connect each point</p>
                   <p>• Need at least 3 points to finish</p>
+                  <p>• Click near first point to auto-close</p>
                   <p>• Use Undo to remove last point</p>
                   <p>• Click "Finish" when outline is complete</p>
                 </div>
@@ -1489,13 +1479,13 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   <MapPin size={16} />
                   Adding Pivot Points
                 </p>
-                <p className="text-sm mb-2">Click on roof corners to create outline</p>
+                <p className="text-sm mb-2">Add all corner points, then connect them</p>
                 <div className="text-xs space-y-1 bg-blue-700 bg-opacity-50 p-2 rounded">
                   <p>• Click each corner point ({pivotPoints.length} added)</p>
-                  <p>• Lines auto-connect between points</p>
-                  <p>• Need at least 3 points to continue</p>
+                  <p>• Add all points before connecting</p>
+                  <p>• Need at least 3 points to finish</p>
                   <p>• Use Undo to remove last point</p>
-                  <p>• Click "Finish Outline" when complete</p>
+                  <p>• Click "Finish Outline" to connect and continue</p>
                 </div>
               </div>
             )}
