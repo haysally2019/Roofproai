@@ -50,6 +50,8 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const [mousePosition, setMousePosition] = useState<atlas.data.Position | null>(null);
   const [isNearFirstPoint, setIsNearFirstPoint] = useState(false);
   const [pivotPoints, setPivotPoints] = useState<atlas.data.Position[]>([]);
+  const [pivotLines, setPivotLines] = useState<Array<[number, number]>>([]);
+  const [activePivotIndex, setActivePivotIndex] = useState<number | null>(null);
   const [isAddingPivots, setIsAddingPivots] = useState(false);
   const [currentLineLabeling, setCurrentLineLabeling] = useState<number>(0);
   const [workflowStep, setWorkflowStep] = useState<'idle' | 'pivots' | 'labeling'>('idle');
@@ -82,12 +84,38 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     console.log('Map clicked:', position, 'Workflow step:', workflowStep);
 
     if (workflowStep === 'pivots') {
-      if (wouldLineIntersect(position, pivotPoints)) {
-        alert('Cannot add point: line would overlap with existing lines');
-        return;
-      }
+      // Check if clicking near an existing pivot point
+      const clickedPointIndex = pivotPoints.findIndex(point => {
+        const dist = calculateEdgeLength(position, point);
+        return dist < 3; // Within 3 feet
+      });
 
-      setPivotPoints(prev => [...prev, position]);
+      if (activePivotIndex !== null) {
+        // A point is already selected, complete the line
+        if (clickedPointIndex !== -1 && clickedPointIndex !== activePivotIndex) {
+          // Clicking on another existing point
+          setPivotLines(prev => [...prev, [activePivotIndex, clickedPointIndex] as [number, number]]);
+          setActivePivotIndex(null);
+        } else if (clickedPointIndex === -1) {
+          // Clicking on empty space, create new point and connect
+          const newPointIndex = pivotPoints.length;
+          setPivotPoints(prev => [...prev, position]);
+          setPivotLines(prev => [...prev, [activePivotIndex, newPointIndex] as [number, number]]);
+          setActivePivotIndex(null);
+        } else {
+          // Clicking on the same point, deselect it
+          setActivePivotIndex(null);
+        }
+      } else {
+        // No point selected
+        if (clickedPointIndex !== -1) {
+          // Select existing point
+          setActivePivotIndex(clickedPointIndex);
+        } else {
+          // Create new point
+          setPivotPoints(prev => [...prev, position]);
+        }
+      }
       return;
     }
 
@@ -492,50 +520,37 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
     if (pivotPoints.length > 0) {
       pivotPoints.forEach((pos, i) => {
+        const isActive = i === activePivotIndex;
         const point = new atlas.data.Feature(new atlas.data.Point(pos), {
-          title: `${i + 1}`,
-          pointType: 'active'
+          title: `${i + 1}${isActive ? ' (Selected)' : ''}`,
+          pointType: isActive ? 'snap' : 'active'
         });
         dataSource.add(point);
       });
 
-      for (let i = 0; i < pivotPoints.length - 1; i++) {
-        const line = new atlas.data.LineString([pivotPoints[i], pivotPoints[i + 1]]);
+      // Draw lines between connected pivot points
+      pivotLines.forEach(([startIdx, endIdx]) => {
+        const line = new atlas.data.LineString([pivotPoints[startIdx], pivotPoints[endIdx]]);
         dataSource.add(new atlas.data.Feature(line, { lineType: 'active' }));
 
-        const dist = calculateEdgeLength(pivotPoints[i], pivotPoints[i + 1]);
+        const dist = calculateEdgeLength(pivotPoints[startIdx], pivotPoints[endIdx]);
         const midPoint: atlas.data.Position = [
-          (pivotPoints[i][0] + pivotPoints[i + 1][0]) / 2,
-          (pivotPoints[i][1] + pivotPoints[i + 1][1]) / 2
+          (pivotPoints[startIdx][0] + pivotPoints[endIdx][0]) / 2,
+          (pivotPoints[startIdx][1] + pivotPoints[endIdx][1]) / 2
         ];
         const distLabel = new atlas.data.Feature(new atlas.data.Point(midPoint), {
           title: `${dist} ft`
         });
         dataSource.add(distLabel);
-      }
+      });
 
-      if (pivotPoints.length >= 1 && mousePosition && workflowStep === 'pivots') {
+      // Show preview line from active point to mouse cursor
+      if (activePivotIndex !== null && mousePosition && workflowStep === 'pivots') {
         const previewLine = new atlas.data.LineString([
-          pivotPoints[pivotPoints.length - 1],
+          pivotPoints[activePivotIndex],
           mousePosition
         ]);
         dataSource.add(new atlas.data.Feature(previewLine, { lineType: 'preview' }));
-      }
-
-      if (pivotPoints.length > 2 && workflowStep === 'pivots') {
-        const closingLine = new atlas.data.LineString([
-          pivotPoints[pivotPoints.length - 1],
-          pivotPoints[0]
-        ]);
-        dataSource.add(new atlas.data.Feature(closingLine, { lineType: 'preview' }));
-
-        if (mousePosition) {
-          const closingPreviewLine = new atlas.data.LineString([
-            mousePosition,
-            pivotPoints[0]
-          ]);
-          dataSource.add(new atlas.data.Feature(closingPreviewLine, { lineType: 'preview' }));
-        }
       }
     }
 
@@ -1194,6 +1209,8 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                   onClick={() => {
                     setWorkflowStep('pivots');
                     setPivotPoints([]);
+                    setPivotLines([]);
+                    setActivePivotIndex(null);
                   }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
                 >
@@ -1225,13 +1242,17 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    if (pivotPoints.length > 0) {
+                    if (activePivotIndex !== null) {
+                      setActivePivotIndex(null);
+                    } else if (pivotLines.length > 0) {
+                      setPivotLines(pivotLines.slice(0, -1));
+                    } else if (pivotPoints.length > 0) {
                       setPivotPoints(pivotPoints.slice(0, -1));
                     }
                   }}
                   className="px-3 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700"
-                  disabled={pivotPoints.length === 0}
-                  title="Undo last pivot"
+                  disabled={pivotPoints.length === 0 && pivotLines.length === 0 && activePivotIndex === null}
+                  title="Undo last action"
                 >
                   Undo
                 </button>
@@ -1242,8 +1263,8 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                       return;
                     }
 
-                    if (wouldPolygonHaveOverlaps(pivotPoints)) {
-                      alert('Cannot finish outline: closing line would overlap with existing lines');
+                    if (pivotLines.length < 3) {
+                      alert('Need at least 3 lines to create a roof outline');
                       return;
                     }
 
@@ -1257,9 +1278,9 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                       edgeIndex: number;
                     }> = [];
 
-                    for (let i = 0; i < pivotPoints.length; i++) {
-                      const start = pivotPoints[i];
-                      const end = pivotPoints[(i + 1) % pivotPoints.length];
+                    pivotLines.forEach(([startIdx, endIdx], i) => {
+                      const start = pivotPoints[startIdx];
+                      const end = pivotPoints[endIdx];
                       edges.push({
                         id: crypto.randomUUID(),
                         type: 'unlabeled',
@@ -1269,20 +1290,23 @@ const Measurements: React.FC<MeasurementsProps> = () => {
                         segmentId: 'pivot-segment',
                         edgeIndex: i
                       });
-                    }
+                    });
+
                     setRoofEdges(edges);
                     setWorkflowStep('labeling');
                     setCurrentLineLabeling(0);
                   }}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-                  disabled={pivotPoints.length < 3}
+                  disabled={pivotPoints.length < 3 || pivotLines.length < 3}
                 >
                   <Check size={20} />
-                  Finish Outline ({pivotPoints.length} points)
+                  Finish Outline ({pivotLines.length} lines)
                 </button>
                 <button
                   onClick={() => {
                     setPivotPoints([]);
+                    setPivotLines([]);
+                    setActivePivotIndex(null);
                     setWorkflowStep('idle');
                   }}
                   className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
@@ -1477,15 +1501,27 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               <div className="absolute top-4 left-4 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-lg z-10 max-w-sm">
                 <p className="font-semibold mb-1 flex items-center gap-2">
                   <MapPin size={16} />
-                  Adding Pivot Points
+                  {activePivotIndex !== null ? 'Drawing Line' : 'Adding Pivot Points'}
                 </p>
-                <p className="text-sm mb-2">Add all corner points, then connect them</p>
+                <p className="text-sm mb-2">
+                  {activePivotIndex !== null
+                    ? `Click to complete line from point ${activePivotIndex + 1}`
+                    : 'Click to place points, then click points to connect'}
+                </p>
                 <div className="text-xs space-y-1 bg-blue-700 bg-opacity-50 p-2 rounded">
-                  <p>• Click each corner point ({pivotPoints.length} added)</p>
-                  <p>• Add all points before connecting</p>
-                  <p>• Need at least 3 points to finish</p>
-                  <p>• Use Undo to remove last point</p>
-                  <p>• Click "Finish Outline" to connect and continue</p>
+                  <p>• Points: {pivotPoints.length}, Lines: {pivotLines.length}</p>
+                  {activePivotIndex !== null ? (
+                    <>
+                      <p>• Click another point or empty space to finish line</p>
+                      <p>• Click same point to cancel</p>
+                    </>
+                  ) : (
+                    <>
+                      <p>• Click empty space to add new points</p>
+                      <p>• Click a point to start drawing a line from it</p>
+                      <p>• Use Undo to remove last action</p>
+                    </>
+                  )}
                 </div>
               </div>
             )}
