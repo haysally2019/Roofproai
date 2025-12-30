@@ -47,6 +47,8 @@ const Measurements: React.FC<MeasurementsProps> = () => {
   const [showMeasurementTools, setShowMeasurementTools] = useState(false);
   const [measurementMode, setMeasurementMode] = useState<'distance' | 'angle' | null>(null);
   const [measurementPoints, setMeasurementPoints] = useState<atlas.data.Position[]>([]);
+  const [mousePosition, setMousePosition] = useState<atlas.data.Position | null>(null);
+  const [isNearFirstPoint, setIsNearFirstPoint] = useState(false);
   const [pivotPoints, setPivotPoints] = useState<atlas.data.Position[]>([]);
   const [isAddingPivots, setIsAddingPivots] = useState(false);
   const [currentLineLabeling, setCurrentLineLabeling] = useState<number>(0);
@@ -139,6 +141,12 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     if (isDrawingMode) {
       console.log('Adding point to segment');
 
+      if (currentSegment.length >= 3 && isNearFirstPoint) {
+        console.log('Snapping to first point and finishing segment');
+        finishSegment();
+        return;
+      }
+
       if (wouldLineIntersect(position, currentSegment)) {
         alert('Cannot add point: line would overlap with existing lines');
         return;
@@ -162,7 +170,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         setShowFeatureTypeModal(true);
       }
     }
-  }, [isDrawingMode, isLabelingMode, isEditingPoints, editingSegmentPoints, measurementMode, segments, workflowStep]);
+  }, [isDrawingMode, isLabelingMode, isEditingPoints, editingSegmentPoints, measurementMode, segments, workflowStep, isNearFirstPoint, currentSegment, pivotPoints]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -234,8 +242,34 @@ const Measurements: React.FC<MeasurementsProps> = () => {
       map.layers.add(polygonLayer);
 
       const lineLayer = new atlas.layer.LineLayer(source, undefined, {
-        strokeColor: '#3b82f6',
-        strokeWidth: 3,
+        strokeColor: [
+          'case',
+          ['==', ['get', 'lineType'], 'snap'],
+          '#f59e0b',
+          ['==', ['get', 'lineType'], 'preview'],
+          '#22c55e',
+          ['==', ['get', 'lineType'], 'active'],
+          '#3b82f6',
+          '#3b82f6'
+        ],
+        strokeWidth: [
+          'case',
+          ['==', ['get', 'lineType'], 'snap'],
+          3,
+          ['==', ['get', 'lineType'], 'preview'],
+          2,
+          ['==', ['get', 'lineType'], 'active'],
+          4,
+          3
+        ],
+        strokeDasharray: [
+          'case',
+          ['==', ['get', 'lineType'], 'snap'],
+          [1, 0],
+          ['==', ['get', 'lineType'], 'preview'],
+          [4, 4],
+          [1, 0]
+        ],
         lineJoin: 'round',
         lineCap: 'round'
       });
@@ -243,16 +277,50 @@ const Measurements: React.FC<MeasurementsProps> = () => {
 
       const symbolLayer = new atlas.layer.SymbolLayer(source, undefined, {
         iconOptions: {
-          image: 'marker-blue',
+          image: [
+            'case',
+            ['==', ['get', 'pointType'], 'snap'],
+            'marker-yellow',
+            ['==', ['get', 'pointType'], 'active'],
+            'marker-blue',
+            ['==', ['get', 'pointType'], 'editing'],
+            'marker-red',
+            'marker-blue'
+          ],
+          size: [
+            'case',
+            ['==', ['get', 'pointType'], 'snap'],
+            1.5,
+            ['==', ['get', 'pointType'], 'active'],
+            1.2,
+            ['==', ['get', 'pointType'], 'editing'],
+            1,
+            0.8
+          ],
           allowOverlap: true,
           ignorePlacement: true
         },
         textOptions: {
           textField: ['get', 'title'],
-          offset: [0, 1.5],
+          offset: [0, -2],
           color: '#ffffff',
-          haloColor: '#000000',
-          haloWidth: 2
+          haloColor: [
+            'case',
+            ['==', ['get', 'pointType'], 'snap'],
+            '#f59e0b',
+            '#000000'
+          ],
+          haloWidth: 2,
+          size: [
+            'case',
+            ['==', ['get', 'pointType'], 'snap'],
+            13,
+            ['==', ['get', 'pointType'], 'active'],
+            14,
+            ['==', ['get', 'pointType'], 'editing'],
+            12,
+            12
+          ]
         }
       });
       map.layers.add(symbolLayer);
@@ -307,13 +375,33 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     console.log('Adding click handler to map');
     azureMap.events.add('click', handleMapClick);
 
+    const handleMouseMove = (e: atlas.MapMouseEvent) => {
+      if ((isDrawingMode || workflowStep === 'pivots') && e.position) {
+        setMousePosition(e.position);
+
+        const activePoints = isDrawingMode ? currentSegment : pivotPoints;
+        if (activePoints.length >= 3) {
+          const distanceToFirst = calculateEdgeLength(e.position, activePoints[0]);
+          setIsNearFirstPoint(distanceToFirst < 3);
+        } else {
+          setIsNearFirstPoint(false);
+        }
+      } else {
+        setMousePosition(null);
+        setIsNearFirstPoint(false);
+      }
+    };
+
+    azureMap.events.add('mousemove', handleMouseMove);
+
     return () => {
       if (azureMap) {
         console.log('Removing click handler from map');
         azureMap.events.remove('click', handleMapClick);
+        azureMap.events.remove('mousemove', handleMouseMove);
       }
     };
-  }, [azureMap, handleMapClick]);
+  }, [azureMap, handleMapClick, isDrawingMode, workflowStep]);
 
   useEffect(() => {
     if (!azureMap) return;
@@ -354,7 +442,8 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         positions.forEach((pos, index) => {
           const pointMarker = new atlas.data.Feature(new atlas.data.Point(pos), {
             title: `P${index + 1}`,
-            pointIndex: index
+            pointIndex: index,
+            pointType: 'editing'
           });
           dataSource.add(pointMarker);
         });
@@ -362,30 +451,58 @@ const Measurements: React.FC<MeasurementsProps> = () => {
     });
 
     if (currentSegment.length > 0) {
-      currentSegment.forEach(pos => {
+      currentSegment.forEach((pos, index) => {
         const point = new atlas.data.Feature(new atlas.data.Point(pos), {
-          title: ''
+          title: `${index + 1}`,
+          pointType: 'active'
         });
         dataSource.add(point);
       });
 
       if (currentSegment.length > 1) {
         const line = new atlas.data.LineString(currentSegment);
-        dataSource.add(new atlas.data.Feature(line));
+        dataSource.add(new atlas.data.Feature(line, { lineType: 'active' }));
+      }
+
+      if (currentSegment.length >= 1 && mousePosition) {
+        const previewLine = new atlas.data.LineString([
+          currentSegment[currentSegment.length - 1],
+          mousePosition
+        ]);
+        dataSource.add(new atlas.data.Feature(previewLine, { lineType: 'preview' }));
+      }
+
+      if (currentSegment.length >= 3 && mousePosition) {
+        const closingLine = new atlas.data.LineString([
+          mousePosition,
+          currentSegment[0]
+        ]);
+        dataSource.add(new atlas.data.Feature(closingLine, {
+          lineType: isNearFirstPoint ? 'snap' : 'preview'
+        }));
+
+        if (isNearFirstPoint) {
+          const snapIndicator = new atlas.data.Feature(new atlas.data.Point(currentSegment[0]), {
+            title: 'Click to close',
+            pointType: 'snap'
+          });
+          dataSource.add(snapIndicator);
+        }
       }
     }
 
     if (pivotPoints.length > 0) {
       pivotPoints.forEach((pos, i) => {
         const point = new atlas.data.Feature(new atlas.data.Point(pos), {
-          title: `${i + 1}`
+          title: `${i + 1}`,
+          pointType: 'active'
         });
         dataSource.add(point);
       });
 
       for (let i = 0; i < pivotPoints.length - 1; i++) {
         const line = new atlas.data.LineString([pivotPoints[i], pivotPoints[i + 1]]);
-        dataSource.add(new atlas.data.Feature(line));
+        dataSource.add(new atlas.data.Feature(line, { lineType: 'active' }));
 
         const dist = calculateEdgeLength(pivotPoints[i], pivotPoints[i + 1]);
         const midPoint: atlas.data.Position = [
@@ -398,12 +515,38 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         dataSource.add(distLabel);
       }
 
+      if (pivotPoints.length >= 1 && mousePosition && workflowStep === 'pivots') {
+        const previewLine = new atlas.data.LineString([
+          pivotPoints[pivotPoints.length - 1],
+          mousePosition
+        ]);
+        dataSource.add(new atlas.data.Feature(previewLine, { lineType: 'preview' }));
+      }
+
       if (pivotPoints.length > 2 && workflowStep === 'pivots') {
         const closingLine = new atlas.data.LineString([
           pivotPoints[pivotPoints.length - 1],
           pivotPoints[0]
         ]);
-        dataSource.add(new atlas.data.Feature(closingLine, { strokeDasharray: [3, 3] }));
+        dataSource.add(new atlas.data.Feature(closingLine, { lineType: 'preview' }));
+
+        if (mousePosition) {
+          const closingPreviewLine = new atlas.data.LineString([
+            mousePosition,
+            pivotPoints[0]
+          ]);
+          dataSource.add(new atlas.data.Feature(closingPreviewLine, {
+            lineType: isNearFirstPoint ? 'snap' : 'preview'
+          }));
+
+          if (isNearFirstPoint) {
+            const snapIndicator = new atlas.data.Feature(new atlas.data.Point(pivotPoints[0]), {
+              title: 'Click to close',
+              pointType: 'snap'
+            });
+            dataSource.add(snapIndicator);
+          }
+        }
       }
     }
 
@@ -437,7 +580,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
         dataSource.add(angleLabel);
       }
     }
-  }, [segments, currentSegment, azureMap, dataSource, isEditingPoints, editingSegmentPoints, measurementPoints, measurementMode, pivotPoints, workflowStep]);
+  }, [segments, currentSegment, azureMap, dataSource, isEditingPoints, editingSegmentPoints, measurementPoints, measurementMode, pivotPoints, workflowStep, mousePosition, isNearFirstPoint]);
 
   useEffect(() => {
     if (!azureMap || !featureDataSource) return;
@@ -1320,7 +1463,7 @@ const Measurements: React.FC<MeasurementsProps> = () => {
               className="w-full h-full"
               style={{
                 minHeight: '600px',
-                cursor: isDrawingMode || isLabelingMode || isEditingPoints || measurementMode || workflowStep !== 'idle' ? 'default' : 'grab'
+                cursor: isDrawingMode || workflowStep === 'pivots' ? 'crosshair' : isLabelingMode || isEditingPoints || measurementMode ? 'pointer' : 'grab'
               }}
             />
             {isDrawingMode && (
