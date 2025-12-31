@@ -21,42 +21,24 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const formData = await req.json();
+    console.log("Received form data:", JSON.stringify(formData));
+
+    // Support both snake_case and camelCase field names
+    const firstName = formData.first_name || formData.firstName || formData.name?.split(' ')[0] || '';
+    const lastName = formData.last_name || formData.lastName || formData.name?.split(' ')[1] || '';
+    const email = formData.email || '';
+    const phone = formData.phone || formData.phoneNumber || '';
+    const location = formData.location || formData.city || formData.state || null;
+    const experience = formData.experience || formData.yearsExperience || formData.background || null;
+    const linkedin = formData.linkedin || formData.linkedIn || formData.linkedin_url || null;
+    const resume = formData.resume || formData.resumeUrl || formData.resume_url || null;
+    const coverLetter = formData.cover_letter || formData.coverLetter || formData.message || null;
 
     // Validate required fields
-    const requiredFields = ["first_name", "last_name", "email", "phone"];
-    for (const field of requiredFields) {
-      if (!formData[field] || formData[field].trim() === "") {
-        return new Response(
-          JSON.stringify({ error: `Missing required field: ${field}` }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-    }
-
-    // Insert into database
-    const { data, error } = await supabase
-      .from("sales_rep_applicants")
-      .insert({
-        first_name: formData.first_name,
-        last_name: formData.last_name,
-        email: formData.email,
-        phone: formData.phone,
-        location: formData.location || null,
-        experience: formData.experience || null,
-        linkedin: formData.linkedin || null,
-        resume: formData.resume || null,
-        cover_letter: formData.cover_letter || null,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Database error:", error);
+    if (!firstName || firstName.trim() === '') {
+      console.error("Missing first_name");
       return new Response(
-        JSON.stringify({ error: error.message }),
+        JSON.stringify({ error: "Missing required field: first_name (or firstName)", received: Object.keys(formData) }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -64,6 +46,69 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    if (!lastName || lastName.trim() === '') {
+      console.error("Missing last_name");
+      return new Response(
+        JSON.stringify({ error: "Missing required field: last_name (or lastName)", received: Object.keys(formData) }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (!email || email.trim() === '') {
+      console.error("Missing email");
+      return new Response(
+        JSON.stringify({ error: "Missing required field: email", received: Object.keys(formData) }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (!phone || phone.trim() === '') {
+      console.error("Missing phone");
+      return new Response(
+        JSON.stringify({ error: "Missing required field: phone (or phoneNumber)", received: Object.keys(formData) }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Insert into database
+    console.log("Inserting into database...");
+    const { data, error } = await supabase
+      .from("sales_rep_applicants")
+      .insert({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        location: location,
+        experience: experience,
+        linkedin: linkedin,
+        resume: resume,
+        cover_letter: coverLetter,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Database error:", error);
+      return new Response(
+        JSON.stringify({ error: error.message, details: error }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    console.log("Application submitted successfully:", data.id);
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -78,7 +123,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error("Error:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: "Internal server error", message: error.message }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
