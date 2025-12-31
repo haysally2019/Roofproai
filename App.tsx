@@ -94,10 +94,10 @@ const AppLayout: React.FC = () => {
   // --- VIEW: APPLICATION FORM ---
   if (isApplyRoute) {
       return (
-         <>
+         <div className="h-screen w-screen overflow-auto" style={{ position: 'static' }}>
              <ToastContainer />
              <ApplicationForm />
-         </>
+         </div>
       )
   }
 
