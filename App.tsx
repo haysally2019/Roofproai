@@ -31,6 +31,7 @@ import Measurements from './components/Measurements';
 import MeasurementsErrorBoundary from './components/MeasurementsWrapper';
 import SupplementDetector from './components/SupplementDetector';
 import AIIntelligence from './components/AIIntelligence';
+import ApplicationForm from './components/ApplicationForm';
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -85,16 +86,27 @@ const AppLayout: React.FC = () => {
   };
 
   // --- ROUTING LOGIC ---
-  const path = window.location.pathname.toLowerCase().replace(/\/$/, ''); 
-  const hash = window.location.hash.toLowerCase().replace('#', '').replace(/\/$/, ''); 
+  const path = window.location.pathname.toLowerCase().replace(/\/$/, '');
+  const hash = window.location.hash.toLowerCase().replace('#', '').replace(/\/$/, '');
   const isOnboardingRoute = path === '/onboarding' || path === '/register' || hash === 'onboarding';
+  const isApplyRoute = path === '/apply' || hash === 'apply';
+
+  // --- VIEW: APPLICATION FORM ---
+  if (isApplyRoute) {
+      return (
+         <>
+             <ToastContainer />
+             <ApplicationForm />
+         </>
+      )
+  }
 
   // --- VIEW: ONBOARDING FUNNEL ---
   if (isOnboardingRoute) {
       return (
          <>
              <ToastContainer />
-             <TrialFunnel /> 
+             <TrialFunnel />
          </>
       )
   }
