@@ -31,7 +31,6 @@ import Measurements from './components/Measurements';
 import MeasurementsErrorBoundary from './components/MeasurementsWrapper';
 import SupplementDetector from './components/SupplementDetector';
 import AIIntelligence from './components/AIIntelligence';
-import ApplyPage from './src/pages/ApplyPage';
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -86,32 +85,17 @@ const AppLayout: React.FC = () => {
   };
 
   // --- ROUTING LOGIC ---
-  const path = window.location.pathname.toLowerCase().replace(/\/$/, '');
-  const hash = window.location.hash.toLowerCase().replace('#', '').replace(/\/$/, '');
+  const path = window.location.pathname.toLowerCase().replace(/\/$/, ''); 
+  const hash = window.location.hash.toLowerCase().replace('#', '').replace(/\/$/, ''); 
   const isOnboardingRoute = path === '/onboarding' || path === '/register' || hash === 'onboarding';
-
-  // Debug logging
-  console.log('Current path:', path);
-  console.log('Is /apply?', path === '/apply');
 
   // --- VIEW: ONBOARDING FUNNEL ---
   if (isOnboardingRoute) {
       return (
          <>
              <ToastContainer />
-             <TrialFunnel />
+             <TrialFunnel /> 
          </>
-      )
-  }
-
-  // --- VIEW: APPLICATION PAGE (PUBLIC) ---
-  if (path === '/apply') {
-      console.log('Rendering ApplyPage component');
-      return (
-         <div className="min-h-screen">
-             <ToastContainer />
-             <ApplyPage />
-         </div>
       )
   }
 
