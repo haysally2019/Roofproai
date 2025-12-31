@@ -31,6 +31,7 @@ import Measurements from './components/Measurements';
 import MeasurementsErrorBoundary from './components/MeasurementsWrapper';
 import SupplementDetector from './components/SupplementDetector';
 import AIIntelligence from './components/AIIntelligence';
+import ApplyPage from './src/pages/ApplyPage';
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -94,7 +95,17 @@ const AppLayout: React.FC = () => {
       return (
          <>
              <ToastContainer />
-             <TrialFunnel /> 
+             <TrialFunnel />
+         </>
+      )
+  }
+
+  // --- VIEW: APPLICATION PAGE (PUBLIC) ---
+  if (path === '/apply') {
+      return (
+         <>
+             <ToastContainer />
+             <ApplyPage />
          </>
       )
   }

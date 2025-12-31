@@ -25,7 +25,8 @@ import Automations from './components/Automations';
 import Onboarding from './components/Onboarding';
 import TrialFunnel from './components/TrialFunnel';
 import { SignupForm } from './components/auth/SignupForm';
-import { LoginForm } from './components/auth/LoginForm'; 
+import { LoginForm } from './components/auth/LoginForm';
+import ApplyPage from './pages/ApplyPage'; 
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -163,7 +164,17 @@ const AppLayout: React.FC = () => {
     );
   }
 
-  // 5. If no user, show Login
+  // 5. Application page (public)
+  if (path === '/apply') {
+    return (
+      <>
+        <ToastContainer />
+        <ApplyPage />
+      </>
+    );
+  }
+
+  // 6. If no user, show Login
   if (!currentUser) {
       return (
          <div className="h-full w-full bg-[#0F172A] relative overflow-y-auto flex flex-col">
@@ -199,7 +210,7 @@ const AppLayout: React.FC = () => {
       )
   }
 
-  // --- 6. VIEW ROUTING BASED ON ROLE ---
+  // --- 7. VIEW ROUTING BASED ON ROLE ---
 
   // A. SaaS Rep View (Dedicated)
   if (currentUser.role === 'SaaS Rep' || currentUser.role === UserRole.SAAS_REP) {
