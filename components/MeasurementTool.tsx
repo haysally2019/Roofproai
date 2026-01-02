@@ -14,13 +14,8 @@ interface Edge {
   startId: string;
   endId: string;
   id: string;
-}
-
-interface CompletedPolygon {
-  points: Point[];
-  edges: Edge[];
-  area: number;
   label?: string;
+  type?: 'outline' | 'hip' | 'valley' | 'ridge' | 'eave' | 'rake';
 }
 
 interface MeasurementToolProps {
@@ -32,12 +27,13 @@ interface MeasurementToolProps {
 
 const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider, onSave, onCancel }) => {
   const [step, setStep] = useState<'instructions' | 'measuring'>('instructions');
-  const [mode, setMode] = useState<'placing-points' | 'connecting-points' | 'labeling'>('placing-points');
-  const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
-  const [currentEdges, setCurrentEdges] = useState<Edge[]>([]);
+  const [mode, setMode] = useState<'placing-outline' | 'connecting-outline' | 'drawing-lines' | 'labeling-lines'>('placing-outline');
+  const [outlinePoints, setOutlinePoints] = useState<Point[]>([]);
+  const [outlineEdges, setOutlineEdges] = useState<Edge[]>([]);
+  const [internalLines, setInternalLines] = useState<Edge[]>([]);
   const [selectedPoint, setSelectedPoint] = useState<string | null>(null);
-  const [completedPolygons, setCompletedPolygons] = useState<CompletedPolygon[]>([]);
-  const [currentLabel, setCurrentLabel] = useState<string>('');
+  const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
+  const [currentLineType, setCurrentLineType] = useState<'hip' | 'valley' | 'ridge' | 'eave' | 'rake'>('ridge');
   const [map, setMap] = useState<atlas.Map | null>(null);
   const [dataSource, setDataSource] = useState<atlas.source.DataSource | null>(null);
   const [credits, setCredits] = useState<number>(0);
@@ -49,11 +45,12 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
 
   const mapRef = useRef<HTMLDivElement>(null);
-  const currentPointsRef = useRef<Point[]>([]);
-  const currentEdgesRef = useRef<Edge[]>([]);
+  const outlinePointsRef = useRef<Point[]>([]);
+  const outlineEdgesRef = useRef<Edge[]>([]);
+  const internalLinesRef = useRef<Edge[]>([]);
   const selectedPointRef = useRef<string | null>(null);
-  const modeRef = useRef<'placing-points' | 'connecting-points' | 'labeling'>('placing-points');
-  const completedPolygonsRef = useRef<CompletedPolygon[]>([]);
+  const selectedEdgeRef = useRef<string | null>(null);
+  const modeRef = useRef<'placing-outline' | 'connecting-outline' | 'drawing-lines' | 'labeling-lines'>('placing-outline');
   const dataSourceRef = useRef<atlas.source.DataSource | null>(null);
   const azureApiKey = import.meta.env.VITE_AZURE_MAPS_KEY;
 
@@ -71,24 +68,28 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
   }, [step]);
 
   useEffect(() => {
-    currentPointsRef.current = currentPoints;
-  }, [currentPoints]);
+    outlinePointsRef.current = outlinePoints;
+  }, [outlinePoints]);
 
   useEffect(() => {
-    currentEdgesRef.current = currentEdges;
-  }, [currentEdges]);
+    outlineEdgesRef.current = outlineEdges;
+  }, [outlineEdges]);
+
+  useEffect(() => {
+    internalLinesRef.current = internalLines;
+  }, [internalLines]);
 
   useEffect(() => {
     selectedPointRef.current = selectedPoint;
   }, [selectedPoint]);
 
   useEffect(() => {
-    modeRef.current = mode;
-  }, [mode]);
+    selectedEdgeRef.current = selectedEdge;
+  }, [selectedEdge]);
 
   useEffect(() => {
-    completedPolygonsRef.current = completedPolygons;
-  }, [completedPolygons]);
+    modeRef.current = mode;
+  }, [mode]);
 
   useEffect(() => {
     dataSourceRef.current = dataSource;
@@ -226,38 +227,33 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
   const handleMapClick = (e: atlas.MapMouseEvent) => {
     const currentMode = modeRef.current;
+    const position = e.position;
+    if (!position) return;
 
-    if (currentMode === 'placing-points') {
-      const position = e.position;
-      if (!position) return;
-
+    if (currentMode === 'placing-outline') {
       const newPoint: Point = {
         position: [position[0], position[1]],
         id: `point-${Date.now()}`
       };
 
-      const newPoints = [...currentPointsRef.current, newPoint];
-      setCurrentPoints(newPoints);
-      updateMapFeatures(newPoints, currentEdgesRef.current, completedPolygonsRef.current);
-    } else if (currentMode === 'connecting-points') {
-      const position = e.position;
-      if (!position) return;
-
-      const clickedPoint = findNearestPoint(position, currentPointsRef.current);
+      const newPoints = [...outlinePointsRef.current, newPoint];
+      setOutlinePoints(newPoints);
+      updateMapFeatures();
+    } else if (currentMode === 'connecting-outline' || currentMode === 'drawing-lines') {
+      const clickedPoint = findNearestPoint(position, outlinePointsRef.current);
       if (!clickedPoint) return;
 
       const currentSelected = selectedPointRef.current;
       if (!currentSelected) {
         setSelectedPoint(clickedPoint.id);
-        updateMapFeatures(currentPointsRef.current, currentEdgesRef.current, completedPolygonsRef.current, clickedPoint.id);
       } else {
         if (currentSelected === clickedPoint.id) {
           setSelectedPoint(null);
-          updateMapFeatures(currentPointsRef.current, currentEdgesRef.current, completedPolygonsRef.current);
           return;
         }
 
-        const edgeExists = currentEdgesRef.current.some(
+        const allEdges = [...outlineEdgesRef.current, ...internalLinesRef.current];
+        const edgeExists = allEdges.some(
           edge => (edge.startId === currentSelected && edge.endId === clickedPoint.id) ||
                   (edge.startId === clickedPoint.id && edge.endId === currentSelected)
         );
@@ -266,17 +262,24 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
           const newEdge: Edge = {
             startId: currentSelected,
             endId: clickedPoint.id,
-            id: `edge-${Date.now()}`
+            id: `edge-${Date.now()}`,
+            type: currentMode === 'connecting-outline' ? 'outline' : undefined
           };
 
-          const newEdges = [...currentEdgesRef.current, newEdge];
-          setCurrentEdges(newEdges);
-          setSelectedPoint(null);
-          updateMapFeatures(currentPointsRef.current, newEdges, completedPolygonsRef.current);
-        } else {
-          setSelectedPoint(null);
-          updateMapFeatures(currentPointsRef.current, currentEdgesRef.current, completedPolygonsRef.current);
+          if (currentMode === 'connecting-outline') {
+            const newEdges = [...outlineEdgesRef.current, newEdge];
+            setOutlineEdges(newEdges);
+          } else {
+            const newLines = [...internalLinesRef.current, newEdge];
+            setInternalLines(newLines);
+          }
         }
+        setSelectedPoint(null);
+      }
+    } else if (currentMode === 'labeling-lines') {
+      const clickedEdge = findNearestEdge(position);
+      if (clickedEdge) {
+        setSelectedEdge(clickedEdge.id);
       }
     }
   };
@@ -302,41 +305,119 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
     return nearest;
   };
 
-  const updateMapFeatures = (points: Point[], edges: Edge[], completed: CompletedPolygon[], highlightedPointId?: string) => {
+  const findNearestEdge = (position: atlas.data.Position): Edge | null => {
+    const allEdges = [...outlineEdgesRef.current, ...internalLinesRef.current];
+    if (allEdges.length === 0) return null;
+
+    const threshold = 0.0001;
+    let nearest: Edge | null = null;
+    let minDistance = Infinity;
+
+    allEdges.forEach(edge => {
+      const startPoint = outlinePointsRef.current.find(p => p.id === edge.startId);
+      const endPoint = outlinePointsRef.current.find(p => p.id === edge.endId);
+
+      if (startPoint && endPoint) {
+        const distance = pointToLineDistance(position, startPoint.position, endPoint.position);
+        if (distance < minDistance && distance < threshold) {
+          minDistance = distance;
+          nearest = edge;
+        }
+      }
+    });
+
+    return nearest;
+  };
+
+  const pointToLineDistance = (point: atlas.data.Position, lineStart: atlas.data.Position, lineEnd: atlas.data.Position): number => {
+    const A = point[0] - lineStart[0];
+    const B = point[1] - lineStart[1];
+    const C = lineEnd[0] - lineStart[0];
+    const D = lineEnd[1] - lineStart[1];
+
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+
+    if (lenSq !== 0) param = dot / lenSq;
+
+    let xx, yy;
+
+    if (param < 0) {
+      xx = lineStart[0];
+      yy = lineStart[1];
+    } else if (param > 1) {
+      xx = lineEnd[0];
+      yy = lineEnd[1];
+    } else {
+      xx = lineStart[0] + param * C;
+      yy = lineStart[1] + param * D;
+    }
+
+    const dx = point[0] - xx;
+    const dy = point[1] - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const updateMapFeatures = () => {
     const ds = dataSourceRef.current;
     if (!ds) return;
 
     ds.clear();
 
-    points.forEach(point => {
+    const highlightedPoint = selectedPointRef.current;
+    const highlightedEdge = selectedEdgeRef.current;
+
+    outlinePointsRef.current.forEach(point => {
       const feature = new atlas.data.Feature(new atlas.data.Point(point.position));
       feature.properties = {
         pointId: point.id,
-        isHighlighted: point.id === highlightedPointId
+        isHighlighted: point.id === highlightedPoint
       };
       ds.add(feature);
     });
 
-    edges.forEach(edge => {
-      const startPoint = points.find(p => p.id === edge.startId);
-      const endPoint = points.find(p => p.id === edge.endId);
+    outlineEdgesRef.current.forEach(edge => {
+      const startPoint = outlinePointsRef.current.find(p => p.id === edge.startId);
+      const endPoint = outlinePointsRef.current.find(p => p.id === edge.endId);
 
       if (startPoint && endPoint) {
         const lineString = new atlas.data.LineString([startPoint.position, endPoint.position]);
-        ds.add(new atlas.data.Feature(lineString));
+        const feature = new atlas.data.Feature(lineString);
+        feature.properties = {
+          edgeId: edge.id,
+          type: 'outline',
+          isHighlighted: edge.id === highlightedEdge
+        };
+        ds.add(feature);
       }
     });
 
-    completed.forEach(polygon => {
-      const positions = polygon.points.map(p => p.position);
-      const closedPositions = [...positions, positions[0]];
-      const poly = new atlas.data.Polygon([closedPositions]);
-      ds.add(new atlas.data.Feature(poly));
+    internalLinesRef.current.forEach(edge => {
+      const startPoint = outlinePointsRef.current.find(p => p.id === edge.startId);
+      const endPoint = outlinePointsRef.current.find(p => p.id === edge.endId);
 
-      polygon.points.forEach(point => {
-        ds.add(new atlas.data.Feature(new atlas.data.Point(point.position)));
-      });
+      if (startPoint && endPoint) {
+        const lineString = new atlas.data.LineString([startPoint.position, endPoint.position]);
+        const feature = new atlas.data.Feature(lineString);
+        feature.properties = {
+          edgeId: edge.id,
+          type: edge.type || 'internal',
+          label: edge.label,
+          isHighlighted: edge.id === highlightedEdge
+        };
+        ds.add(feature);
+      }
     });
+
+    if (outlineEdgesRef.current.length >= 3) {
+      const positions = outlinePointsRef.current.map(p => p.position);
+      if (positions.length >= 3) {
+        const closedPositions = [...positions, positions[0]];
+        const poly = new atlas.data.Polygon([closedPositions]);
+        ds.add(new atlas.data.Feature(poly));
+      }
+    }
   };
 
   const calculatePolygonArea = (positions: atlas.data.Position[]): number => {
@@ -351,173 +432,98 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
     return Math.round(areaFeet);
   };
 
-  const handleDonePlacingPoints = () => {
-    if (currentPoints.length < 3) {
-      alert('You need at least 3 points to continue');
+  const handleDonePlacingOutline = () => {
+    if (outlinePoints.length < 3) {
+      alert('You need at least 3 points to outline the roof');
       return;
     }
-    setMode('connecting-points');
+    setMode('connecting-outline');
   };
 
-  const handleDoneConnecting = () => {
-    if (currentEdges.length < 3) {
-      alert('You need at least 3 edges to form a shape');
+  const handleDoneConnectingOutline = () => {
+    if (outlineEdges.length < 3) {
+      alert('You need at least 3 edges to form the roof outline');
       return;
     }
 
-    const polygons = extractPolygons(currentPoints, currentEdges);
-    if (polygons.length === 0) {
-      alert('The edges do not form a closed shape. Please ensure your edges connect to form at least one polygon.');
-      return;
-    }
+    const positions = outlinePoints.map(p => p.position);
+    const area = calculatePolygonArea(positions);
+    setTotalArea(area);
 
-    setMode('labeling');
+    setMode('drawing-lines');
   };
 
-  const extractPolygons = (points: Point[], edges: Edge[]): CompletedPolygon[] => {
-    const polygons: CompletedPolygon[] = [];
-    const edgeMap = new Map<string, string[]>();
-
-    edges.forEach(edge => {
-      if (!edgeMap.has(edge.startId)) edgeMap.set(edge.startId, []);
-      if (!edgeMap.has(edge.endId)) edgeMap.set(edge.endId, []);
-      edgeMap.get(edge.startId)!.push(edge.endId);
-      edgeMap.get(edge.endId)!.push(edge.startId);
-    });
-
-    const visited = new Set<string>();
-    const findCycle = (start: string, current: string, path: string[], pathSet: Set<string>): string[] | null => {
-      if (path.length > 2 && current === start) {
-        return path;
-      }
-
-      if (pathSet.has(current) || visited.has(current)) {
-        return null;
-      }
-
-      const neighbors = edgeMap.get(current) || [];
-      for (const neighbor of neighbors) {
-        if (path.length > 0 && neighbor === path[path.length - 1]) continue;
-
-        const newPath = [...path, current];
-        const newPathSet = new Set(pathSet);
-        newPathSet.add(current);
-
-        const cycle = findCycle(start, neighbor, newPath, newPathSet);
-        if (cycle) return cycle;
-      }
-
-      return null;
-    };
-
-    points.forEach(point => {
-      if (visited.has(point.id)) return;
-
-      const cycle = findCycle(point.id, point.id, [], new Set());
-      if (cycle && cycle.length >= 3) {
-        cycle.forEach(id => visited.add(id));
-
-        const polygonPoints = cycle.map(id => points.find(p => p.id === id)!).filter(p => p);
-        const polygonEdges = edges.filter(edge =>
-          cycle.includes(edge.startId) && cycle.includes(edge.endId)
-        );
-
-        const positions = polygonPoints.map(p => p.position);
-        const area = calculatePolygonArea(positions);
-
-        polygons.push({
-          points: polygonPoints,
-          edges: polygonEdges,
-          area: area
-        });
-      }
-    });
-
-    return polygons;
+  const handleDoneDrawingLines = () => {
+    setMode('labeling-lines');
   };
 
-  const handleSaveLabel = () => {
-    if (!currentLabel.trim()) {
-      alert('Please enter a label for this roof section');
+  const handleAssignLineType = () => {
+    if (!selectedEdge) {
+      alert('Please select a line first');
       return;
     }
 
-    const polygons = extractPolygons(currentPoints, currentEdges);
-    const labeledPolygons = polygons.map(polygon => ({
-      ...polygon,
-      label: currentLabel
-    }));
+    const updatedLines = internalLines.map(line =>
+      line.id === selectedEdge
+        ? { ...line, type: currentLineType, label: currentLineType.charAt(0).toUpperCase() + currentLineType.slice(1) }
+        : line
+    );
 
-    const newCompleted = [...completedPolygons, ...labeledPolygons];
-    setCompletedPolygons(newCompleted);
-
-    const addedArea = polygons.reduce((sum, p) => sum + p.area, 0);
-    setTotalArea(prev => prev + addedArea);
-
-    setCurrentPoints([]);
-    setCurrentEdges([]);
-    setCurrentLabel('');
-    setSelectedPoint(null);
-    setMode('placing-points');
-    updateMapFeatures([], [], newCompleted);
+    setInternalLines(updatedLines);
+    setSelectedEdge(null);
+    updateMapFeatures();
   };
 
   const handleUndoPoint = () => {
-    if (currentPoints.length === 0) return;
+    if (outlinePoints.length === 0) return;
 
-    const newPoints = currentPoints.slice(0, -1);
-    setCurrentPoints(newPoints);
-    updateMapFeatures(newPoints, currentEdges, completedPolygons);
+    const newPoints = outlinePoints.slice(0, -1);
+    setOutlinePoints(newPoints);
+    updateMapFeatures();
   };
 
   const handleUndoEdge = () => {
-    if (currentEdges.length === 0) return;
-
-    const newEdges = currentEdges.slice(0, -1);
-    setCurrentEdges(newEdges);
-    updateMapFeatures(currentPoints, newEdges, completedPolygons);
-  };
-
-  const handleUndoPolygon = () => {
-    if (completedPolygons.length === 0) return;
-
-    const lastPolygon = completedPolygons[completedPolygons.length - 1];
-    setTotalArea(prev => Math.max(0, prev - lastPolygon.area));
-
-    const newCompleted = completedPolygons.slice(0, -1);
-    setCompletedPolygons(newCompleted);
-    updateMapFeatures(currentPoints, currentEdges, newCompleted);
+    if (mode === 'connecting-outline') {
+      if (outlineEdges.length === 0) return;
+      const newEdges = outlineEdges.slice(0, -1);
+      setOutlineEdges(newEdges);
+    } else {
+      if (internalLines.length === 0) return;
+      const newLines = internalLines.slice(0, -1);
+      setInternalLines(newLines);
+    }
+    updateMapFeatures();
   };
 
   const handleReset = () => {
-    setCurrentPoints([]);
-    setCurrentEdges([]);
+    setOutlinePoints([]);
+    setOutlineEdges([]);
+    setInternalLines([]);
     setSelectedPoint(null);
-    setCompletedPolygons([]);
+    setSelectedEdge(null);
     setTotalArea(0);
-    setMode('placing-points');
+    setMode('placing-outline');
     if (dataSourceRef.current) {
       dataSourceRef.current.clear();
     }
   };
 
-  const handleCancelCurrent = () => {
-    setCurrentPoints([]);
-    setCurrentEdges([]);
-    setSelectedPoint(null);
-    setCurrentLabel('');
-    setMode('placing-points');
-    updateMapFeatures([], [], completedPolygons);
+  const calculateLineLength = (edge: Edge): number => {
+    const startPoint = outlinePoints.find(p => p.id === edge.startId);
+    const endPoint = outlinePoints.find(p => p.id === edge.endId);
+
+    if (!startPoint || !endPoint) return 0;
+
+    const line = new atlas.data.LineString([startPoint.position, endPoint.position]);
+    const lengthMeters = atlas.math.getLength(line, 'meters');
+    const lengthFeet = lengthMeters * 3.28084;
+
+    return Math.round(lengthFeet);
   };
 
   const handleSave = async () => {
-    if (completedPolygons.length === 0) {
-      alert('Please complete at least one roof section before saving');
-      return;
-    }
-
-    if (currentPoints.length > 0) {
-      alert('Please complete or clear the current shape before saving');
+    if (outlineEdges.length < 3) {
+      alert('Please complete the roof outline before saving');
       return;
     }
 
@@ -540,23 +546,55 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
       if (!userData?.company_id) throw new Error('No company found');
 
-      const segments = completedPolygons.map((polygon, index) => {
-        const geometry = polygon.points.map(p => ({ lon: p.position[0], lat: p.position[1] }));
+      const ridgeLength = internalLines
+        .filter(line => line.type === 'ridge')
+        .reduce((sum, line) => sum + calculateLineLength(line), 0);
 
-        return {
-          type: 'roof_section',
-          geometry: geometry,
-          area: polygon.area,
-          label: completedPolygons.length > 1 ? `Section ${index + 1}` : 'Main Roof'
-        };
-      });
+      const hipLength = internalLines
+        .filter(line => line.type === 'hip')
+        .reduce((sum, line) => sum + calculateLineLength(line), 0);
+
+      const valleyLength = internalLines
+        .filter(line => line.type === 'valley')
+        .reduce((sum, line) => sum + calculateLineLength(line), 0);
+
+      const rakeLength = internalLines
+        .filter(line => line.type === 'rake')
+        .reduce((sum, line) => sum + calculateLineLength(line), 0);
+
+      const eaveLength = internalLines
+        .filter(line => line.type === 'eave')
+        .reduce((sum, line) => sum + calculateLineLength(line), 0);
+
+      const perimeter = outlineEdges.reduce((sum, edge) => sum + calculateLineLength(edge), 0);
+
+      const segments = [{
+        type: 'roof_section',
+        geometry: outlinePoints.map(p => ({ lon: p.position[0], lat: p.position[1] })),
+        area: totalArea,
+        label: 'Full Roof',
+        lines: internalLines.map(line => ({
+          type: line.type,
+          label: line.label,
+          start: line.startId,
+          end: line.endId,
+          length: calculateLineLength(line)
+        }))
+      }];
 
       const measurementData = {
         company_id: userData.company_id,
         address: address,
-        total_area: totalArea,
+        total_area_sqft: totalArea,
         segments: segments,
-        created_at: new Date().toISOString()
+        ridge_length: ridgeLength,
+        hip_length: hipLength,
+        valley_length: valleyLength,
+        rake_length: rakeLength,
+        eave_length: eaveLength,
+        perimeter: perimeter,
+        measured_by: user.id,
+        status: 'Completed'
       };
 
       const { data: measurement, error: measurementError } = await supabase
@@ -613,9 +651,9 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
                   2
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 mb-1">Place Pivot Points</h3>
+                  <h3 className="font-bold text-slate-900 mb-1">Outline the Entire Roof</h3>
                   <p className="text-slate-600 text-sm">
-                    Click on each corner of the roof to place pivot points. Place all corner points before connecting them.
+                    Click on each corner of the roof to place all perimeter points, then connect them to form the complete roof outline.
                   </p>
                 </div>
               </div>
@@ -625,9 +663,9 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
                   3
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 mb-1">Connect the Points</h3>
+                  <h3 className="font-bold text-slate-900 mb-1">Draw Internal Lines</h3>
                   <p className="text-slate-600 text-sm">
-                    After placing all points, you'll be prompted to connect them by clicking pairs of points to draw edges between them.
+                    Click pairs of points to draw all internal lines (hips, valleys, ridges, etc.) across the roof.
                   </p>
                 </div>
               </div>
@@ -637,9 +675,9 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
                   4
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 mb-1">Label the Section</h3>
+                  <h3 className="font-bold text-slate-900 mb-1">Label All Lines</h3>
                   <p className="text-slate-600 text-sm">
-                    Once your edges form a closed shape, you'll be prompted to label the roof section (e.g., "North Face", "Main Roof").
+                    Click each line and assign its type: Hip, Valley, Ridge, Eave, or Rake. This helps calculate accurate material requirements.
                   </p>
                 </div>
               </div>
@@ -664,11 +702,11 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
                   <h4 className="font-bold text-amber-900 mb-1">Tips for Precision</h4>
                   <ul className="text-sm text-amber-800 space-y-1">
                     <li>• Zoom to maximum level for best accuracy</li>
-                    <li>• Click directly on roof corners to place pivot points</li>
-                    <li>• Place all corner points first, then connect them</li>
-                    <li>• Use 'Undo Point' or 'Undo Edge' to remove mistakes</li>
-                    <li>• Edges must form a closed shape before labeling</li>
-                    <li>• For complex roofs, measure multiple sections separately</li>
+                    <li>• Place all perimeter points first, outlining the entire roof</li>
+                    <li>• Connect points to form a closed perimeter outline</li>
+                    <li>• Draw all internal lines (hips, valleys, ridges) at once</li>
+                    <li>• Label each line type for accurate material calculations</li>
+                    <li>• Use 'Undo' buttons to correct mistakes</li>
                   </ul>
                 </div>
               </div>
@@ -703,11 +741,14 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
             <div>
               <h2 className="text-xl font-bold text-slate-900">{address}</h2>
               <p className="text-sm text-slate-500">
-                {mode === 'placing-points' && currentPoints.length === 0 && 'Click on the map to place pivot points at each roof corner'}
-                {mode === 'placing-points' && currentPoints.length > 0 && `${currentPoints.length} point${currentPoints.length > 1 ? 's' : ''} placed - Click to add more or finish placing`}
-                {mode === 'connecting-points' && !selectedPoint && `${currentEdges.length} edge${currentEdges.length !== 1 ? 's' : ''} drawn - Click a point to start connecting`}
-                {mode === 'connecting-points' && selectedPoint && 'Click another point to create an edge'}
-                {mode === 'labeling' && 'Enter a label for this roof section'}
+                {mode === 'placing-outline' && outlinePoints.length === 0 && 'Click on the map to place points at each corner of the roof perimeter'}
+                {mode === 'placing-outline' && outlinePoints.length > 0 && `${outlinePoints.length} perimeter point${outlinePoints.length > 1 ? 's' : ''} placed - Continue placing or finish to connect`}
+                {mode === 'connecting-outline' && !selectedPoint && `${outlineEdges.length} outline edge${outlineEdges.length !== 1 ? 's' : ''} drawn - Click a point to start connecting`}
+                {mode === 'connecting-outline' && selectedPoint && 'Click another point to create an outline edge'}
+                {mode === 'drawing-lines' && !selectedPoint && `${internalLines.length} internal line${internalLines.length !== 1 ? 's' : ''} drawn - Click pairs of points to draw hips, valleys, ridges`}
+                {mode === 'drawing-lines' && selectedPoint && 'Click another point to draw a line'}
+                {mode === 'labeling-lines' && !selectedEdge && 'Click on a line to select it, then assign its type'}
+                {mode === 'labeling-lines' && selectedEdge && 'Select a line type and click Assign to label this line'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -720,51 +761,53 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {mode === 'placing-points' && (
+              {mode === 'placing-outline' && (
                 <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
-                  <span className="text-sm text-slate-600">Points Placed: </span>
-                  <span className="font-bold text-slate-900">{currentPoints.length}</span>
+                  <span className="text-sm text-slate-600">Perimeter Points: </span>
+                  <span className="font-bold text-slate-900">{outlinePoints.length}</span>
                 </div>
               )}
 
-              {mode === 'connecting-points' && (
+              {mode === 'connecting-outline' && (
                 <>
                   <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
                     <span className="text-sm text-slate-600">Points: </span>
-                    <span className="font-bold text-slate-900">{currentPoints.length}</span>
+                    <span className="font-bold text-slate-900">{outlinePoints.length}</span>
                   </div>
                   <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
-                    <span className="text-sm text-slate-600">Edges: </span>
-                    <span className="font-bold text-slate-900">{currentEdges.length}</span>
+                    <span className="text-sm text-slate-600">Outline Edges: </span>
+                    <span className="font-bold text-slate-900">{outlineEdges.length}</span>
                   </div>
                 </>
               )}
 
-              {mode === 'labeling' && (
-                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg px-4 py-2">
-                  <span className="text-sm text-blue-700">Ready to Label</span>
-                </div>
+              {(mode === 'drawing-lines' || mode === 'labeling-lines') && (
+                <>
+                  <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
+                    <span className="text-sm text-slate-600">Internal Lines: </span>
+                    <span className="font-bold text-slate-900">{internalLines.length}</span>
+                  </div>
+                  <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
+                    <span className="text-sm text-slate-600">Labeled: </span>
+                    <span className="font-bold text-slate-900">{internalLines.filter(l => l.type).length}</span>
+                  </div>
+                </>
               )}
-
-              <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
-                <span className="text-sm text-slate-600">Completed Sections: </span>
-                <span className="font-bold text-slate-900">{completedPolygons.length}</span>
-              </div>
 
               {totalArea > 0 && (
                 <div className="bg-emerald-50 border-2 border-emerald-200 rounded-lg px-4 py-2">
-                  <span className="text-sm text-emerald-700">Total Area: </span>
+                  <span className="text-sm text-emerald-700">Roof Area: </span>
                   <span className="font-bold text-emerald-900">{totalArea.toLocaleString()} sq ft</span>
                 </div>
               )}
             </div>
 
             <div className="flex items-center gap-2">
-              {mode === 'placing-points' && (
+              {mode === 'placing-outline' && (
                 <>
                   <button
-                    onClick={handleDonePlacingPoints}
-                    disabled={currentPoints.length < 3}
+                    onClick={handleDonePlacingOutline}
+                    disabled={outlinePoints.length < 3}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     <ChevronRight size={18} />
@@ -773,7 +816,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
                   <button
                     onClick={handleUndoPoint}
-                    disabled={currentPoints.length === 0}
+                    disabled={outlinePoints.length === 0}
                     className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     <Undo2 size={18} />
@@ -782,77 +825,77 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
                 </>
               )}
 
-              {mode === 'connecting-points' && (
+              {mode === 'connecting-outline' && (
                 <>
                   <button
-                    onClick={handleDoneConnecting}
-                    disabled={currentEdges.length < 3}
+                    onClick={handleDoneConnectingOutline}
+                    disabled={outlineEdges.length < 3}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     <ChevronRight size={18} />
-                    Done Connecting
+                    Done with Outline
                   </button>
 
                   <button
                     onClick={handleUndoEdge}
-                    disabled={currentEdges.length === 0}
+                    disabled={outlineEdges.length === 0}
                     className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     <Undo2 size={18} />
                     Undo Edge
                   </button>
+                </>
+              )}
+
+              {mode === 'drawing-lines' && (
+                <>
+                  <button
+                    onClick={handleDoneDrawingLines}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+                  >
+                    <ChevronRight size={18} />
+                    Done Drawing Lines
+                  </button>
 
                   <button
-                    onClick={handleCancelCurrent}
-                    className="px-4 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors font-medium flex items-center gap-2"
+                    onClick={handleUndoEdge}
+                    disabled={internalLines.length === 0}
+                    className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    <X size={18} />
-                    Cancel Section
+                    <Undo2 size={18} />
+                    Undo Line
                   </button>
                 </>
               )}
 
-              {mode === 'labeling' && (
+              {mode === 'labeling-lines' && (
                 <>
-                  <input
-                    type="text"
-                    value={currentLabel}
-                    onChange={(e) => setCurrentLabel(e.target.value)}
-                    placeholder="Enter label (e.g., North Face)"
-                    className="px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
+                  <select
+                    value={currentLineType}
+                    onChange={(e) => setCurrentLineType(e.target.value as any)}
+                    className="px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white"
+                  >
+                    <option value="ridge">Ridge</option>
+                    <option value="hip">Hip</option>
+                    <option value="valley">Valley</option>
+                    <option value="eave">Eave</option>
+                    <option value="rake">Rake</option>
+                  </select>
 
                   <button
-                    onClick={handleSaveLabel}
-                    disabled={!currentLabel.trim()}
+                    onClick={handleAssignLineType}
+                    disabled={!selectedEdge}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     <Check size={18} />
-                    Save Section
-                  </button>
-
-                  <button
-                    onClick={handleCancelCurrent}
-                    className="px-4 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors font-medium flex items-center gap-2"
-                  >
-                    <X size={18} />
-                    Cancel Section
+                    Assign Type
                   </button>
                 </>
               )}
 
               <button
-                onClick={handleUndoPolygon}
-                disabled={completedPolygons.length === 0}
-                className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                <Undo2 size={18} />
-                Undo Section
-              </button>
-
-              <button
                 onClick={handleReset}
-                disabled={currentPoints.length === 0 && currentEdges.length === 0 && completedPolygons.length === 0}
+                disabled={outlinePoints.length === 0 && outlineEdges.length === 0 && internalLines.length === 0}
                 className="px-4 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <RotateCcw size={18} />
@@ -861,7 +904,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
               <button
                 onClick={handleSave}
-                disabled={saving || credits < 1 || completedPolygons.length === 0 || mode !== 'placing-points'}
+                disabled={saving || credits < 1 || outlineEdges.length < 3}
                 className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Save size={18} />
