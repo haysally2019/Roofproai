@@ -1,14 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MapPin, Check, X, CreditCard, AlertCircle, ChevronRight, Undo2, RotateCcw, Save } from 'lucide-react';
+import { MapPin, Check, X, CreditCard, AlertCircle, ChevronRight, Undo2, RotateCcw, Save, PenTool } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import CreditPurchaseModal from './CreditPurchaseModal';
 import * as atlas from 'azure-maps-control';
+import * as drawing from 'azure-maps-drawing-tools';
 import 'azure-maps-control/dist/atlas.min.css';
-
-interface Point {
-  position: atlas.data.Position;
-  id: string;
-}
+import 'azure-maps-drawing-tools/dist/atlas-drawing.min.css';
 
 interface MeasurementToolProps {
   address: string;
@@ -19,14 +16,14 @@ interface MeasurementToolProps {
 
 const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider, onSave, onCancel }) => {
   const [step, setStep] = useState<'instructions' | 'measuring'>('instructions');
-  const [points, setPoints] = useState<Point[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
+  const [polygons, setPolygons] = useState<atlas.Shape[]>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
   const [map, setMap] = useState<atlas.Map | null>(null);
-  const [dataSource, setDataSource] = useState<atlas.source.DataSource | null>(null);
+  const [drawingManager, setDrawingManager] = useState<drawing.drawing.DrawingManager | null>(null);
   const [credits, setCredits] = useState<number>(0);
   const [showCreditModal, setShowCreditModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [area, setArea] = useState<number>(0);
+  const [totalArea, setTotalArea] = useState<number>(0);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
@@ -46,13 +43,14 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
     }
   }, [step]);
 
-  useEffect(() => {
-    if (points.length >= 3) {
-      calculateArea();
-    }
-  }, [points]);
-
   const cleanupMap = () => {
+    if (drawingManager) {
+      try {
+        drawingManager.dispose();
+      } catch (error) {
+        console.error('Error disposing drawing manager:', error);
+      }
+    }
     if (map) {
       try {
         map.dispose();
@@ -60,7 +58,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
         console.error('Error disposing map:', error);
       }
       setMap(null);
-      setDataSource(null);
+      setDrawingManager(null);
     }
   };
 
@@ -129,31 +127,29 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
       });
 
       newMap.events.add('ready', () => {
-        const ds = new atlas.source.DataSource();
-        newMap.sources.add(ds);
-        setDataSource(ds);
-
-        const polygonLayer = new atlas.layer.PolygonLayer(ds, undefined, {
-          fillColor: 'rgba(59, 130, 246, 0.3)',
-          fillOpacity: 0.5
+        const manager = new drawing.drawing.DrawingManager(newMap, {
+          toolbar: new drawing.control.DrawingToolbar({
+            buttons: ['draw-polygon'],
+            position: atlas.ControlPosition.TopRight,
+            style: 'light',
+            visible: false
+          })
         });
 
-        const lineLayer = new atlas.layer.LineLayer(ds, undefined, {
-          strokeColor: '#3b82f6',
-          strokeWidth: 3
-        });
-
-        const symbolLayer = new atlas.layer.SymbolLayer(ds, undefined, {
-          iconOptions: {
-            image: 'marker-blue',
-            size: 0.8
+        newMap.events.add('drawingcomplete', manager, (shape: atlas.Shape) => {
+          if (shape.getType() === 'Polygon') {
+            const coords = shape.getCoordinates() as atlas.data.Position[][];
+            if (coords && coords.length > 0) {
+              const area = calculatePolygonArea(coords[0]);
+              setTotalArea(prev => prev + area);
+              setPolygons(prev => [...prev, shape]);
+              manager.setOptions({ mode: drawing.drawing.DrawingMode.idle });
+              setIsDrawing(false);
+            }
           }
         });
 
-        newMap.layers.add([polygonLayer, lineLayer, symbolLayer]);
-
-        newMap.events.add('click', handleMapClick);
-
+        setDrawingManager(manager);
         setMapLoading(false);
       });
 
@@ -165,55 +161,13 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
     }
   };
 
-  const handleMapClick = (e: atlas.MapMouseEvent) => {
-    if (isConnected) return;
-
-    const position = e.position;
-    if (!position) return;
-
-    const newPoint: Point = {
-      position: [position[0], position[1]],
-      id: `point-${Date.now()}`
-    };
-
-    const newPoints = [...points, newPoint];
-    setPoints(newPoints);
-    updateMapFeatures(newPoints, false);
-  };
-
-  const updateMapFeatures = (currentPoints: Point[], connected: boolean) => {
-    if (!dataSource) return;
-
-    dataSource.clear();
-
-    const positions = currentPoints.map(p => p.position);
-
-    currentPoints.forEach(point => {
-      dataSource.add(new atlas.data.Feature(new atlas.data.Point(point.position)));
-    });
-
-    if (positions.length > 1) {
-      const lineString = new atlas.data.LineString(positions);
-      dataSource.add(new atlas.data.Feature(lineString));
-    }
-
-    if (connected && positions.length >= 3) {
-      const closedPositions = [...positions, positions[0]];
-      const polygon = new atlas.data.Polygon([closedPositions]);
-      dataSource.add(new atlas.data.Feature(polygon));
-    }
-  };
-
-  const calculateArea = () => {
-    if (points.length < 3) return;
-
-    const positions = points.map(p => p.position);
-    const closedPositions = [...positions, positions[0]];
+  const calculatePolygonArea = (positions: atlas.data.Position[]): number => {
+    if (positions.length < 3) return 0;
 
     let areaMeters = 0;
-    for (let i = 0; i < closedPositions.length - 1; i++) {
-      const p1 = closedPositions[i];
-      const p2 = closedPositions[i + 1];
+    for (let i = 0; i < positions.length - 1; i++) {
+      const p1 = positions[i];
+      const p2 = positions[i + 1];
       areaMeters += (p2[0] - p1[0]) * (p2[1] + p1[1]);
     }
 
@@ -229,39 +183,54 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
     areaMeters = areaMeters * metersPerDegreeLon * metersPerDegreeLat;
 
     const areaFeet = areaMeters * 10.7639;
-    setArea(Math.round(areaFeet));
+    return Math.round(areaFeet);
   };
 
-  const handleConnect = () => {
-    if (points.length < 3) {
-      alert('You need at least 3 points to create a roof section');
-      return;
+  const handleStartDrawing = () => {
+    if (drawingManager) {
+      drawingManager.setOptions({ mode: drawing.drawing.DrawingMode.drawPolygon });
+      setIsDrawing(true);
     }
-    setIsConnected(true);
-    updateMapFeatures(points, true);
+  };
+
+  const handleCancelDrawing = () => {
+    if (drawingManager) {
+      drawingManager.setOptions({ mode: drawing.drawing.DrawingMode.idle });
+      setIsDrawing(false);
+    }
   };
 
   const handleUndo = () => {
-    if (points.length === 0) return;
+    if (polygons.length === 0 || !drawingManager) return;
 
-    const newPoints = points.slice(0, -1);
-    setPoints(newPoints);
-    setIsConnected(false);
-    updateMapFeatures(newPoints, false);
+    const lastPolygon = polygons[polygons.length - 1];
+    const coords = lastPolygon.getCoordinates() as atlas.data.Position[][];
+
+    if (coords && coords.length > 0) {
+      const area = calculatePolygonArea(coords[0]);
+      setTotalArea(prev => Math.max(0, prev - area));
+    }
+
+    drawingManager.getSource().remove(lastPolygon);
+    setPolygons(prev => prev.slice(0, -1));
   };
 
   const handleReset = () => {
-    setPoints([]);
-    setIsConnected(false);
-    setArea(0);
-    if (dataSource) {
-      dataSource.clear();
-    }
+    if (!drawingManager) return;
+
+    polygons.forEach(poly => {
+      drawingManager.getSource().remove(poly);
+    });
+
+    setPolygons([]);
+    setTotalArea(0);
+    setIsDrawing(false);
+    drawingManager.setOptions({ mode: drawing.drawing.DrawingMode.idle });
   };
 
   const handleSave = async () => {
-    if (!isConnected || points.length < 3) {
-      alert('Please connect all points to create a complete roof section');
+    if (polygons.length === 0) {
+      alert('Please draw at least one roof section before saving');
       return;
     }
 
@@ -284,16 +253,26 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
       if (!userData?.company_id) throw new Error('No company found');
 
+      const segments = polygons.map((poly, index) => {
+        const coords = poly.getCoordinates() as atlas.data.Position[][];
+        const positions = coords && coords.length > 0 ? coords[0] : [];
+
+        const geometry = positions.map(pos => ({ lon: pos[0], lat: pos[1] }));
+        const area = calculatePolygonArea(positions);
+
+        return {
+          type: 'roof_section',
+          geometry: geometry,
+          area: area,
+          label: polygons.length > 1 ? `Section ${index + 1}` : 'Main Roof'
+        };
+      });
+
       const measurementData = {
         company_id: userData.company_id,
         address: address,
-        total_area: area,
-        segments: [{
-          type: 'roof_section',
-          geometry: points.map(p => ({ lon: p.position[0], lat: p.position[1] })),
-          area: area,
-          label: 'Main Roof'
-        }],
+        total_area: totalArea,
+        segments: segments,
         created_at: new Date().toISOString()
       };
 
@@ -351,9 +330,9 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
                   2
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 mb-1">Click Corner Points</h3>
+                  <h3 className="font-bold text-slate-900 mb-1">Click 'Draw Roof Section'</h3>
                   <p className="text-slate-600 text-sm">
-                    Click on each corner of the roof to place measurement points. Start at one corner and work around the perimeter.
+                    Click the blue "Draw Roof Section" button in the toolbar to activate drawing mode.
                   </p>
                 </div>
               </div>
@@ -363,9 +342,9 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
                   3
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 mb-1">Connect the Shape</h3>
+                  <h3 className="font-bold text-slate-900 mb-1">Draw the Roof Outline</h3>
                   <p className="text-slate-600 text-sm">
-                    After placing at least 3 points, click "Connect Points" to close the shape and calculate the area.
+                    Click on each corner of the roof section. Double-click the last point to complete the shape.
                   </p>
                 </div>
               </div>
@@ -387,12 +366,13 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
               <div className="flex gap-3">
                 <AlertCircle size={24} className="text-amber-600 flex-shrink-0" />
                 <div>
-                  <h4 className="font-bold text-amber-900 mb-1">Tips for Best Results</h4>
+                  <h4 className="font-bold text-amber-900 mb-1">Tips for Precision</h4>
                   <ul className="text-sm text-amber-800 space-y-1">
-                    <li>• Use maximum zoom for precise point placement</li>
-                    <li>• Place points at exact corners of the roof structure</li>
-                    <li>• Use the Undo button to remove the last point if needed</li>
-                    <li>• For complex roofs, measure each section separately</li>
+                    <li>• Zoom to maximum level for best accuracy</li>
+                    <li>• Click directly on roof corners for precise measurements</li>
+                    <li>• For complex roofs, draw multiple sections separately</li>
+                    <li>• Use 'Undo Last' if you need to remove a section</li>
+                    <li>• The map is editable - drag corner points to adjust</li>
                   </ul>
                 </div>
               </div>
@@ -426,7 +406,9 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="text-xl font-bold text-slate-900">{address}</h2>
-              <p className="text-sm text-slate-500">Click on the map to place measurement points</p>
+              <p className="text-sm text-slate-500">
+                {isDrawing ? 'Click on map corners to draw the roof outline' : 'Click "Draw Roof Section" to start measuring'}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <div className="bg-blue-50 border-2 border-blue-200 px-4 py-2 rounded-lg">
@@ -439,65 +421,70 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
-                <span className="text-sm text-slate-600">Points: </span>
-                <span className="font-bold text-slate-900">{points.length}</span>
+                <span className="text-sm text-slate-600">Sections: </span>
+                <span className="font-bold text-slate-900">{polygons.length}</span>
               </div>
 
-              {area > 0 && (
+              {totalArea > 0 && (
                 <div className="bg-emerald-50 border-2 border-emerald-200 rounded-lg px-4 py-2">
-                  <span className="text-sm text-emerald-700">Area: </span>
-                  <span className="font-bold text-emerald-900">{area.toLocaleString()} sq ft</span>
+                  <span className="text-sm text-emerald-700">Total Area: </span>
+                  <span className="font-bold text-emerald-900">{totalArea.toLocaleString()} sq ft</span>
                 </div>
               )}
 
-              {isConnected && (
-                <div className="bg-green-50 border-2 border-green-200 rounded-lg px-4 py-2 flex items-center gap-2">
-                  <Check size={16} className="text-green-600" />
-                  <span className="text-sm font-semibold text-green-700">Shape Connected</span>
+              {isDrawing && (
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg px-4 py-2 flex items-center gap-2">
+                  <PenTool size={16} className="text-blue-600" />
+                  <span className="text-sm font-semibold text-blue-700">Drawing Mode Active</span>
                 </div>
               )}
             </div>
 
             <div className="flex items-center gap-2">
+              {!isDrawing ? (
+                <button
+                  onClick={handleStartDrawing}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+                >
+                  <PenTool size={18} />
+                  Draw Roof Section
+                </button>
+              ) : (
+                <button
+                  onClick={handleCancelDrawing}
+                  className="px-4 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors font-medium flex items-center gap-2"
+                >
+                  <X size={18} />
+                  Cancel Drawing
+                </button>
+              )}
+
               <button
                 onClick={handleUndo}
-                disabled={points.length === 0}
+                disabled={polygons.length === 0}
                 className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Undo2 size={18} />
-                Undo
+                Undo Last
               </button>
 
               <button
                 onClick={handleReset}
-                disabled={points.length === 0}
+                disabled={polygons.length === 0}
                 className="px-4 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <RotateCcw size={18} />
-                Reset
+                Reset All
               </button>
 
-              {!isConnected && (
-                <button
-                  onClick={handleConnect}
-                  disabled={points.length < 3}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <Check size={18} />
-                  Connect Points
-                </button>
-              )}
-
-              {isConnected && (
-                <button
-                  onClick={handleSave}
-                  disabled={saving || credits < 1}
-                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <Save size={18} />
-                  {saving ? 'Saving...' : 'Save Measurement'}
-                </button>
-              )}
+              <button
+                onClick={handleSave}
+                disabled={saving || credits < 1 || polygons.length === 0}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <Save size={18} />
+                {saving ? 'Saving...' : 'Save Measurement'}
+              </button>
 
               <button
                 onClick={onCancel}
