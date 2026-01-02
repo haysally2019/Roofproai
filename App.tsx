@@ -241,7 +241,7 @@ const AppLayout: React.FC = () => {
                   {activeTab === Tab.TASKS && <TaskBoard tasks={tasks || []} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
                   {activeTab === Tab.MATERIAL_ORDERS && <MaterialOrders />}
                   {activeTab === Tab.LABOR_ORDERS && <LaborOrders />}
-                  {activeTab === Tab.CONTRACTS && <Contracts />}
+                  {activeTab === Tab.CONTRACTS && <Contracts leads={companyLeads} />}
                   {activeTab === Tab.PROPOSALS && <Proposals />}
                   {activeTab === Tab.INVOICES && <InvoiceSystem invoices={invoices || []} leads={companyLeads} currentUser={currentUser} onCreateInvoice={createInvoice} onUpdateStatus={updateInvoiceStatus} />}
                   {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}

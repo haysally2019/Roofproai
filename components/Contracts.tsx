@@ -524,16 +524,28 @@ const Contracts: React.FC<ContractsProps> = ({
             <div className="p-6 space-y-6">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Select Client</label>
-                <select
-                  value={formData.leadId}
-                  onChange={(e) => setFormData({ ...formData, leadId: e.target.value })}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Choose a client...</option>
-                  {leads.map(lead => (
-                    <option key={lead.id} value={lead.id}>{lead.name} - {lead.address}</option>
-                  ))}
-                </select>
+                {leads.length === 0 ? (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="text-yellow-600 mt-0.5" size={20} />
+                      <div>
+                        <p className="text-sm font-semibold text-yellow-900">No leads available</p>
+                        <p className="text-sm text-yellow-700 mt-1">Create a lead first before creating a contract.</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <select
+                    value={formData.leadId}
+                    onChange={(e) => setFormData({ ...formData, leadId: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Choose a client...</option>
+                    {leads.map(lead => (
+                      <option key={lead.id} value={lead.id}>{lead.name} - {lead.address}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div>
@@ -605,9 +617,52 @@ const Contracts: React.FC<ContractsProps> = ({
                 </button>
                 <button
                   onClick={() => {
+                    if (!formData.leadId) {
+                      alert('Please select a client');
+                      return;
+                    }
+
+                    const selectedLead = leads.find(l => l.id === formData.leadId);
+                    if (!selectedLead) return;
+
+                    const newContract: Contract = {
+                      id: crypto.randomUUID(),
+                      leadId: formData.leadId,
+                      leadName: selectedLead.name,
+                      leadEmail: selectedLead.email || '',
+                      leadPhone: selectedLead.phone,
+                      leadAddress: selectedLead.address,
+                      number: `CNT-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
+                      type: formData.type,
+                      status: 'Draft',
+                      createdDate: new Date().toISOString(),
+                      projectDescription: formData.projectDescription,
+                      scopeOfWork: [],
+                      materials: [],
+                      totalAmount: formData.totalAmount,
+                      depositAmount: formData.depositAmount,
+                      paymentSchedule: [],
+                      terms: [],
+                      warranty: formData.warranty,
+                      companyId: selectedLead.companyId
+                    };
+
+                    if (onCreateContract) {
+                      onCreateContract(newContract);
+                    }
+
+                    setFormData({
+                      leadId: '',
+                      type: 'Residential Roofing',
+                      projectDescription: '',
+                      totalAmount: 0,
+                      depositAmount: 0,
+                      warranty: '10 Year Workmanship Warranty'
+                    });
                     setIsCreating(false);
                   }}
-                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
+                  disabled={leads.length === 0 || !formData.leadId}
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Create Contract
                 </button>
