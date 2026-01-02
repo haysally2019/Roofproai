@@ -10,9 +10,17 @@ interface Point {
   id: string;
 }
 
+interface Edge {
+  startId: string;
+  endId: string;
+  id: string;
+}
+
 interface CompletedPolygon {
   points: Point[];
+  edges: Edge[];
   area: number;
+  label?: string;
 }
 
 interface MeasurementToolProps {
@@ -24,8 +32,12 @@ interface MeasurementToolProps {
 
 const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider, onSave, onCancel }) => {
   const [step, setStep] = useState<'instructions' | 'measuring'>('instructions');
+  const [mode, setMode] = useState<'placing-points' | 'connecting-points' | 'labeling'>('placing-points');
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
+  const [currentEdges, setCurrentEdges] = useState<Edge[]>([]);
+  const [selectedPoint, setSelectedPoint] = useState<string | null>(null);
   const [completedPolygons, setCompletedPolygons] = useState<CompletedPolygon[]>([]);
+  const [currentLabel, setCurrentLabel] = useState<string>('');
   const [map, setMap] = useState<atlas.Map | null>(null);
   const [dataSource, setDataSource] = useState<atlas.source.DataSource | null>(null);
   const [credits, setCredits] = useState<number>(0);
@@ -37,6 +49,9 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
   const mapRef = useRef<HTMLDivElement>(null);
   const currentPointsRef = useRef<Point[]>([]);
+  const currentEdgesRef = useRef<Edge[]>([]);
+  const selectedPointRef = useRef<string | null>(null);
+  const modeRef = useRef<'placing-points' | 'connecting-points' | 'labeling'>('placing-points');
   const completedPolygonsRef = useRef<CompletedPolygon[]>([]);
   const dataSourceRef = useRef<atlas.source.DataSource | null>(null);
   const azureApiKey = import.meta.env.VITE_AZURE_MAPS_KEY;
@@ -57,6 +72,18 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
   useEffect(() => {
     currentPointsRef.current = currentPoints;
   }, [currentPoints]);
+
+  useEffect(() => {
+    currentEdgesRef.current = currentEdges;
+  }, [currentEdges]);
+
+  useEffect(() => {
+    selectedPointRef.current = selectedPoint;
+  }, [selectedPoint]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
   useEffect(() => {
     completedPolygonsRef.current = completedPolygons;
@@ -180,34 +207,107 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
   };
 
   const handleMapClick = (e: atlas.MapMouseEvent) => {
-    const position = e.position;
-    if (!position) return;
+    const currentMode = modeRef.current;
 
-    const newPoint: Point = {
-      position: [position[0], position[1]],
-      id: `point-${Date.now()}`
-    };
+    if (currentMode === 'placing-points') {
+      const position = e.position;
+      if (!position) return;
 
-    const newPoints = [...currentPointsRef.current, newPoint];
-    setCurrentPoints(newPoints);
-    updateMapFeatures(newPoints, completedPolygonsRef.current);
+      const newPoint: Point = {
+        position: [position[0], position[1]],
+        id: `point-${Date.now()}`
+      };
+
+      const newPoints = [...currentPointsRef.current, newPoint];
+      setCurrentPoints(newPoints);
+      updateMapFeatures(newPoints, currentEdgesRef.current, completedPolygonsRef.current);
+    } else if (currentMode === 'connecting-points') {
+      const position = e.position;
+      if (!position) return;
+
+      const clickedPoint = findNearestPoint(position, currentPointsRef.current);
+      if (!clickedPoint) return;
+
+      const currentSelected = selectedPointRef.current;
+      if (!currentSelected) {
+        setSelectedPoint(clickedPoint.id);
+        updateMapFeatures(currentPointsRef.current, currentEdgesRef.current, completedPolygonsRef.current, clickedPoint.id);
+      } else {
+        if (currentSelected === clickedPoint.id) {
+          setSelectedPoint(null);
+          updateMapFeatures(currentPointsRef.current, currentEdgesRef.current, completedPolygonsRef.current);
+          return;
+        }
+
+        const edgeExists = currentEdgesRef.current.some(
+          edge => (edge.startId === currentSelected && edge.endId === clickedPoint.id) ||
+                  (edge.startId === clickedPoint.id && edge.endId === currentSelected)
+        );
+
+        if (!edgeExists) {
+          const newEdge: Edge = {
+            startId: currentSelected,
+            endId: clickedPoint.id,
+            id: `edge-${Date.now()}`
+          };
+
+          const newEdges = [...currentEdgesRef.current, newEdge];
+          setCurrentEdges(newEdges);
+          setSelectedPoint(null);
+          updateMapFeatures(currentPointsRef.current, newEdges, completedPolygonsRef.current);
+        } else {
+          setSelectedPoint(null);
+          updateMapFeatures(currentPointsRef.current, currentEdgesRef.current, completedPolygonsRef.current);
+        }
+      }
+    }
   };
 
-  const updateMapFeatures = (points: Point[], completed: CompletedPolygon[]) => {
+  const findNearestPoint = (position: atlas.data.Position, points: Point[]): Point | null => {
+    if (points.length === 0) return null;
+
+    const threshold = 0.0001;
+    let nearest: Point | null = null;
+    let minDistance = Infinity;
+
+    points.forEach(point => {
+      const dx = point.position[0] - position[0];
+      const dy = point.position[1] - position[1];
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < minDistance && distance < threshold) {
+        minDistance = distance;
+        nearest = point;
+      }
+    });
+
+    return nearest;
+  };
+
+  const updateMapFeatures = (points: Point[], edges: Edge[], completed: CompletedPolygon[], highlightedPointId?: string) => {
     const ds = dataSourceRef.current;
     if (!ds) return;
 
     ds.clear();
 
     points.forEach(point => {
-      ds.add(new atlas.data.Feature(new atlas.data.Point(point.position)));
+      const feature = new atlas.data.Feature(new atlas.data.Point(point.position));
+      feature.properties = {
+        pointId: point.id,
+        isHighlighted: point.id === highlightedPointId
+      };
+      ds.add(feature);
     });
 
-    if (points.length > 1) {
-      const positions = points.map(p => p.position);
-      const lineString = new atlas.data.LineString(positions);
-      ds.add(new atlas.data.Feature(lineString));
-    }
+    edges.forEach(edge => {
+      const startPoint = points.find(p => p.id === edge.startId);
+      const endPoint = points.find(p => p.id === edge.endId);
+
+      if (startPoint && endPoint) {
+        const lineString = new atlas.data.LineString([startPoint.position, endPoint.position]);
+        ds.add(new atlas.data.Feature(lineString));
+      }
+    });
 
     completed.forEach(polygon => {
       const positions = polygon.points.map(p => p.position);
@@ -246,25 +346,115 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
     return Math.round(areaFeet);
   };
 
-  const handleCompleteShape = () => {
+  const handleDonePlacingPoints = () => {
     if (currentPoints.length < 3) {
-      alert('You need at least 3 points to complete a shape');
+      alert('You need at least 3 points to continue');
+      return;
+    }
+    setMode('connecting-points');
+  };
+
+  const handleDoneConnecting = () => {
+    if (currentEdges.length < 3) {
+      alert('You need at least 3 edges to form a shape');
       return;
     }
 
-    const positions = currentPoints.map(p => p.position);
-    const area = calculatePolygonArea(positions);
+    const polygons = extractPolygons(currentPoints, currentEdges);
+    if (polygons.length === 0) {
+      alert('The edges do not form a closed shape. Please ensure your edges connect to form at least one polygon.');
+      return;
+    }
 
-    const newPolygon: CompletedPolygon = {
-      points: currentPoints,
-      area: area
+    setMode('labeling');
+  };
+
+  const extractPolygons = (points: Point[], edges: Edge[]): CompletedPolygon[] => {
+    const polygons: CompletedPolygon[] = [];
+    const edgeMap = new Map<string, string[]>();
+
+    edges.forEach(edge => {
+      if (!edgeMap.has(edge.startId)) edgeMap.set(edge.startId, []);
+      if (!edgeMap.has(edge.endId)) edgeMap.set(edge.endId, []);
+      edgeMap.get(edge.startId)!.push(edge.endId);
+      edgeMap.get(edge.endId)!.push(edge.startId);
+    });
+
+    const visited = new Set<string>();
+    const findCycle = (start: string, current: string, path: string[], pathSet: Set<string>): string[] | null => {
+      if (path.length > 2 && current === start) {
+        return path;
+      }
+
+      if (pathSet.has(current) || visited.has(current)) {
+        return null;
+      }
+
+      const neighbors = edgeMap.get(current) || [];
+      for (const neighbor of neighbors) {
+        if (path.length > 0 && neighbor === path[path.length - 1]) continue;
+
+        const newPath = [...path, current];
+        const newPathSet = new Set(pathSet);
+        newPathSet.add(current);
+
+        const cycle = findCycle(start, neighbor, newPath, newPathSet);
+        if (cycle) return cycle;
+      }
+
+      return null;
     };
 
-    const newCompleted = [...completedPolygons, newPolygon];
+    points.forEach(point => {
+      if (visited.has(point.id)) return;
+
+      const cycle = findCycle(point.id, point.id, [], new Set());
+      if (cycle && cycle.length >= 3) {
+        cycle.forEach(id => visited.add(id));
+
+        const polygonPoints = cycle.map(id => points.find(p => p.id === id)!).filter(p => p);
+        const polygonEdges = edges.filter(edge =>
+          cycle.includes(edge.startId) && cycle.includes(edge.endId)
+        );
+
+        const positions = polygonPoints.map(p => p.position);
+        const area = calculatePolygonArea(positions);
+
+        polygons.push({
+          points: polygonPoints,
+          edges: polygonEdges,
+          area: area
+        });
+      }
+    });
+
+    return polygons;
+  };
+
+  const handleSaveLabel = () => {
+    if (!currentLabel.trim()) {
+      alert('Please enter a label for this roof section');
+      return;
+    }
+
+    const polygons = extractPolygons(currentPoints, currentEdges);
+    const labeledPolygons = polygons.map(polygon => ({
+      ...polygon,
+      label: currentLabel
+    }));
+
+    const newCompleted = [...completedPolygons, ...labeledPolygons];
     setCompletedPolygons(newCompleted);
-    setTotalArea(prev => prev + area);
+
+    const addedArea = polygons.reduce((sum, p) => sum + p.area, 0);
+    setTotalArea(prev => prev + addedArea);
+
     setCurrentPoints([]);
-    updateMapFeatures([], newCompleted);
+    setCurrentEdges([]);
+    setCurrentLabel('');
+    setSelectedPoint(null);
+    setMode('placing-points');
+    updateMapFeatures([], [], newCompleted);
   };
 
   const handleUndoPoint = () => {
@@ -272,7 +462,15 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
     const newPoints = currentPoints.slice(0, -1);
     setCurrentPoints(newPoints);
-    updateMapFeatures(newPoints, completedPolygons);
+    updateMapFeatures(newPoints, currentEdges, completedPolygons);
+  };
+
+  const handleUndoEdge = () => {
+    if (currentEdges.length === 0) return;
+
+    const newEdges = currentEdges.slice(0, -1);
+    setCurrentEdges(newEdges);
+    updateMapFeatures(currentPoints, newEdges, completedPolygons);
   };
 
   const handleUndoPolygon = () => {
@@ -283,16 +481,28 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
     const newCompleted = completedPolygons.slice(0, -1);
     setCompletedPolygons(newCompleted);
-    updateMapFeatures(currentPoints, newCompleted);
+    updateMapFeatures(currentPoints, currentEdges, newCompleted);
   };
 
   const handleReset = () => {
     setCurrentPoints([]);
+    setCurrentEdges([]);
+    setSelectedPoint(null);
     setCompletedPolygons([]);
     setTotalArea(0);
+    setMode('placing-points');
     if (dataSourceRef.current) {
       dataSourceRef.current.clear();
     }
+  };
+
+  const handleCancelCurrent = () => {
+    setCurrentPoints([]);
+    setCurrentEdges([]);
+    setSelectedPoint(null);
+    setCurrentLabel('');
+    setMode('placing-points');
+    updateMapFeatures([], [], completedPolygons);
   };
 
   const handleSave = async () => {
@@ -400,7 +610,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
                 <div>
                   <h3 className="font-bold text-slate-900 mb-1">Place Pivot Points</h3>
                   <p className="text-slate-600 text-sm">
-                    Click on each corner of the roof to place pivot points. Lines will connect automatically as you add points.
+                    Click on each corner of the roof to place pivot points. Place all corner points before connecting them.
                   </p>
                 </div>
               </div>
@@ -410,9 +620,9 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
                   3
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 mb-1">Complete the Shape</h3>
+                  <h3 className="font-bold text-slate-900 mb-1">Connect the Points</h3>
                   <p className="text-slate-600 text-sm">
-                    After placing at least 3 points, click "Complete Shape" to close the polygon and calculate area.
+                    After placing all points, you'll be prompted to connect them by clicking pairs of points to draw edges between them.
                   </p>
                 </div>
               </div>
@@ -420,6 +630,18 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
               <div className="flex gap-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
                 <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">
                   4
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 mb-1">Label the Section</h3>
+                  <p className="text-slate-600 text-sm">
+                    Once your edges form a closed shape, you'll be prompted to label the roof section (e.g., "North Face", "Main Roof").
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">
+                  5
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 mb-1">Save Your Measurement</h3>
@@ -438,10 +660,10 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
                   <ul className="text-sm text-amber-800 space-y-1">
                     <li>• Zoom to maximum level for best accuracy</li>
                     <li>• Click directly on roof corners to place pivot points</li>
-                    <li>• Lines connect automatically between points</li>
-                    <li>• Use 'Undo Point' to remove the last pivot point</li>
-                    <li>• Complete the shape when you have all corners marked</li>
-                    <li>• For complex roofs, complete multiple sections separately</li>
+                    <li>• Place all corner points first, then connect them</li>
+                    <li>• Use 'Undo Point' or 'Undo Edge' to remove mistakes</li>
+                    <li>• Edges must form a closed shape before labeling</li>
+                    <li>• For complex roofs, measure multiple sections separately</li>
                   </ul>
                 </div>
               </div>
@@ -476,9 +698,11 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
             <div>
               <h2 className="text-xl font-bold text-slate-900">{address}</h2>
               <p className="text-sm text-slate-500">
-                {currentPoints.length === 0
-                  ? 'Click on the map to place pivot points at each roof corner'
-                  : `${currentPoints.length} point${currentPoints.length > 1 ? 's' : ''} placed - Click to add more or complete the shape`}
+                {mode === 'placing-points' && currentPoints.length === 0 && 'Click on the map to place pivot points at each roof corner'}
+                {mode === 'placing-points' && currentPoints.length > 0 && `${currentPoints.length} point${currentPoints.length > 1 ? 's' : ''} placed - Click to add more or finish placing`}
+                {mode === 'connecting-points' && !selectedPoint && `${currentEdges.length} edge${currentEdges.length !== 1 ? 's' : ''} drawn - Click a point to start connecting`}
+                {mode === 'connecting-points' && selectedPoint && 'Click another point to create an edge'}
+                {mode === 'labeling' && 'Enter a label for this roof section'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -491,10 +715,31 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
-                <span className="text-sm text-slate-600">Current Points: </span>
-                <span className="font-bold text-slate-900">{currentPoints.length}</span>
-              </div>
+              {mode === 'placing-points' && (
+                <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
+                  <span className="text-sm text-slate-600">Points Placed: </span>
+                  <span className="font-bold text-slate-900">{currentPoints.length}</span>
+                </div>
+              )}
+
+              {mode === 'connecting-points' && (
+                <>
+                  <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
+                    <span className="text-sm text-slate-600">Points: </span>
+                    <span className="font-bold text-slate-900">{currentPoints.length}</span>
+                  </div>
+                  <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
+                    <span className="text-sm text-slate-600">Edges: </span>
+                    <span className="font-bold text-slate-900">{currentEdges.length}</span>
+                  </div>
+                </>
+              )}
+
+              {mode === 'labeling' && (
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg px-4 py-2">
+                  <span className="text-sm text-blue-700">Ready to Label</span>
+                </div>
+              )}
 
               <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
                 <span className="text-sm text-slate-600">Completed Sections: </span>
@@ -510,23 +755,86 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleCompleteShape}
-                disabled={currentPoints.length < 3}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                <Check size={18} />
-                Complete Shape
-              </button>
+              {mode === 'placing-points' && (
+                <>
+                  <button
+                    onClick={handleDonePlacingPoints}
+                    disabled={currentPoints.length < 3}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <ChevronRight size={18} />
+                    Done Placing Points
+                  </button>
 
-              <button
-                onClick={handleUndoPoint}
-                disabled={currentPoints.length === 0}
-                className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                <Undo2 size={18} />
-                Undo Point
-              </button>
+                  <button
+                    onClick={handleUndoPoint}
+                    disabled={currentPoints.length === 0}
+                    className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Undo2 size={18} />
+                    Undo Point
+                  </button>
+                </>
+              )}
+
+              {mode === 'connecting-points' && (
+                <>
+                  <button
+                    onClick={handleDoneConnecting}
+                    disabled={currentEdges.length < 3}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <ChevronRight size={18} />
+                    Done Connecting
+                  </button>
+
+                  <button
+                    onClick={handleUndoEdge}
+                    disabled={currentEdges.length === 0}
+                    className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Undo2 size={18} />
+                    Undo Edge
+                  </button>
+
+                  <button
+                    onClick={handleCancelCurrent}
+                    className="px-4 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors font-medium flex items-center gap-2"
+                  >
+                    <X size={18} />
+                    Cancel Section
+                  </button>
+                </>
+              )}
+
+              {mode === 'labeling' && (
+                <>
+                  <input
+                    type="text"
+                    value={currentLabel}
+                    onChange={(e) => setCurrentLabel(e.target.value)}
+                    placeholder="Enter label (e.g., North Face)"
+                    className="px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  />
+
+                  <button
+                    onClick={handleSaveLabel}
+                    disabled={!currentLabel.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Check size={18} />
+                    Save Section
+                  </button>
+
+                  <button
+                    onClick={handleCancelCurrent}
+                    className="px-4 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors font-medium flex items-center gap-2"
+                  >
+                    <X size={18} />
+                    Cancel Section
+                  </button>
+                </>
+              )}
 
               <button
                 onClick={handleUndoPolygon}
@@ -539,7 +847,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
               <button
                 onClick={handleReset}
-                disabled={currentPoints.length === 0 && completedPolygons.length === 0}
+                disabled={currentPoints.length === 0 && currentEdges.length === 0 && completedPolygons.length === 0}
                 className="px-4 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <RotateCcw size={18} />
@@ -548,7 +856,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
               <button
                 onClick={handleSave}
-                disabled={saving || credits < 1 || completedPolygons.length === 0 || currentPoints.length > 0}
+                disabled={saving || credits < 1 || completedPolygons.length === 0 || mode !== 'placing-points'}
                 className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Save size={18} />
