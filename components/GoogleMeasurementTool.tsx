@@ -18,15 +18,13 @@ interface GoogleMeasurementToolProps {
 const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, onSave, onCancel }) => {
   const [step, setStep] = useState<'instructions' | 'measuring'>('instructions');
   const [map, setMap] = useState<any>(null);
-  const [polygon, setPolygon] = useState<any>(null);
-  const [points, setPoints] = useState<any[]>([]);
-  const [markers, setMarkers] = useState<any[]>([]);
-  const [polyline, setPolyline] = useState<any>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [drawingManager, setDrawingManager] = useState<any>(null);
+  const [polygons, setPolygons] = useState<any[]>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
   const [credits, setCredits] = useState<number>(0);
   const [showCreditModal, setShowCreditModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [area, setArea] = useState<number>(0);
+  const [totalArea, setTotalArea] = useState<number>(0);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(20);
@@ -49,16 +47,22 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
 
   useEffect(() => {
     if (map) {
-      map.addListener('zoom_changed', () => {
+      const zoomListener = map.addListener('zoom_changed', () => {
         setZoomLevel(map.getZoom());
       });
+      return () => {
+        if (window.google?.maps?.event) {
+          window.google.maps.event.removeListener(zoomListener);
+        }
+      };
     }
   }, [map]);
 
   const cleanupMap = () => {
-    markers.forEach(marker => marker.setMap(null));
-    if (polyline) polyline.setMap(null);
-    if (polygon) polygon.setMap(null);
+    polygons.forEach(poly => poly.setMap(null));
+    if (drawingManager) {
+      drawingManager.setMap(null);
+    }
   };
 
   const loadCredits = async () => {
@@ -112,7 +116,7 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
     if (!document.getElementById(scriptId)) {
       const script = document.createElement('script');
       script.id = scriptId;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=geometry,places`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=drawing,geometry,places`;
       script.async = true;
       script.defer = true;
       script.addEventListener('load', onScriptLoad);
@@ -156,13 +160,40 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
             gestureHandling: 'greedy',
           });
 
-          mapInstance.addListener('click', (e: any) => {
-            if (!isConnected) {
-              addPoint(e.latLng);
+          setMap(mapInstance);
+
+          const manager = new window.google.maps.drawing.DrawingManager({
+            drawingMode: null,
+            drawingControl: false,
+            polygonOptions: {
+              fillColor: '#3b82f6',
+              fillOpacity: 0.35,
+              strokeWeight: 3,
+              strokeColor: '#3b82f6',
+              clickable: true,
+              editable: true,
+              draggable: false,
+              zIndex: 1,
+            },
+          });
+
+          manager.setMap(mapInstance);
+          setDrawingManager(manager);
+
+          window.google.maps.event.addListener(manager, 'overlaycomplete', (event: any) => {
+            if (event.type === 'polygon') {
+              const newPoly = event.overlay;
+              const areaMeters = window.google.maps.geometry.spherical.computeArea(newPoly.getPath());
+              const areaSqFt = Math.round(areaMeters * 10.7639);
+
+              setTotalArea(prev => prev + areaSqFt);
+              setPolygons(prev => [...prev, newPoly]);
+
+              manager.setDrawingMode(null);
+              setIsDrawing(false);
             }
           });
 
-          setMap(mapInstance);
           setMapLoading(false);
         } else {
           setMapError('Address not found');
@@ -176,142 +207,42 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
     }
   };
 
-  const addPoint = (latLng: any) => {
-    if (!map) return;
-
-    const newPoints = [...points, latLng];
-    setPoints(newPoints);
-
-    const marker = new window.google.maps.Marker({
-      position: latLng,
-      map: map,
-      label: {
-        text: (newPoints.length).toString(),
-        color: 'white',
-        fontSize: '14px',
-        fontWeight: 'bold',
-      },
-      icon: {
-        path: window.google.maps.SymbolPath.CIRCLE,
-        scale: 12,
-        fillColor: '#3b82f6',
-        fillOpacity: 1,
-        strokeColor: '#ffffff',
-        strokeWeight: 2,
-      },
-    });
-
-    const newMarkers = [...markers, marker];
-    setMarkers(newMarkers);
-
-    if (newPoints.length > 1) {
-      if (polyline) {
-        polyline.setMap(null);
-      }
-
-      const line = new window.google.maps.Polyline({
-        path: newPoints,
-        geodesic: true,
-        strokeColor: '#3b82f6',
-        strokeOpacity: 1.0,
-        strokeWeight: 3,
-        map: map,
-      });
-
-      setPolyline(line);
-    }
-
-    if (newPoints.length >= 3) {
-      calculateArea(newPoints);
+  const handleStartDrawing = () => {
+    if (drawingManager) {
+      drawingManager.setDrawingMode(window.google.maps.drawing.OverlayType.POLYGON);
+      setIsDrawing(true);
     }
   };
 
-  const calculateArea = (pointsList: any[]) => {
-    if (pointsList.length < 3 || !window.google?.maps) return;
-
-    const areaMeters = window.google.maps.geometry.spherical.computeArea(pointsList);
-    const areaSqFt = Math.round(areaMeters * 10.7639);
-    setArea(areaSqFt);
-  };
-
-  const handleConnect = () => {
-    if (points.length < 3) {
-      alert('You need at least 3 points to create a roof section');
-      return;
+  const handleCancelDrawing = () => {
+    if (drawingManager) {
+      drawingManager.setDrawingMode(null);
+      setIsDrawing(false);
     }
-
-    if (polyline) polyline.setMap(null);
-
-    const poly = new window.google.maps.Polygon({
-      paths: points,
-      strokeColor: '#3b82f6',
-      strokeOpacity: 1.0,
-      strokeWeight: 3,
-      fillColor: '#3b82f6',
-      fillOpacity: 0.35,
-      map: map,
-    });
-
-    setPolygon(poly);
-    setIsConnected(true);
-    calculateArea(points);
   };
 
   const handleUndo = () => {
-    if (points.length === 0) return;
+    if (polygons.length === 0) return;
 
-    const newPoints = points.slice(0, -1);
-    setPoints(newPoints);
+    const lastPolygon = polygons[polygons.length - 1];
 
-    const lastMarker = markers[markers.length - 1];
-    if (lastMarker) {
-      lastMarker.setMap(null);
-    }
+    const areaMeters = window.google.maps.geometry.spherical.computeArea(lastPolygon.getPath());
+    const areaSqFt = Math.round(areaMeters * 10.7639);
 
-    const newMarkers = markers.slice(0, -1);
-    setMarkers(newMarkers);
+    lastPolygon.setMap(null);
 
-    if (polyline) {
-      polyline.setMap(null);
-    }
-
-    if (newPoints.length > 1) {
-      const line = new window.google.maps.Polyline({
-        path: newPoints,
-        geodesic: true,
-        strokeColor: '#3b82f6',
-        strokeOpacity: 1.0,
-        strokeWeight: 3,
-        map: map,
-      });
-      setPolyline(line);
-    }
-
-    if (polygon) {
-      polygon.setMap(null);
-      setPolygon(null);
-    }
-
-    setIsConnected(false);
-
-    if (newPoints.length >= 3) {
-      calculateArea(newPoints);
-    } else {
-      setArea(0);
-    }
+    setPolygons(prev => prev.slice(0, -1));
+    setTotalArea(prev => Math.max(0, prev - areaSqFt));
   };
 
   const handleReset = () => {
-    markers.forEach(marker => marker.setMap(null));
-    if (polyline) polyline.setMap(null);
-    if (polygon) polygon.setMap(null);
-
-    setPoints([]);
-    setMarkers([]);
-    setPolyline(null);
-    setPolygon(null);
-    setIsConnected(false);
-    setArea(0);
+    polygons.forEach(poly => poly.setMap(null));
+    setPolygons([]);
+    setTotalArea(0);
+    setIsDrawing(false);
+    if (drawingManager) {
+      drawingManager.setDrawingMode(null);
+    }
   };
 
   const handleZoomIn = () => {
@@ -327,16 +258,19 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
   };
 
   const handleRecenter = () => {
-    if (map && points.length > 0) {
+    if (map && polygons.length > 0) {
       const bounds = new window.google.maps.LatLngBounds();
-      points.forEach(point => bounds.extend(point));
+      polygons.forEach(poly => {
+        const path = poly.getPath();
+        path.forEach((point: any) => bounds.extend(point));
+      });
       map.fitBounds(bounds);
     }
   };
 
   const handleSave = async () => {
-    if (!isConnected || points.length < 3) {
-      alert('Please connect all points to create a complete roof section');
+    if (polygons.length === 0) {
+      alert('Please draw at least one roof section before saving');
       return;
     }
 
@@ -359,16 +293,30 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
 
       if (!userData?.company_id) throw new Error('No company found');
 
+      const segments = polygons.map((poly, index) => {
+        const path = poly.getPath();
+        const points: any[] = [];
+        for (let i = 0; i < path.getLength(); i++) {
+          const point = path.getAt(i);
+          points.push({ lon: point.lng(), lat: point.lat() });
+        }
+
+        const areaMeters = window.google.maps.geometry.spherical.computeArea(path);
+        const areaSqFt = Math.round(areaMeters * 10.7639);
+
+        return {
+          type: 'roof_section',
+          geometry: points,
+          area: areaSqFt,
+          label: polygons.length > 1 ? `Section ${index + 1}` : 'Main Roof'
+        };
+      });
+
       const measurementData = {
         company_id: userData.company_id,
         address: address,
-        total_area: area,
-        segments: [{
-          type: 'roof_section',
-          geometry: points.map(p => ({ lon: p.lng(), lat: p.lat() })),
-          area: area,
-          label: 'Main Roof'
-        }],
+        total_area: totalArea,
+        segments: segments,
         created_at: new Date().toISOString()
       };
 
@@ -426,9 +374,9 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
                   2
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 mb-1">Click Corner Points</h3>
+                  <h3 className="font-bold text-slate-900 mb-1">Click 'Draw Roof Section'</h3>
                   <p className="text-slate-600 text-sm">
-                    Click on each corner of the roof to place numbered markers. Start at one corner and work clockwise around the perimeter.
+                    Click the blue "Draw Roof Section" button in the toolbar to activate drawing mode.
                   </p>
                 </div>
               </div>
@@ -438,9 +386,9 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
                   3
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 mb-1">Connect the Shape</h3>
+                  <h3 className="font-bold text-slate-900 mb-1">Draw the Roof Outline</h3>
                   <p className="text-slate-600 text-sm">
-                    After placing at least 3 points, click "Connect Points" to close the shape and see the calculated area.
+                    Click on each corner of the roof section. Click on the first point again to complete the shape, or double-click the last point.
                   </p>
                 </div>
               </div>
@@ -465,10 +413,10 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
                   <h4 className="font-bold text-amber-900 mb-1">Tips for Precision</h4>
                   <ul className="text-sm text-amber-800 space-y-1">
                     <li>• Zoom to maximum level (21+) for best accuracy</li>
-                    <li>• Click directly on roof corners, not edges</li>
-                    <li>• Use Undo button if you misplace a point</li>
-                    <li>• Switch to hybrid view if you need street labels</li>
-                    <li>• For complex roofs, measure the largest section first</li>
+                    <li>• Click directly on roof corners for precise measurements</li>
+                    <li>• For complex roofs, draw multiple sections separately</li>
+                    <li>• Use 'Undo Last' if you need to remove a section</li>
+                    <li>• The map is editable - drag corner points to adjust</li>
                   </ul>
                 </div>
               </div>
@@ -502,7 +450,9 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="text-xl font-bold text-slate-900">{address}</h2>
-              <p className="text-sm text-slate-500">Click on the map to place measurement points at roof corners</p>
+              <p className="text-sm text-slate-500">
+                {isDrawing ? 'Click on map corners to draw the roof outline' : 'Click "Draw Roof Section" to start measuring'}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <div className="bg-blue-50 border-2 border-blue-200 px-4 py-2 rounded-lg">
@@ -515,8 +465,8 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
-                <span className="text-sm text-slate-600">Points: </span>
-                <span className="font-bold text-slate-900">{points.length}</span>
+                <span className="text-sm text-slate-600">Sections: </span>
+                <span className="font-bold text-slate-900">{polygons.length}</span>
               </div>
 
               <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
@@ -524,17 +474,17 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
                 <span className="font-bold text-slate-900">{zoomLevel}</span>
               </div>
 
-              {area > 0 && (
+              {totalArea > 0 && (
                 <div className="bg-emerald-50 border-2 border-emerald-200 rounded-lg px-4 py-2">
-                  <span className="text-sm text-emerald-700">Area: </span>
-                  <span className="font-bold text-emerald-900">{area.toLocaleString()} sq ft</span>
+                  <span className="text-sm text-emerald-700">Total Area: </span>
+                  <span className="font-bold text-emerald-900">{totalArea.toLocaleString()} sq ft</span>
                 </div>
               )}
 
-              {isConnected && (
-                <div className="bg-green-50 border-2 border-green-200 rounded-lg px-4 py-2 flex items-center gap-2">
-                  <Check size={16} className="text-green-600" />
-                  <span className="text-sm font-semibold text-green-700">Shape Connected</span>
+              {isDrawing && (
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg px-4 py-2 flex items-center gap-2">
+                  <PenTool size={16} className="text-blue-600" />
+                  <span className="text-sm font-semibold text-blue-700">Drawing Mode Active</span>
                 </div>
               )}
             </div>
@@ -558,7 +508,7 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
 
               <button
                 onClick={handleRecenter}
-                disabled={points.length === 0}
+                disabled={polygons.length === 0}
                 className="px-3 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Re-center"
               >
@@ -567,45 +517,50 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
 
               <div className="w-px h-8 bg-slate-300 mx-1"></div>
 
+              {!isDrawing ? (
+                <button
+                  onClick={handleStartDrawing}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+                >
+                  <PenTool size={18} />
+                  Draw Roof Section
+                </button>
+              ) : (
+                <button
+                  onClick={handleCancelDrawing}
+                  className="px-4 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors font-medium flex items-center gap-2"
+                >
+                  <X size={18} />
+                  Cancel Drawing
+                </button>
+              )}
+
               <button
                 onClick={handleUndo}
-                disabled={points.length === 0}
+                disabled={polygons.length === 0}
                 className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Undo2 size={18} />
-                Undo
+                Undo Last
               </button>
 
               <button
                 onClick={handleReset}
-                disabled={points.length === 0}
+                disabled={polygons.length === 0}
                 className="px-4 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <RotateCcw size={18} />
-                Reset
+                Reset All
               </button>
 
-              {!isConnected && (
-                <button
-                  onClick={handleConnect}
-                  disabled={points.length < 3}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <Check size={18} />
-                  Connect Points
-                </button>
-              )}
-
-              {isConnected && (
-                <button
-                  onClick={handleSave}
-                  disabled={saving || credits < 1}
-                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <Save size={18} />
-                  {saving ? 'Saving...' : 'Save Measurement'}
-                </button>
-              )}
+              <button
+                onClick={handleSave}
+                disabled={saving || credits < 1 || polygons.length === 0}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <Save size={18} />
+                {saving ? 'Saving...' : 'Save Measurement'}
+              </button>
 
               <button
                 onClick={onCancel}
@@ -651,10 +606,9 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
 
           <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-xl border-2 border-slate-200 px-6 py-3">
             <p className="text-sm text-slate-600">
-              {points.length === 0 && "Click on the map to start placing points"}
-              {points.length > 0 && points.length < 3 && `Add ${3 - points.length} more point${3 - points.length === 1 ? '' : 's'} to connect`}
-              {points.length >= 3 && !isConnected && "Click 'Connect Points' to finish"}
-              {isConnected && "Click 'Save Measurement' to complete"}
+              {!isDrawing && polygons.length === 0 && "Click 'Draw Roof Section' to start measuring"}
+              {!isDrawing && polygons.length > 0 && "Add more sections or click 'Save Measurement' to complete"}
+              {isDrawing && "Click on roof corners to draw the outline. Double-click or click first point to complete"}
             </p>
           </div>
         </div>
