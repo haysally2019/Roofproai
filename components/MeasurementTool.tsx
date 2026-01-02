@@ -46,6 +46,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
   const [totalArea, setTotalArea] = useState<number>(0);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const currentPointsRef = useRef<Point[]>([]);
@@ -194,6 +195,8 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
         newMap.layers.add([polygonLayer, lineLayer, symbolLayer]);
 
         newMap.events.add('click', handleMapClick);
+        newMap.events.add('mousemove', handleMouseMove);
+        newMap.events.add('mouseout', handleMouseOut);
 
         setMapLoading(false);
       });
@@ -204,6 +207,21 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
       setMapError(error instanceof Error ? error.message : 'Failed to load map');
       setMapLoading(false);
     }
+  };
+
+  const handleMouseMove = (e: atlas.MapMouseEvent) => {
+    if (mapRef.current && e.originalEvent) {
+      const rect = mapRef.current.getBoundingClientRect();
+      const mouseEvent = e.originalEvent as MouseEvent;
+      setCursorPosition({
+        x: mouseEvent.clientX - rect.left,
+        y: mouseEvent.clientY - rect.top
+      });
+    }
+  };
+
+  const handleMouseOut = () => {
+    setCursorPosition(null);
   };
 
   const handleMapClick = (e: atlas.MapMouseEvent) => {
@@ -900,6 +918,37 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
                   Try Again
                 </button>
               </div>
+            </div>
+          )}
+
+          {cursorPosition && (
+            <div className="absolute inset-0 pointer-events-none z-40">
+              <div
+                className="absolute w-0.5 bg-blue-500 opacity-70"
+                style={{
+                  left: `${cursorPosition.x}px`,
+                  top: 0,
+                  bottom: 0,
+                  boxShadow: '0 0 4px rgba(59, 130, 246, 0.5)'
+                }}
+              />
+              <div
+                className="absolute h-0.5 bg-blue-500 opacity-70"
+                style={{
+                  top: `${cursorPosition.y}px`,
+                  left: 0,
+                  right: 0,
+                  boxShadow: '0 0 4px rgba(59, 130, 246, 0.5)'
+                }}
+              />
+              <div
+                className="absolute w-3 h-3 border-2 border-blue-500 rounded-full bg-white"
+                style={{
+                  left: `${cursorPosition.x - 6}px`,
+                  top: `${cursorPosition.y - 6}px`,
+                  boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)'
+                }}
+              />
             </div>
           )}
 
