@@ -342,25 +342,12 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
   const calculatePolygonArea = (positions: atlas.data.Position[]): number => {
     if (positions.length < 3) return 0;
 
-    let areaMeters = 0;
-    for (let i = 0; i < positions.length - 1; i++) {
-      const p1 = positions[i];
-      const p2 = positions[i + 1];
-      areaMeters += (p2[0] - p1[0]) * (p2[1] + p1[1]);
-    }
+    const closedPositions = [...positions, positions[0]];
+    const polygon = new atlas.data.Polygon([closedPositions]);
 
-    areaMeters = Math.abs(areaMeters / 2.0);
-
-    const R = 6371000;
-    const avgLat = positions.reduce((sum, p) => sum + p[1], 0) / positions.length;
-    const latRadians = (avgLat * Math.PI) / 180;
-
-    const metersPerDegreeLon = R * Math.cos(latRadians) * (Math.PI / 180);
-    const metersPerDegreeLat = R * (Math.PI / 180);
-
-    areaMeters = areaMeters * metersPerDegreeLon * metersPerDegreeLat;
-
+    const areaMeters = atlas.math.getArea(polygon, 'squareMeters');
     const areaFeet = areaMeters * 10.7639;
+
     return Math.round(areaFeet);
   };
 
