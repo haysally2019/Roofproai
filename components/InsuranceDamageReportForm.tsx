@@ -81,6 +81,20 @@ const InsuranceDamageReportForm: React.FC<InsuranceDamageReportFormProps> = ({
     });
   };
 
+  const handleSelectLeadPhoto = (photoUrl: string, photoName: string) => {
+    setFormData({
+      ...formData,
+      damagePhotos: [
+        ...(formData.damagePhotos || []),
+        {
+          url: photoUrl,
+          caption: photoName,
+          timestamp: new Date().toISOString()
+        }
+      ]
+    });
+  };
+
   const handleUpdatePhoto = (index: number, field: 'url' | 'caption', value: string) => {
     const photos = [...(formData.damagePhotos || [])];
     photos[index] = { ...photos[index], [field]: value };
@@ -340,21 +354,72 @@ const InsuranceDamageReportForm: React.FC<InsuranceDamageReportFormProps> = ({
                 className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 flex items-center gap-1"
               >
                 <Camera size={16} />
-                Add Photo
+                Add Photo URL
               </button>
             </div>
+
+            {lead.documents && lead.documents.filter(doc => doc.type === 'Photo').length > 0 && (
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm font-semibold text-blue-900 mb-3">Photos from Lead ({lead.documents.filter(doc => doc.type === 'Photo').length} available)</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {lead.documents
+                    .filter(doc => doc.type === 'Photo')
+                    .map((doc) => (
+                      <button
+                        key={doc.id}
+                        onClick={() => handleSelectLeadPhoto(doc.url || '', doc.name)}
+                        className="relative group bg-white border-2 border-slate-200 hover:border-blue-500 rounded-lg overflow-hidden transition-all aspect-square"
+                      >
+                        {doc.url ? (
+                          <img
+                            src={doc.url}
+                            alt={doc.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100">
+                            <Camera className="text-slate-400 mb-1" size={24} />
+                            <span className="text-xs text-slate-500 px-2 text-center">{doc.name}</span>
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-blue-600 bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                          <Plus className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={32} />
+                        </div>
+                        <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs p-1 text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          Click to add
+                        </div>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
 
             {(formData.damagePhotos || []).length === 0 ? (
               <div className="text-center py-8 bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
                 <Camera size={32} className="mx-auto text-slate-300 mb-2" />
                 <p className="text-sm text-slate-500">No photos added yet</p>
+                <p className="text-xs text-slate-400 mt-1">Click photos above or add URLs manually</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {(formData.damagePhotos || []).map((photo, index) => (
-                  <div key={index} className="border border-slate-200 rounded-lg p-3 bg-slate-50 flex gap-3 items-start">
-                    <Camera className="text-slate-400 mt-1" size={20} />
-                    <div className="flex-1 grid grid-cols-2 gap-2">
+                  <div key={index} className="border border-slate-200 rounded-lg p-3 bg-white flex gap-3 items-start">
+                    {photo.url ? (
+                      <img
+                        src={photo.url}
+                        alt={photo.caption || 'Damage photo'}
+                        className="w-20 h-20 object-cover rounded border border-slate-200"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-20 h-20 bg-slate-100 rounded flex items-center justify-center border border-slate-200">
+                        <Camera className="text-slate-400" size={24} />
+                      </div>
+                    )}
+                    <div className="flex-1 grid grid-cols-1 gap-2">
                       <input
                         type="text"
                         value={photo.url}
@@ -367,14 +432,15 @@ const InsuranceDamageReportForm: React.FC<InsuranceDamageReportFormProps> = ({
                         value={photo.caption}
                         onChange={(e) => handleUpdatePhoto(index, 'caption', e.target.value)}
                         className="px-2 py-1.5 text-sm border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Photo caption"
+                        placeholder="Photo caption or description"
                       />
                     </div>
                     <button
                       onClick={() => handleRemovePhoto(index)}
-                      className="p-1 text-red-600 hover:bg-red-50 rounded"
+                      className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                      title="Remove photo"
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={18} />
                     </button>
                   </div>
                 ))}
