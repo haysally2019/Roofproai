@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Ruler, Plus, Search, CreditCard, Eye, Trash2, Download, MapIcon, Satellite } from 'lucide-react';
+import { Ruler, Plus, Search, CreditCard, Eye, Trash2, Download, MapIcon, Satellite, Globe } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import MeasurementTool from './MeasurementTool';
+import GoogleMeasurementTool from './GoogleMeasurementTool';
 import CreditPurchaseModal from './CreditPurchaseModal';
 
 interface Measurement {
@@ -31,7 +32,7 @@ const MeasurementsSimple: React.FC = () => {
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
-  const [selectedMapProvider, setSelectedMapProvider] = useState<'satellite' | 'satellite_road_labels'>('satellite');
+  const [selectedMapProvider, setSelectedMapProvider] = useState<'google' | 'azure_satellite' | 'azure_labels'>('google');
 
   const addressInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -198,17 +199,30 @@ const MeasurementsSimple: React.FC = () => {
   );
 
   if (showNewMeasurement) {
-    return (
-      <MeasurementTool
-        address={address}
-        mapProvider={selectedMapProvider}
-        onSave={handleSaveMeasurement}
-        onCancel={() => {
-          setShowNewMeasurement(false);
-          setAddress('');
-        }}
-      />
-    );
+    if (selectedMapProvider === 'google') {
+      return (
+        <GoogleMeasurementTool
+          address={address}
+          onSave={handleSaveMeasurement}
+          onCancel={() => {
+            setShowNewMeasurement(false);
+            setAddress('');
+          }}
+        />
+      );
+    } else {
+      return (
+        <MeasurementTool
+          address={address}
+          mapProvider={selectedMapProvider === 'azure_satellite' ? 'satellite' : 'satellite_road_labels'}
+          onSave={handleSaveMeasurement}
+          onCancel={() => {
+            setShowNewMeasurement(false);
+            setAddress('');
+          }}
+        />
+      );
+    }
   }
 
   return (
@@ -285,45 +299,65 @@ const MeasurementsSimple: React.FC = () => {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Select Map View
+                Select Map Provider
               </label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <button
                   type="button"
-                  onClick={() => setSelectedMapProvider('satellite')}
+                  onClick={() => setSelectedMapProvider('google')}
                   className={`p-4 rounded-lg border-2 transition-all ${
-                    selectedMapProvider === 'satellite'
+                    selectedMapProvider === 'google'
                       ? 'border-blue-600 bg-blue-50 shadow-md'
                       : 'border-slate-200 bg-white hover:border-slate-300'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <Satellite size={24} className={selectedMapProvider === 'satellite' ? 'text-blue-600' : 'text-slate-600'} />
-                    <div className="text-left">
-                      <p className={`font-semibold ${selectedMapProvider === 'satellite' ? 'text-blue-900' : 'text-slate-900'}`}>
-                        Satellite View
+                  <div className="flex flex-col items-center gap-2">
+                    <Globe size={24} className={selectedMapProvider === 'google' ? 'text-blue-600' : 'text-slate-600'} />
+                    <div className="text-center">
+                      <p className={`font-semibold text-sm ${selectedMapProvider === 'google' ? 'text-blue-900' : 'text-slate-900'}`}>
+                        Google Maps
                       </p>
-                      <p className="text-xs text-slate-500">Clean satellite imagery</p>
+                      <p className="text-xs text-slate-500">Recommended</p>
                     </div>
                   </div>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setSelectedMapProvider('satellite_road_labels')}
+                  onClick={() => setSelectedMapProvider('azure_satellite')}
                   className={`p-4 rounded-lg border-2 transition-all ${
-                    selectedMapProvider === 'satellite_road_labels'
+                    selectedMapProvider === 'azure_satellite'
                       ? 'border-blue-600 bg-blue-50 shadow-md'
                       : 'border-slate-200 bg-white hover:border-slate-300'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <MapIcon size={24} className={selectedMapProvider === 'satellite_road_labels' ? 'text-blue-600' : 'text-slate-600'} />
-                    <div className="text-left">
-                      <p className={`font-semibold ${selectedMapProvider === 'satellite_road_labels' ? 'text-blue-900' : 'text-slate-900'}`}>
-                        Satellite + Labels
+                  <div className="flex flex-col items-center gap-2">
+                    <Satellite size={24} className={selectedMapProvider === 'azure_satellite' ? 'text-blue-600' : 'text-slate-600'} />
+                    <div className="text-center">
+                      <p className={`font-semibold text-sm ${selectedMapProvider === 'azure_satellite' ? 'text-blue-900' : 'text-slate-900'}`}>
+                        Azure Satellite
                       </p>
-                      <p className="text-xs text-slate-500">With road names</p>
+                      <p className="text-xs text-slate-500">Clean view</p>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMapProvider('azure_labels')}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    selectedMapProvider === 'azure_labels'
+                      ? 'border-blue-600 bg-blue-50 shadow-md'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <MapIcon size={24} className={selectedMapProvider === 'azure_labels' ? 'text-blue-600' : 'text-slate-600'} />
+                    <div className="text-center">
+                      <p className={`font-semibold text-sm ${selectedMapProvider === 'azure_labels' ? 'text-blue-900' : 'text-slate-900'}`}>
+                        Azure + Labels
+                      </p>
+                      <p className="text-xs text-slate-500">With streets</p>
                     </div>
                   </div>
                 </button>
