@@ -4,7 +4,7 @@ import {
   Notification, UserRole, SubscriptionTier, LeadStatus, Tab, Toast,
   CallLog, AutomationRule,
   Supplier, MaterialOrder, SoftwareLead, PriceBookItem, Proposal, RoofMeasurement,
-  SalesRepApplicant
+  SalesRepApplicant, Contract
 } from '../types';
 import { supabase } from './supabase';
 
@@ -28,6 +28,7 @@ interface StoreContextType {
   priceBook: PriceBookItem[];
   proposals: Proposal[];
   measurements: RoofMeasurement[];
+  contracts: Contract[];
 
   login: (email: string, password: string) => Promise<boolean>;
   register: (companyName: string, name: string, email: string, password: string, referralCode?: string | null) => Promise<boolean>;
@@ -66,6 +67,9 @@ interface StoreContextType {
   addMeasurement: (measurement: RoofMeasurement) => Promise<void>;
   updateMeasurement: (measurement: RoofMeasurement) => Promise<void>;
   deleteMeasurement: (id: string) => Promise<void>;
+  addContract: (contract: Contract) => Promise<void>;
+  updateContract: (contract: Contract) => Promise<void>;
+  deleteContract: (id: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -98,6 +102,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [priceBook, setPriceBook] = useState<PriceBookItem[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [measurements, setMeasurements] = useState<RoofMeasurement[]>([]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
   
   // UI State
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -271,7 +276,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
       const [
         usersRes, leadsRes, activitiesRes, tasksRes, eventsRes, invoicesRes, callLogsRes,
-        automationsRes, ordersRes, priceBookRes, proposalsRes, measurementsRes
+        automationsRes, ordersRes, priceBookRes, proposalsRes, measurementsRes, contractsRes
       ] = await Promise.all([
         supabase.from('users').select('*').eq('company_id', companyId),
         supabase.from('leads').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
@@ -284,7 +289,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         supabase.from('material_orders').select('*').eq('company_id', companyId).order('created_at', { ascending: false }),
         supabase.from('price_book_items').select('*').eq('company_id', companyId).order('name', { ascending: true }),
         supabase.from('proposals').select('*, proposal_options(*)').eq('company_id', companyId).order('created_at', { ascending: false }),
-        supabase.from('roof_measurements').select('*, measurement_segments(*)').eq('company_id', companyId).order('created_at', { ascending: false })
+        supabase.from('roof_measurements').select('*, measurement_segments(*)').eq('company_id', companyId).order('created_at', { ascending: false }),
+        supabase.from('contracts').select('*').eq('company_id', companyId).order('created_date', { ascending: false })
       ]);
 
       if (usersRes.data) {
@@ -533,6 +539,49 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           createdAt: m.created_at,
           updatedAt: m.updated_at
         })));
+      }
+
+      if (contractsRes.data) {
+        const contractsWithLeadData = await Promise.all(
+          contractsRes.data.map(async (contract: any) => {
+            const { data: leadData } = await supabase
+              .from('leads')
+              .select('name, email, phone, address')
+              .eq('id', contract.lead_id)
+              .maybeSingle();
+
+            return {
+              id: contract.id,
+              leadId: contract.lead_id,
+              leadName: leadData?.name || '',
+              leadEmail: leadData?.email || '',
+              leadPhone: leadData?.phone || '',
+              leadAddress: leadData?.address || '',
+              number: contract.number,
+              type: contract.type,
+              status: contract.status,
+              createdDate: contract.created_date,
+              sentDate: contract.sent_date,
+              signedDate: contract.signed_date,
+              startDate: contract.start_date,
+              completionDate: contract.completion_date,
+              projectDescription: contract.project_description,
+              scopeOfWork: contract.scope_of_work || [],
+              materials: contract.materials || [],
+              totalAmount: parseFloat(contract.total_amount),
+              depositAmount: parseFloat(contract.deposit_amount),
+              paymentSchedule: contract.payment_schedule || [],
+              terms: contract.terms || [],
+              warranty: contract.warranty,
+              clientSignature: contract.client_signature,
+              contractorSignature: contract.contractor_signature,
+              notes: contract.notes,
+              companyId: contract.company_id,
+              proposalId: contract.proposal_id
+            };
+          })
+        );
+        setContracts(contractsWithLeadData);
       }
 
     } catch (error) {
@@ -1056,6 +1105,96 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const addContract = async (contract: Contract) => {
+    if (!currentUser?.companyId) return;
+
+    try {
+      const { error } = await supabase
+        .from('contracts')
+        .insert({
+          id: contract.id,
+          company_id: currentUser.companyId,
+          lead_id: contract.leadId,
+          proposal_id: contract.proposalId,
+          number: contract.number,
+          type: contract.type,
+          status: contract.status,
+          created_date: contract.createdDate,
+          sent_date: contract.sentDate,
+          signed_date: contract.signedDate,
+          start_date: contract.startDate,
+          completion_date: contract.completionDate,
+          project_description: contract.projectDescription,
+          scope_of_work: contract.scopeOfWork,
+          materials: contract.materials,
+          total_amount: contract.totalAmount,
+          deposit_amount: contract.depositAmount,
+          payment_schedule: contract.paymentSchedule,
+          terms: contract.terms,
+          warranty: contract.warranty,
+          client_signature: contract.clientSignature,
+          contractor_signature: contract.contractorSignature,
+          notes: contract.notes
+        });
+
+      if (error) throw error;
+
+      setContracts(prev => [contract, ...prev]);
+      addToast('Contract created successfully', 'success');
+    } catch (error: any) {
+      console.error('Error creating contract:', error);
+      addToast(`Failed to create contract: ${error.message}`, 'error');
+    }
+  };
+
+  const updateContract = async (contract: Contract) => {
+    try {
+      const { error } = await supabase
+        .from('contracts')
+        .update({
+          type: contract.type,
+          status: contract.status,
+          sent_date: contract.sentDate,
+          signed_date: contract.signedDate,
+          start_date: contract.startDate,
+          completion_date: contract.completionDate,
+          project_description: contract.projectDescription,
+          scope_of_work: contract.scopeOfWork,
+          materials: contract.materials,
+          total_amount: contract.totalAmount,
+          deposit_amount: contract.depositAmount,
+          payment_schedule: contract.paymentSchedule,
+          terms: contract.terms,
+          warranty: contract.warranty,
+          client_signature: contract.clientSignature,
+          contractor_signature: contract.contractorSignature,
+          notes: contract.notes
+        })
+        .eq('id', contract.id);
+
+      if (error) throw error;
+
+      setContracts(prev => prev.map(c => c.id === contract.id ? contract : c));
+      addToast('Contract updated successfully', 'success');
+    } catch (error: any) {
+      console.error('Error updating contract:', error);
+      addToast(`Failed to update contract: ${error.message}`, 'error');
+    }
+  };
+
+  const deleteContract = async (id: string) => {
+    try {
+      const { error } = await supabase.from('contracts').delete().eq('id', id);
+      if (error) throw error;
+
+      setContracts(prev => prev.filter(c => c.id !== id));
+      addToast('Contract deleted successfully', 'success');
+    } catch (error: any) {
+      console.error('Error deleting contract:', error);
+      addToast(`Failed to delete contract: ${error.message}`, 'error');
+    }
+  };
+
   const safeValue: StoreContextType = {
       currentUser, activeTab,
       companies: companies || [],
@@ -1075,6 +1214,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       priceBook,
       proposals: proposals || [],
       measurements: measurements || [],
+      contracts: contracts || [],
       login, register, logout, setTab, addToast, removeToast,
       updateLead, addLead, addLeadActivity, createCompany, updateCompany, deleteCompany, updateUser,
       addAutomation, toggleAutomation, deleteAutomation, addOrder,
@@ -1082,7 +1222,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       addUser, removeUser,
       addSoftwareLead, updateSoftwareLead, deleteSoftwareLead, updateApplicant,
       addProposal, updateProposal, deleteProposal,
-      addMeasurement, updateMeasurement, deleteMeasurement
+      addMeasurement, updateMeasurement, deleteMeasurement,
+      addContract, updateContract, deleteContract
   };
 
   return <StoreContext.Provider value={safeValue}>{children}</StoreContext.Provider>;

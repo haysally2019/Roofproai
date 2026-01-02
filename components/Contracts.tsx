@@ -2,20 +2,18 @@ import React, { useState } from 'react';
 import { FileSignature, Plus, Search, Filter, Download, Send, CheckCircle, X, Eye, Edit2, FileText, DollarSign, Calendar, AlertCircle, Copy, Settings } from 'lucide-react';
 import { Contract, Lead } from '../types';
 import ContractTemplateManager from './ContractTemplateManager';
+import { useStore } from '../lib/store';
 
 interface ContractsProps {
-  contracts?: Contract[];
   leads?: Lead[];
-  onCreateContract?: (contract: Contract) => void;
-  onUpdateContract?: (contract: Contract) => void;
 }
 
 const Contracts: React.FC<ContractsProps> = ({
-  contracts = [],
-  leads = [],
-  onCreateContract,
-  onUpdateContract
+  leads: leadsFromProps = []
 }) => {
+  const { contracts, leads: leadsFromStore, addContract, updateContract } = useStore();
+
+  const allLeads = leadsFromProps.length > 0 ? leadsFromProps : leadsFromStore;
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [isCreating, setIsCreating] = useState(false);
@@ -32,7 +30,7 @@ const Contracts: React.FC<ContractsProps> = ({
     warranty: '10 Year Workmanship Warranty'
   });
 
-  const mockContracts: Contract[] = contracts.length > 0 ? contracts : [
+  const mockContracts: Contract[] = contracts && contracts.length > 0 ? contracts : [
     {
       id: '1',
       leadId: 'lead1',
@@ -524,7 +522,7 @@ const Contracts: React.FC<ContractsProps> = ({
             <div className="p-6 space-y-6">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Select Client</label>
-                {leads.length === 0 ? (
+                {allLeads.length === 0 ? (
                   <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                     <div className="flex items-start gap-2">
                       <AlertCircle className="text-yellow-600 mt-0.5" size={20} />
@@ -541,7 +539,7 @@ const Contracts: React.FC<ContractsProps> = ({
                     className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Choose a client...</option>
-                    {leads.map(lead => (
+                    {allLeads.map(lead => (
                       <option key={lead.id} value={lead.id}>{lead.name} - {lead.address}</option>
                     ))}
                   </select>
@@ -616,13 +614,13 @@ const Contracts: React.FC<ContractsProps> = ({
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!formData.leadId) {
                       alert('Please select a client');
                       return;
                     }
 
-                    const selectedLead = leads.find(l => l.id === formData.leadId);
+                    const selectedLead = allLeads.find(l => l.id === formData.leadId);
                     if (!selectedLead) return;
 
                     const newContract: Contract = {
@@ -647,9 +645,7 @@ const Contracts: React.FC<ContractsProps> = ({
                       companyId: selectedLead.companyId
                     };
 
-                    if (onCreateContract) {
-                      onCreateContract(newContract);
-                    }
+                    await addContract(newContract);
 
                     setFormData({
                       leadId: '',
@@ -661,7 +657,7 @@ const Contracts: React.FC<ContractsProps> = ({
                     });
                     setIsCreating(false);
                   }}
-                  disabled={leads.length === 0 || !formData.leadId}
+                  disabled={allLeads.length === 0 || !formData.leadId}
                   className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Create Contract
