@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { FileSignature, Plus, Search, Filter, Download, Send, CheckCircle, X, Eye, Edit2, FileText, DollarSign, Calendar, AlertCircle, Copy, Settings } from 'lucide-react';
+import { FileSignature, Plus, Search, Filter, X, Eye, Edit2, AlertCircle, Settings } from 'lucide-react';
 import { Contract, Lead } from '../types';
 import ContractTemplateManager from './ContractTemplateManager';
+import ContractDocument from './ContractDocument';
 import { useStore } from '../lib/store';
 
 interface ContractsProps {
@@ -190,171 +191,13 @@ const Contracts: React.FC<ContractsProps> = ({
 
   if (viewMode === 'detail' && selectedContract) {
     return (
-      <div className="h-full flex flex-col space-y-6 pb-24 md:pb-6">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => {
-              setViewMode('list');
-              setSelectedContract(null);
-            }}
-            className="text-blue-600 hover:text-blue-700 flex items-center gap-2"
-          >
-            ← Back to Contracts
-          </button>
-          <div className="flex gap-2">
-            <button className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2">
-              <Download size={20} />
-              Download PDF
-            </button>
-            <button className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2">
-              <Send size={20} />
-              Send to Client
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-8 border-b border-slate-200 bg-slate-50">
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <h1 className="text-3xl font-bold text-slate-900 mb-2">Contract {selectedContract.number}</h1>
-                <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(selectedContract.status)}`}>
-                  {selectedContract.status}
-                </span>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-slate-500">Created</p>
-                <p className="font-semibold text-slate-900">{new Date(selectedContract.createdDate).toLocaleDateString()}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-500 uppercase mb-2">Client Information</h3>
-                <p className="font-semibold text-slate-900 text-lg">{selectedContract.leadName}</p>
-                <p className="text-slate-600">{selectedContract.leadAddress}</p>
-                <p className="text-slate-600">{selectedContract.leadPhone}</p>
-                <p className="text-slate-600">{selectedContract.leadEmail}</p>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-slate-500 uppercase mb-2">Project Details</h3>
-                <p className={`font-semibold text-lg ${getTypeColor(selectedContract.type)}`}>{selectedContract.type}</p>
-                <p className="text-slate-600 mt-2">{selectedContract.projectDescription}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-8">
-            <div className="grid grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                  <FileText size={20} className="text-blue-600" />
-                  Scope of Work
-                </h3>
-                <ul className="space-y-2">
-                  {selectedContract.scopeOfWork.map((item, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <CheckCircle size={16} className="text-emerald-600 mt-0.5 shrink-0" />
-                      <span className="text-slate-700">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <h3 className="text-lg font-bold text-slate-900 mb-4 mt-6">Materials</h3>
-                <ul className="space-y-2">
-                  {selectedContract.materials.map((material, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 shrink-0" />
-                      <span className="text-slate-700">{material}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                  <DollarSign size={20} className="text-emerald-600" />
-                  Payment Schedule
-                </h3>
-                <div className="space-y-3">
-                  {selectedContract.paymentSchedule.map((payment, idx) => (
-                    <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <div>
-                        <p className="font-semibold text-slate-900">{payment.milestone}</p>
-                        <p className="text-sm text-slate-500">
-                          {payment.status === 'Paid' ? (
-                            <span className="text-emerald-600 flex items-center gap-1">
-                              <CheckCircle size={14} /> Paid
-                            </span>
-                          ) : (
-                            <span className="text-orange-600">Pending</span>
-                          )}
-                        </p>
-                      </div>
-                      <p className="text-lg font-bold text-slate-900">${payment.amount.toLocaleString()}</p>
-                    </div>
-                  ))}
-                  <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200 mt-4">
-                    <p className="font-bold text-slate-900">Total Contract Value</p>
-                    <p className="text-xl font-bold text-blue-600">${selectedContract.totalAmount.toLocaleString()}</p>
-                  </div>
-                </div>
-
-                <h3 className="text-lg font-bold text-slate-900 mb-4 mt-6 flex items-center gap-2">
-                  <Calendar size={20} className="text-slate-600" />
-                  Timeline
-                </h3>
-                <div className="space-y-2">
-                  {selectedContract.startDate && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">Start Date</span>
-                      <span className="font-semibold text-slate-900">{new Date(selectedContract.startDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  {selectedContract.completionDate && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">Completion Date</span>
-                      <span className="font-semibold text-slate-900">{new Date(selectedContract.completionDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-8 p-6 bg-slate-50 rounded-lg">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Terms & Conditions</h3>
-              <ul className="space-y-2">
-                {selectedContract.terms.map((term, idx) => (
-                  <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
-                    <span className="text-slate-400">{idx + 1}.</span>
-                    <span>{term}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="mt-6 p-6 bg-emerald-50 rounded-lg border border-emerald-200">
-              <h3 className="text-lg font-bold text-emerald-900 mb-2">Warranty</h3>
-              <p className="text-emerald-800">{selectedContract.warranty}</p>
-            </div>
-
-            {selectedContract.clientSignature && selectedContract.contractorSignature && (
-              <div className="mt-8 grid grid-cols-2 gap-6">
-                <div className="p-4 border-t-2 border-slate-300">
-                  <p className="text-sm text-slate-500 mb-2">Client Signature</p>
-                  <p className="font-bold text-slate-900">{selectedContract.leadName}</p>
-                  <p className="text-sm text-slate-500">{selectedContract.signedDate && new Date(selectedContract.signedDate).toLocaleDateString()}</p>
-                </div>
-                <div className="p-4 border-t-2 border-slate-300">
-                  <p className="text-sm text-slate-500 mb-2">Contractor Signature</p>
-                  <p className="font-bold text-slate-900">Authorized Representative</p>
-                  <p className="text-sm text-slate-500">{selectedContract.signedDate && new Date(selectedContract.signedDate).toLocaleDateString()}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <ContractDocument
+        contract={selectedContract}
+        onBack={() => {
+          setViewMode('list');
+          setSelectedContract(null);
+        }}
+      />
     );
   }
 
