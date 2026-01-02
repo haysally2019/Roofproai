@@ -139,6 +139,38 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Handle Checkout Session Completed (for one-time payments like measurement credits)
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+
+      if (session.metadata?.type === "measurement_credits") {
+        const companyId = session.metadata.company_id;
+        const credits = parseInt(session.metadata.credits);
+        const paymentIntentId = session.payment_intent;
+
+        const { data: companyData } = await supabase
+          .from("companies")
+          .select("owner_id")
+          .eq("id", companyId)
+          .single();
+
+        if (companyData?.owner_id) {
+          const { error } = await supabase.rpc("add_measurement_credits", {
+            p_company_id: companyId,
+            p_user_id: companyData.owner_id,
+            p_credits: credits,
+            p_stripe_payment_id: paymentIntentId
+          });
+
+          if (error) {
+            console.error("Error adding credits:", error);
+          } else {
+            console.log(`Added ${credits} credits to company ${companyId}`);
+          }
+        }
+      }
+    }
+
     // Handle Invoice Payments for Commission Tracking
     if (event.type === "invoice.payment_succeeded") {
       const invoice = event.data.object;

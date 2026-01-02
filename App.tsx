@@ -27,7 +27,7 @@ import MaterialOrders from './components/MaterialOrders';
 import LaborOrders from './components/LaborOrders';
 import Contracts from './components/Contracts';
 import Proposals from './components/Proposals';
-import Measurements from './components/Measurements';
+import MeasurementsSimple from './components/MeasurementsSimple';
 import MeasurementsErrorBoundary from './components/MeasurementsWrapper';
 import SupplementDetector from './components/SupplementDetector';
 import AIIntelligence from './components/AIIntelligence';
@@ -234,7 +234,7 @@ const AppLayout: React.FC = () => {
                   {activeTab === Tab.ESTIMATES && <Estimator leads={companyLeads} onSaveEstimate={(id, est) => { const lead = companyLeads.find(l => l.id === id); if(lead) updateLead({ ...lead, estimates: [...(lead.estimates||[]), est] }); }} />}
                   {activeTab === Tab.MEASUREMENTS && (
                     <MeasurementsErrorBoundary>
-                      <Measurements />
+                      <MeasurementsSimple />
                     </MeasurementsErrorBoundary>
                   )}
                   {activeTab === Tab.CALENDAR && <CalendarView events={events || []} currentUser={currentUser} onAddEvent={addEvent} />}
