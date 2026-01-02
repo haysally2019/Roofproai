@@ -36,6 +36,9 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
   const [mapError, setMapError] = useState<string | null>(null);
 
   const mapRef = useRef<HTMLDivElement>(null);
+  const currentPointsRef = useRef<Point[]>([]);
+  const completedPolygonsRef = useRef<CompletedPolygon[]>([]);
+  const dataSourceRef = useRef<atlas.source.DataSource | null>(null);
   const azureApiKey = import.meta.env.VITE_AZURE_MAPS_KEY;
 
   useEffect(() => {
@@ -50,6 +53,18 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
       initializeMap();
     }
   }, [step]);
+
+  useEffect(() => {
+    currentPointsRef.current = currentPoints;
+  }, [currentPoints]);
+
+  useEffect(() => {
+    completedPolygonsRef.current = completedPolygons;
+  }, [completedPolygons]);
+
+  useEffect(() => {
+    dataSourceRef.current = dataSource;
+  }, [dataSource]);
 
   const cleanupMap = () => {
     if (map) {
@@ -173,34 +188,35 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
       id: `point-${Date.now()}`
     };
 
-    const newPoints = [...currentPoints, newPoint];
+    const newPoints = [...currentPointsRef.current, newPoint];
     setCurrentPoints(newPoints);
-    updateMapFeatures(newPoints, completedPolygons);
+    updateMapFeatures(newPoints, completedPolygonsRef.current);
   };
 
   const updateMapFeatures = (points: Point[], completed: CompletedPolygon[]) => {
-    if (!dataSource) return;
+    const ds = dataSourceRef.current;
+    if (!ds) return;
 
-    dataSource.clear();
+    ds.clear();
 
     points.forEach(point => {
-      dataSource.add(new atlas.data.Feature(new atlas.data.Point(point.position)));
+      ds.add(new atlas.data.Feature(new atlas.data.Point(point.position)));
     });
 
     if (points.length > 1) {
       const positions = points.map(p => p.position);
       const lineString = new atlas.data.LineString(positions);
-      dataSource.add(new atlas.data.Feature(lineString));
+      ds.add(new atlas.data.Feature(lineString));
     }
 
     completed.forEach(polygon => {
       const positions = polygon.points.map(p => p.position);
       const closedPositions = [...positions, positions[0]];
       const poly = new atlas.data.Polygon([closedPositions]);
-      dataSource.add(new atlas.data.Feature(poly));
+      ds.add(new atlas.data.Feature(poly));
 
       polygon.points.forEach(point => {
-        dataSource.add(new atlas.data.Feature(new atlas.data.Point(point.position)));
+        ds.add(new atlas.data.Feature(new atlas.data.Point(point.position)));
       });
     });
   };
@@ -274,8 +290,8 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
     setCurrentPoints([]);
     setCompletedPolygons([]);
     setTotalArea(0);
-    if (dataSource) {
-      dataSource.clear();
+    if (dataSourceRef.current) {
+      dataSourceRef.current.clear();
     }
   };
 
