@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Ruler, Plus, Search, CreditCard, Eye, Trash2, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import MeasurementTool from './MeasurementTool';
@@ -12,6 +12,14 @@ interface Measurement {
   segments: any[];
 }
 
+interface AddressSuggestion {
+  address: string;
+  position: {
+    lat: number;
+    lon: number;
+  };
+}
+
 const MeasurementsSimple: React.FC = () => {
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [showNewMeasurement, setShowNewMeasurement] = useState(false);
@@ -20,11 +28,46 @@ const MeasurementsSimple: React.FC = () => {
   const [credits, setCredits] = useState<number>(0);
   const [showCreditModal, setShowCreditModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isGeocoding, setIsGeocoding] = useState(false);
+
+  const addressInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const azureApiKey = import.meta.env.VITE_AZURE_MAPS_KEY;
 
   useEffect(() => {
     loadMeasurements();
     loadCredits();
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(event.target as Node) &&
+        addressInputRef.current &&
+        !addressInputRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (address.length >= 3) {
+      const timer = setTimeout(() => {
+        searchAddress(address);
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      setAddressSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [address]);
 
   const loadMeasurements = async () => {
     try {
@@ -78,6 +121,43 @@ const MeasurementsSimple: React.FC = () => {
     } catch (error) {
       console.error('Error loading credits:', error);
     }
+  };
+
+  const searchAddress = async (query: string) => {
+    if (!azureApiKey || query.length < 3) return;
+
+    setIsGeocoding(true);
+    try {
+      const response = await fetch(
+        `https://atlas.microsoft.com/search/address/json?api-version=1.0&subscription-key=${azureApiKey}&query=${encodeURIComponent(query)}&limit=5&countrySet=US`
+      );
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        const suggestions = data.results.map((result: any) => ({
+          address: result.address.freeformAddress,
+          position: {
+            lat: result.position.lat,
+            lon: result.position.lon
+          }
+        }));
+        setAddressSuggestions(suggestions);
+        setShowSuggestions(true);
+      } else {
+        setAddressSuggestions([]);
+        setShowSuggestions(false);
+      }
+    } catch (error) {
+      console.error('Address search error:', error);
+      setAddressSuggestions([]);
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
+  const selectAddress = (suggestion: AddressSuggestion) => {
+    setAddress(suggestion.address);
+    setShowSuggestions(false);
   };
 
   const handleStartMeasurement = () => {
@@ -164,15 +244,39 @@ const MeasurementsSimple: React.FC = () => {
           <p className="text-slate-600 mb-4 text-sm">
             Enter a property address to begin measuring. Each measurement uses 1 credit.
           </p>
-          <div className="flex gap-3">
-            <input
-              type="text"
-              placeholder="Enter property address (e.g., 123 Main St, Dallas, TX)"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleStartMeasurement()}
-              className="flex-1 px-4 py-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+          <div className="flex gap-3 relative">
+            <div className="flex-1 relative">
+              <input
+                ref={addressInputRef}
+                type="text"
+                placeholder="Enter property address (e.g., 123 Main St, Dallas, TX)"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleStartMeasurement()}
+                className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {showSuggestions && addressSuggestions.length > 0 && (
+                <div
+                  ref={suggestionsRef}
+                  className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-200 rounded-lg shadow-xl max-h-64 overflow-y-auto"
+                >
+                  {addressSuggestions.map((suggestion, index) => (
+                    <button
+                      key={index}
+                      onClick={() => selectAddress(suggestion)}
+                      className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-b-0"
+                    >
+                      <p className="font-medium text-slate-900">{suggestion.address}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {isGeocoding && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                </div>
+              )}
+            </div>
             <button
               onClick={handleStartMeasurement}
               disabled={!address.trim() || credits < 1}

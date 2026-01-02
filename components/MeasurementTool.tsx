@@ -23,7 +23,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, onSave, onCa
   const [dataSource, setDataSource] = useState<atlas.source.DataSource | null>(null);
   const [credits, setCredits] = useState<number>(0);
   const [showCreditModal, setShowCreditModal] = useState(false);
-  const [mapProvider, setMapProvider] = useState<'bing' | 'google'>('bing');
+  const [mapProvider, setMapProvider] = useState<'satellite' | 'satellite_road_labels'>('satellite');
   const [saving, setSaving] = useState(false);
   const [area, setArea] = useState<number>(0);
 
@@ -35,10 +35,24 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, onSave, onCa
   }, []);
 
   useEffect(() => {
-    if (mapRef.current && azureApiKey) {
-      initializeMap();
-    }
+    let mounted = true;
+
+    const setupMap = async () => {
+      if (map) {
+        map.dispose();
+        setMap(null);
+        setDataSource(null);
+      }
+
+      if (mapRef.current && azureApiKey && mounted) {
+        await initializeMap();
+      }
+    };
+
+    setupMap();
+
     return () => {
+      mounted = false;
       if (map) {
         map.dispose();
       }
@@ -90,7 +104,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, onSave, onCa
           authType: atlas.AuthenticationType.subscriptionKey,
           subscriptionKey: azureApiKey
         },
-        style: mapProvider === 'bing' ? 'satellite' : 'satellite_road_labels'
+        style: mapProvider
       });
 
       newMap.events.add('ready', () => {
@@ -341,26 +355,26 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, onSave, onCa
             <div className="flex items-center gap-3">
               <div className="flex bg-white border-2 border-slate-200 rounded-lg overflow-hidden">
                 <button
-                  onClick={() => setMapProvider('bing')}
+                  onClick={() => setMapProvider('satellite')}
                   className={`px-4 py-2 font-medium transition-colors ${
-                    mapProvider === 'bing'
+                    mapProvider === 'satellite'
                       ? 'bg-blue-600 text-white'
                       : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   <MapIcon size={16} className="inline mr-2" />
-                  Bing Maps
+                  Satellite
                 </button>
                 <button
-                  onClick={() => setMapProvider('google')}
+                  onClick={() => setMapProvider('satellite_road_labels')}
                   className={`px-4 py-2 font-medium transition-colors ${
-                    mapProvider === 'google'
+                    mapProvider === 'satellite_road_labels'
                       ? 'bg-blue-600 text-white'
                       : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   <MapIcon size={16} className="inline mr-2" />
-                  Google Maps
+                  Satellite + Labels
                 </button>
               </div>
 
