@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { MapPin, Check, X, CreditCard, AlertCircle, Map as MapIcon, Save } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { MapPin, Check, X, CreditCard, AlertCircle, ChevronRight, Undo2, RotateCcw, Save } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import CreditPurchaseModal from './CreditPurchaseModal';
 import * as atlas from 'azure-maps-control';
@@ -12,58 +12,57 @@ interface Point {
 
 interface MeasurementToolProps {
   address: string;
+  mapProvider: 'satellite' | 'satellite_road_labels';
   onSave: (measurement: any) => void;
   onCancel: () => void;
 }
 
-const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, onSave, onCancel }) => {
+const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider, onSave, onCancel }) => {
+  const [step, setStep] = useState<'instructions' | 'measuring'>('instructions');
   const [points, setPoints] = useState<Point[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [map, setMap] = useState<atlas.Map | null>(null);
   const [dataSource, setDataSource] = useState<atlas.source.DataSource | null>(null);
   const [credits, setCredits] = useState<number>(0);
   const [showCreditModal, setShowCreditModal] = useState(false);
-  const [mapProvider, setMapProvider] = useState<'satellite' | 'satellite_road_labels'>('satellite');
   const [saving, setSaving] = useState(false);
   const [area, setArea] = useState<number>(0);
+  const [mapLoading, setMapLoading] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const azureApiKey = import.meta.env.VITE_AZURE_MAPS_KEY;
 
   useEffect(() => {
     loadCredits();
+    return () => {
+      cleanupMap();
+    };
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-
-    const setupMap = async () => {
-      if (map) {
-        map.dispose();
-        setMap(null);
-        setDataSource(null);
-      }
-
-      if (mapRef.current && azureApiKey && mounted) {
-        await initializeMap();
-      }
-    };
-
-    setupMap();
-
-    return () => {
-      mounted = false;
-      if (map) {
-        map.dispose();
-      }
-    };
-  }, [mapProvider]);
+    if (step === 'measuring' && !map) {
+      initializeMap();
+    }
+  }, [step]);
 
   useEffect(() => {
     if (points.length >= 3) {
       calculateArea();
     }
   }, [points]);
+
+  const cleanupMap = () => {
+    if (map) {
+      try {
+        map.dispose();
+      } catch (error) {
+        console.error('Error disposing map:', error);
+      }
+      setMap(null);
+      setDataSource(null);
+    }
+  };
 
   const loadCredits = async () => {
     try {
@@ -90,8 +89,30 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, onSave, onCa
     }
   };
 
+  const geocodeAddress = async (address: string): Promise<atlas.data.Position> => {
+    if (!azureApiKey) throw new Error('Azure Maps API key not configured');
+
+    const response = await fetch(
+      `https://atlas.microsoft.com/search/address/json?api-version=1.0&subscription-key=${azureApiKey}&query=${encodeURIComponent(address)}`
+    );
+    const data = await response.json();
+
+    if (!data.results || data.results.length === 0) {
+      throw new Error('Address not found');
+    }
+
+    const location = data.results[0].position;
+    return [location.lon, location.lat];
+  };
+
   const initializeMap = async () => {
-    if (!mapRef.current) return;
+    if (!mapRef.current || !azureApiKey) {
+      setMapError('Map configuration error');
+      return;
+    }
+
+    setMapLoading(true);
+    setMapError(null);
 
     try {
       const coords = await geocodeAddress(address);
@@ -132,107 +153,90 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, onSave, onCa
         newMap.layers.add([polygonLayer, lineLayer, symbolLayer]);
 
         newMap.events.add('click', handleMapClick);
+
+        setMapLoading(false);
       });
 
       setMap(newMap);
     } catch (error) {
       console.error('Error initializing map:', error);
+      setMapError(error instanceof Error ? error.message : 'Failed to load map');
+      setMapLoading(false);
     }
   };
 
-  const geocodeAddress = async (addr: string): Promise<atlas.data.Position> => {
-    try {
-      const response = await fetch(
-        `https://atlas.microsoft.com/search/address/json?api-version=1.0&subscription-key=${azureApiKey}&query=${encodeURIComponent(addr)}`
-      );
-      const data = await response.json();
+  const handleMapClick = (e: atlas.MapMouseEvent) => {
+    if (isConnected) return;
 
-      if (data.results && data.results.length > 0) {
-        const pos = data.results[0].position;
-        return [pos.lon, pos.lat];
-      }
-    } catch (error) {
-      console.error('Geocoding error:', error);
-    }
-    return [-96.7970, 32.7767];
-  };
-
-  const handleMapClick = (e: any) => {
-    if (!e.position || isConnected) return;
+    const position = e.position;
+    if (!position) return;
 
     const newPoint: Point = {
-      position: e.position,
+      position: [position[0], position[1]],
       id: `point-${Date.now()}`
     };
 
-    setPoints(prev => [...prev, newPoint]);
-    updateMapFeatures([...points, newPoint], false);
+    const newPoints = [...points, newPoint];
+    setPoints(newPoints);
+    updateMapFeatures(newPoints, false);
   };
 
-  const calculateDistance = (pos1: atlas.data.Position, pos2: atlas.data.Position): number => {
-    const R = 20902231;
-    const lat1 = pos1[1] * Math.PI / 180;
-    const lat2 = pos2[1] * Math.PI / 180;
-    const dLat = (pos2[1] - pos1[1]) * Math.PI / 180;
-    const dLon = (pos2[0] - pos1[0]) * Math.PI / 180;
-
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1) * Math.cos(lat2) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
-  };
-
-  const calculateArea = () => {
-    if (points.length < 3) {
-      setArea(0);
-      return;
-    }
-
-    let totalArea = 0;
-    for (let i = 0; i < points.length; i++) {
-      const j = (i + 1) % points.length;
-      const xi = points[i].position[0];
-      const yi = points[i].position[1];
-      const xj = points[j].position[0];
-      const yj = points[j].position[1];
-      totalArea += (xi * yj) - (xj * yi);
-    }
-
-    const areaInSqDegrees = Math.abs(totalArea / 2);
-    const R = 20902231;
-    const areaInSqFeet = areaInSqDegrees * R * R * Math.cos(points[0].position[1] * Math.PI / 180);
-
-    setArea(Math.round(areaInSqFeet));
-  };
-
-  const updateMapFeatures = (pts: Point[], connected: boolean) => {
+  const updateMapFeatures = (currentPoints: Point[], connected: boolean) => {
     if (!dataSource) return;
 
     dataSource.clear();
 
-    pts.forEach(point => {
+    const positions = currentPoints.map(p => p.position);
+
+    currentPoints.forEach(point => {
       dataSource.add(new atlas.data.Feature(new atlas.data.Point(point.position)));
     });
 
-    if (pts.length >= 2) {
-      const coordinates = pts.map(p => p.position);
-      if (connected && pts.length >= 3) {
-        coordinates.push(pts[0].position);
-        dataSource.add(new atlas.data.Feature(new atlas.data.Polygon([coordinates])));
-      } else {
-        dataSource.add(new atlas.data.Feature(new atlas.data.LineString(coordinates)));
-      }
+    if (positions.length > 1) {
+      const lineString = new atlas.data.LineString(positions);
+      dataSource.add(new atlas.data.Feature(lineString));
+    }
+
+    if (connected && positions.length >= 3) {
+      const closedPositions = [...positions, positions[0]];
+      const polygon = new atlas.data.Polygon([closedPositions]);
+      dataSource.add(new atlas.data.Feature(polygon));
     }
   };
 
-  const handleConnectPoints = () => {
+  const calculateArea = () => {
+    if (points.length < 3) return;
+
+    const positions = points.map(p => p.position);
+    const closedPositions = [...positions, positions[0]];
+
+    let areaMeters = 0;
+    for (let i = 0; i < closedPositions.length - 1; i++) {
+      const p1 = closedPositions[i];
+      const p2 = closedPositions[i + 1];
+      areaMeters += (p2[0] - p1[0]) * (p2[1] + p1[1]);
+    }
+
+    areaMeters = Math.abs(areaMeters / 2.0);
+
+    const R = 6371000;
+    const avgLat = positions.reduce((sum, p) => sum + p[1], 0) / positions.length;
+    const latRadians = (avgLat * Math.PI) / 180;
+
+    const metersPerDegreeLon = R * Math.cos(latRadians) * (Math.PI / 180);
+    const metersPerDegreeLat = R * (Math.PI / 180);
+
+    areaMeters = areaMeters * metersPerDegreeLon * metersPerDegreeLat;
+
+    const areaFeet = areaMeters * 10.7639;
+    setArea(Math.round(areaFeet));
+  };
+
+  const handleConnect = () => {
     if (points.length < 3) {
       alert('You need at least 3 points to create a roof section');
       return;
     }
-
     setIsConnected(true);
     updateMapFeatures(points, true);
   };
@@ -242,6 +246,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, onSave, onCa
 
     const newPoints = points.slice(0, -1);
     setPoints(newPoints);
+    setIsConnected(false);
     updateMapFeatures(newPoints, false);
   };
 
@@ -300,84 +305,139 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, onSave, onCa
 
       if (measurementError) throw measurementError;
 
-      const { data: deductionResult, error: deductionError } = await supabase
-        .rpc('deduct_measurement_credit', {
-          p_company_id: userData.company_id,
-          p_user_id: user.id,
-          p_measurement_id: measurement.id
-        });
+      const { error: creditError } = await supabase.rpc('decrement_measurement_credits', {
+        p_company_id: userData.company_id
+      });
 
-      if (deductionError || !deductionResult) {
-        await supabase.from('roof_measurements').delete().eq('id', measurement.id);
-        throw new Error('Failed to deduct credit');
-      }
+      if (creditError) throw creditError;
 
       onSave(measurement);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error saving measurement:', error);
-      alert(error.message || 'Failed to save measurement');
+      alert('Failed to save measurement. Please try again.');
     } finally {
       setSaving(false);
     }
   };
 
-  return (
-    <>
-      <div className="h-full flex flex-col bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-white font-bold text-lg">DIY Roof Measurement</h3>
-              <p className="text-blue-100 text-sm">{address}</p>
+  if (step === 'instructions') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-50 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+                <MapPin size={32} className="text-blue-600" />
+              </div>
+              <h1 className="text-3xl font-bold text-slate-900 mb-2">Roof Measurement Guide</h1>
+              <p className="text-slate-600">Follow these steps for accurate measurements</p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg">
-                <div className="flex items-center gap-2 text-white">
-                  <CreditCard size={18} />
-                  <span className="font-bold">{credits}</span>
-                  <span className="text-sm">credits</span>
+
+            <div className="space-y-6 mb-8">
+              <div className="flex gap-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">
+                  1
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 mb-1">Locate the Roof</h3>
+                  <p className="text-slate-600 text-sm">
+                    The map will center on your property. Pan and zoom to get the best view of the roof.
+                  </p>
                 </div>
               </div>
-              {credits < 1 && (
-                <button
-                  onClick={() => setShowCreditModal(true)}
-                  className="px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold text-sm"
-                >
-                  Buy Credits
-                </button>
-              )}
+
+              <div className="flex gap-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">
+                  2
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 mb-1">Click Corner Points</h3>
+                  <p className="text-slate-600 text-sm">
+                    Click on each corner of the roof to place measurement points. Start at one corner and work around the perimeter.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">
+                  3
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 mb-1">Connect the Shape</h3>
+                  <p className="text-slate-600 text-sm">
+                    After placing at least 3 points, click "Connect Points" to close the shape and calculate the area.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+                <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">
+                  4
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 mb-1">Save Your Measurement</h3>
+                  <p className="text-slate-600 text-sm">
+                    Review the calculated area and save the measurement. This will use 1 credit from your account.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border-2 border-amber-200 rounded-lg p-4 mb-8">
+              <div className="flex gap-3">
+                <AlertCircle size={24} className="text-amber-600 flex-shrink-0" />
+                <div>
+                  <h4 className="font-bold text-amber-900 mb-1">Tips for Best Results</h4>
+                  <ul className="text-sm text-amber-800 space-y-1">
+                    <li>• Use maximum zoom for precise point placement</li>
+                    <li>• Place points at exact corners of the roof structure</li>
+                    <li>• Use the Undo button to remove the last point if needed</li>
+                    <li>• For complex roofs, measure each section separately</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={onCancel}
+                className="flex-1 px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setStep('measuring')}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+              >
+                Start Measuring
+                <ChevronRight size={20} />
+              </button>
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
 
-        <div className="p-4 bg-slate-50 border-b border-slate-200">
+  return (
+    <>
+      <div className="h-screen flex flex-col bg-slate-50">
+        <div className="bg-white border-b border-slate-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">{address}</h2>
+              <p className="text-sm text-slate-500">Click on the map to place measurement points</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="bg-blue-50 border-2 border-blue-200 px-4 py-2 rounded-lg">
+                <span className="text-sm text-blue-700 font-medium">Credits: </span>
+                <span className="font-bold text-blue-900">{credits}</span>
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex bg-white border-2 border-slate-200 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => setMapProvider('satellite')}
-                  className={`px-4 py-2 font-medium transition-colors ${
-                    mapProvider === 'satellite'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <MapIcon size={16} className="inline mr-2" />
-                  Satellite
-                </button>
-                <button
-                  onClick={() => setMapProvider('satellite_road_labels')}
-                  className={`px-4 py-2 font-medium transition-colors ${
-                    mapProvider === 'satellite_road_labels'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <MapIcon size={16} className="inline mr-2" />
-                  Satellite + Labels
-                </button>
-              </div>
-
               <div className="bg-white border-2 border-slate-200 rounded-lg px-4 py-2">
                 <span className="text-sm text-slate-600">Points: </span>
                 <span className="font-bold text-slate-900">{points.length}</span>
@@ -389,83 +449,110 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, onSave, onCa
                   <span className="font-bold text-emerald-900">{area.toLocaleString()} sq ft</span>
                 </div>
               )}
+
+              {isConnected && (
+                <div className="bg-green-50 border-2 border-green-200 rounded-lg px-4 py-2 flex items-center gap-2">
+                  <Check size={16} className="text-green-600" />
+                  <span className="text-sm font-semibold text-green-700">Shape Connected</span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={handleUndo}
                 disabled={points.length === 0}
-                className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
+                <Undo2 size={18} />
                 Undo
               </button>
+
               <button
                 onClick={handleReset}
                 disabled={points.length === 0}
-                className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                className="px-4 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                <X size={18} className="inline mr-1" />
+                <RotateCcw size={18} />
                 Reset
               </button>
-            </div>
-          </div>
 
-          <div className="mt-3 bg-blue-50 border-l-4 border-blue-600 p-3 rounded-r">
-            <div className="flex items-start gap-2 text-sm">
-              <AlertCircle size={16} className="text-blue-600 mt-0.5 shrink-0" />
-              <div className="text-blue-900">
-                {!isConnected ? (
-                  <span><strong>Click on the map</strong> to mark corner points of the roof section. Add at least 3 points, then click "Connect Points".</span>
-                ) : (
-                  <span><strong>Polygon complete!</strong> Review the measurement and click "Save" to finalize. This will use 1 credit.</span>
-                )}
-              </div>
+              {!isConnected && (
+                <button
+                  onClick={handleConnect}
+                  disabled={points.length < 3}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <Check size={18} />
+                  Connect Points
+                </button>
+              )}
+
+              {isConnected && (
+                <button
+                  onClick={handleSave}
+                  disabled={saving || credits < 1}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <Save size={18} />
+                  {saving ? 'Saving...' : 'Save Measurement'}
+                </button>
+              )}
+
+              <button
+                onClick={onCancel}
+                className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium flex items-center gap-2"
+              >
+                <X size={18} />
+                Cancel
+              </button>
             </div>
           </div>
         </div>
 
         <div className="flex-1 relative">
-          <div ref={mapRef} className="absolute inset-0" />
-
-          {points.length >= 3 && !isConnected && (
-            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10">
-              <button
-                onClick={handleConnectPoints}
-                className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-xl hover:from-emerald-700 hover:to-emerald-800 transition-all shadow-lg hover:shadow-xl font-bold flex items-center gap-2"
-              >
-                <Check size={20} />
-                Connect Points & Calculate Area
-              </button>
+          {mapLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-90 z-50">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-slate-600 font-medium">Loading map...</p>
+              </div>
             </div>
           )}
-        </div>
 
-        <div className="p-4 bg-slate-50 border-t border-slate-200">
-          <div className="flex gap-3">
-            <button
-              onClick={onCancel}
-              className="flex-1 px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors font-semibold"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!isConnected || saving || credits < 1}
-              className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              <Save size={20} />
-              {saving ? 'Saving...' : `Save Measurement (${credits} credit${credits !== 1 ? 's' : ''} available)`}
-            </button>
-          </div>
+          {mapError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-red-50 z-50">
+              <div className="text-center max-w-md">
+                <AlertCircle size={48} className="text-red-600 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-red-900 mb-2">Map Error</h3>
+                <p className="text-red-700 mb-4">{mapError}</p>
+                <button
+                  onClick={() => {
+                    setMapError(null);
+                    initializeMap();
+                  }}
+                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                >
+                  Try Again
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div ref={mapRef} className="w-full h-full" />
         </div>
       </div>
 
-      <CreditPurchaseModal
-        isOpen={showCreditModal}
-        onClose={() => setShowCreditModal(false)}
-        onPurchaseComplete={loadCredits}
-        currentCredits={credits}
-      />
+      {showCreditModal && (
+        <CreditPurchaseModal
+          currentCredits={credits}
+          onClose={() => setShowCreditModal(false)}
+          onPurchaseComplete={() => {
+            setShowCreditModal(false);
+            loadCredits();
+          }}
+        />
+      )}
     </>
   );
 };

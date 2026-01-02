@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Ruler, Plus, Search, CreditCard, Eye, Trash2, Download } from 'lucide-react';
+import { Ruler, Plus, Search, CreditCard, Eye, Trash2, Download, MapIcon, Satellite } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import MeasurementTool from './MeasurementTool';
 import CreditPurchaseModal from './CreditPurchaseModal';
@@ -31,6 +31,7 @@ const MeasurementsSimple: React.FC = () => {
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
+  const [selectedMapProvider, setSelectedMapProvider] = useState<'satellite' | 'satellite_road_labels'>('satellite');
 
   const addressInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -200,6 +201,7 @@ const MeasurementsSimple: React.FC = () => {
     return (
       <MeasurementTool
         address={address}
+        mapProvider={selectedMapProvider}
         onSave={handleSaveMeasurement}
         onCancel={() => {
           setShowNewMeasurement(false);
@@ -242,52 +244,104 @@ const MeasurementsSimple: React.FC = () => {
         <div className="bg-gradient-to-r from-blue-50 to-slate-50 border-2 border-blue-200 rounded-xl p-6">
           <h3 className="font-bold text-slate-900 mb-3 text-lg">Start New Measurement</h3>
           <p className="text-slate-600 mb-4 text-sm">
-            Enter a property address to begin measuring. Each measurement uses 1 credit.
+            Enter a property address and select your preferred map view. Each measurement uses 1 credit.
           </p>
-          <div className="flex gap-3 relative">
-            <div className="flex-1 relative">
-              <input
-                ref={addressInputRef}
-                type="text"
-                placeholder="Enter property address (e.g., 123 Main St, Dallas, TX)"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleStartMeasurement()}
-                className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              {showSuggestions && addressSuggestions.length > 0 && (
-                <div
-                  ref={suggestionsRef}
-                  className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-200 rounded-lg shadow-xl max-h-64 overflow-y-auto"
-                >
-                  {addressSuggestions.map((suggestion, index) => (
-                    <button
-                      key={index}
-                      onClick={() => selectAddress(suggestion)}
-                      className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-b-0"
-                    >
-                      <p className="font-medium text-slate-900">{suggestion.address}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {isGeocoding && (
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                </div>
-              )}
+
+          <div className="space-y-4">
+            <div className="flex gap-3 relative">
+              <div className="flex-1 relative">
+                <input
+                  ref={addressInputRef}
+                  type="text"
+                  placeholder="Enter property address (e.g., 123 Main St, Dallas, TX)"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleStartMeasurement()}
+                  className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                {showSuggestions && addressSuggestions.length > 0 && (
+                  <div
+                    ref={suggestionsRef}
+                    className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-200 rounded-lg shadow-xl max-h-64 overflow-y-auto"
+                  >
+                    {addressSuggestions.map((suggestion, index) => (
+                      <button
+                        key={index}
+                        onClick={() => selectAddress(suggestion)}
+                        className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-b-0"
+                      >
+                        <p className="font-medium text-slate-900">{suggestion.address}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {isGeocoding && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                  </div>
+                )}
+              </div>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Select Map View
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedMapProvider('satellite')}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    selectedMapProvider === 'satellite'
+                      ? 'border-blue-600 bg-blue-50 shadow-md'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Satellite size={24} className={selectedMapProvider === 'satellite' ? 'text-blue-600' : 'text-slate-600'} />
+                    <div className="text-left">
+                      <p className={`font-semibold ${selectedMapProvider === 'satellite' ? 'text-blue-900' : 'text-slate-900'}`}>
+                        Satellite View
+                      </p>
+                      <p className="text-xs text-slate-500">Clean satellite imagery</p>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMapProvider('satellite_road_labels')}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    selectedMapProvider === 'satellite_road_labels'
+                      ? 'border-blue-600 bg-blue-50 shadow-md'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <MapIcon size={24} className={selectedMapProvider === 'satellite_road_labels' ? 'text-blue-600' : 'text-slate-600'} />
+                    <div className="text-left">
+                      <p className={`font-semibold ${selectedMapProvider === 'satellite_road_labels' ? 'text-blue-900' : 'text-slate-900'}`}>
+                        Satellite + Labels
+                      </p>
+                      <p className="text-xs text-slate-500">With road names</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             <button
               onClick={handleStartMeasurement}
               disabled={!address.trim() || credits < 1}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Plus size={20} />
               Start Measurement
             </button>
           </div>
+
           {credits < 1 && (
-            <p className="text-orange-600 text-sm mt-2 font-medium">
+            <p className="text-orange-600 text-sm mt-3 font-medium">
               You need to purchase credits to create measurements
             </p>
           )}
