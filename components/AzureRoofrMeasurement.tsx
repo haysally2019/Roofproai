@@ -103,7 +103,21 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({
   };
 
   const initializeMap = async () => {
-    if (!mapRef.current || !azureApiKey) {
+    console.log('Azure Maps - initializeMap called');
+    console.log('mapRef.current:', mapRef.current);
+    console.log('azureApiKey:', azureApiKey);
+    console.log('azureApiKey type:', typeof azureApiKey);
+    console.log('azureApiKey length:', azureApiKey?.length);
+
+    if (!mapRef.current) {
+      console.error('Map ref not available');
+      setMapError('Map container not ready');
+      setMapLoading(false);
+      return;
+    }
+
+    if (!azureApiKey) {
+      console.error('Azure API key not found');
       setMapError('Azure Maps API key not configured');
       setMapLoading(false);
       return;

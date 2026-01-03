@@ -162,6 +162,10 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   };
 
   const initializeMap = async () => {
+    console.log('Google Maps - initializeMap called');
+    console.log('mapRef.current:', mapRef.current);
+    console.log('window.google?.maps:', window.google?.maps);
+
     if (!mapRef.current) {
       console.error('Map ref not available');
       setMapError('Map container not ready');
