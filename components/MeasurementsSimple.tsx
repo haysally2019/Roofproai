@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Ruler, Plus, Search, CreditCard, Eye, Trash2, Download, MapIcon, Satellite, Globe, Box, CheckCircle, XCircle, Loader2, Sparkles, FileText } from 'lucide-react';
+import { Ruler, Plus, Search, CreditCard, Eye, Trash2, Download, MapIcon, Satellite, Globe, Box, CheckCircle, XCircle, Loader2, Sparkles, FileText, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import RoofrStyleMeasurement from './RoofrStyleMeasurement';
 import AzureRoofrMeasurement from './AzureRoofrMeasurement';
 import CreditPurchaseModal from './CreditPurchaseModal';
+import MapDiagnostics from './MapDiagnostics';
 import { checkSolarAvailability } from '../lib/googleSolarApi';
 import { generateMeasurementReportPDF } from '../lib/pdfGenerator';
 
@@ -40,6 +41,7 @@ const MeasurementsSimple: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [credits, setCredits] = useState<number>(0);
   const [showCreditModal, setShowCreditModal] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [loading, setLoading] = useState(true);
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -358,6 +360,14 @@ const MeasurementsSimple: React.FC = () => {
             <p className="text-slate-500 mt-1">DIY satellite measurements with high-resolution imagery</p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowDiagnostics(true)}
+              className="px-5 py-3 border-2 border-orange-600 text-orange-600 rounded-xl hover:bg-orange-50 transition-colors font-semibold shadow-sm flex items-center gap-2"
+              title="Test map services"
+            >
+              <AlertCircle size={20} />
+              Test Maps
+            </button>
             <div className="bg-white border-2 border-slate-200 px-5 py-3 rounded-xl shadow-sm">
               <div className="flex items-center gap-2">
                 <CreditCard size={20} className="text-blue-600" />
@@ -667,6 +677,18 @@ const MeasurementsSimple: React.FC = () => {
         onPurchaseComplete={loadCredits}
         currentCredits={credits}
       />
+
+      {showDiagnostics && (
+        <div className="relative">
+          <MapDiagnostics />
+          <button
+            onClick={() => setShowDiagnostics(false)}
+            className="fixed top-4 right-4 px-4 py-2 bg-white rounded-lg shadow-lg border border-slate-200 hover:bg-slate-50 transition-colors font-semibold z-[60]"
+          >
+            Close Diagnostics
+          </button>
+        </div>
+      )}
     </>
   );
 };
