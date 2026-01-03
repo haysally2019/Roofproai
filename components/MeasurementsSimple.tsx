@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Ruler, Plus, Search, CreditCard, Eye, Trash2, Download, MapIcon, Satellite, Globe, Box, CheckCircle, XCircle, Loader2, Sparkles, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import MeasurementTool from './MeasurementTool';
 import RoofrStyleMeasurement from './RoofrStyleMeasurement';
+import AzureRoofrMeasurement from './AzureRoofrMeasurement';
 import CreditPurchaseModal from './CreditPurchaseModal';
 import { checkSolarAvailability } from '../lib/googleSolarApi';
 import { generateMeasurementReportPDF } from '../lib/pdfGenerator';
@@ -330,7 +330,7 @@ const MeasurementsSimple: React.FC = () => {
       );
     } else {
       return (
-        <MeasurementTool
+        <AzureRoofrMeasurement
           address={address}
           leadId={selectedLead || undefined}
           mapProvider={selectedMapProvider === 'azure_satellite' ? 'satellite' : 'satellite_road_labels'}
