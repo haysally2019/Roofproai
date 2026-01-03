@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Ruler, Plus, Search, CreditCard, Eye, Trash2, Download, MapIcon, Satellite, Globe, Box, CheckCircle, XCircle, Loader2, Sparkles, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import MeasurementTool from './MeasurementTool';
-import RoofMeasurementWorkflow from './RoofMeasurementWorkflow';
+import RoofrStyleMeasurement from './RoofrStyleMeasurement';
 import CreditPurchaseModal from './CreditPurchaseModal';
 import { checkSolarAvailability } from '../lib/googleSolarApi';
 import { generateMeasurementReportPDF } from '../lib/pdfGenerator';
@@ -316,7 +316,7 @@ const MeasurementsSimple: React.FC = () => {
   if (showNewMeasurement) {
     if (selectedMapProvider === 'google') {
       return (
-        <RoofMeasurementWorkflow
+        <RoofrStyleMeasurement
           address={address}
           leadId={selectedLead || undefined}
           onSave={handleSaveMeasurement}
