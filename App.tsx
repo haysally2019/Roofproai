@@ -25,8 +25,9 @@ import TrialFunnel from './components/TrialFunnel';
 import UserAnalytics from './components/UserAnalytics';
 import MaterialOrders from './components/MaterialOrders';
 import LaborOrders from './components/LaborOrders';
-import Contracts from './components/Contracts';
-import Proposals from './components/Proposals';
+import ContractsNew from './components/ContractsNew';
+import ProposalsNew from './components/ProposalsNew';
+import PaymentsNew from './components/PaymentsNew';
 import MeasurementsSimple from './components/MeasurementsSimple';
 import MeasurementsErrorBoundary from './components/MeasurementsWrapper';
 import SupplementDetector from './components/SupplementDetector';
@@ -241,9 +242,9 @@ const AppLayout: React.FC = () => {
                   {activeTab === Tab.TASKS && <TaskBoard tasks={tasks || []} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
                   {activeTab === Tab.MATERIAL_ORDERS && <MaterialOrders />}
                   {activeTab === Tab.LABOR_ORDERS && <LaborOrders />}
-                  {activeTab === Tab.CONTRACTS && <Contracts leads={companyLeads} />}
-                  {activeTab === Tab.PROPOSALS && <Proposals />}
-                  {activeTab === Tab.INVOICES && <InvoiceSystem invoices={invoices || []} leads={companyLeads} currentUser={currentUser} onCreateInvoice={createInvoice} onUpdateStatus={updateInvoiceStatus} />}
+                  {activeTab === Tab.CONTRACTS && <ContractsNew />}
+                  {activeTab === Tab.PROPOSALS && <ProposalsNew />}
+                  {activeTab === Tab.INVOICES && <PaymentsNew />}
                   {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}
                   {activeTab === Tab.AI_RECEPTIONIST && <AIReceptionist />}
                   {activeTab === Tab.AUTOMATIONS && <Automations />}
