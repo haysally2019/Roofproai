@@ -26,11 +26,12 @@ interface CompletedPolygon {
 interface MeasurementToolProps {
   address: string;
   mapProvider: 'satellite' | 'satellite_road_labels';
+  leadId?: string;
   onSave: (measurement: any) => void;
   onCancel: () => void;
 }
 
-const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider, onSave, onCancel }) => {
+const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider, leadId, onSave, onCancel }) => {
   const [step, setStep] = useState<'instructions' | 'measuring'>('instructions');
   const [mode, setMode] = useState<'placing-points' | 'connecting-points' | 'labeling'>('placing-points');
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
@@ -438,14 +439,14 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
   const handleSaveLabel = () => {
     if (!currentLabel.trim()) {
-      alert('Please enter a label for this roof section');
+      alert('Please enter a label for this roof section (e.g., "Main Roof", "Garage", "Ridge", "Valley")');
       return;
     }
 
     const polygons = extractPolygons(currentPoints, currentEdges);
     const labeledPolygons = polygons.map(polygon => ({
       ...polygon,
-      label: currentLabel
+      label: currentLabel.trim()
     }));
 
     const newCompleted = [...completedPolygons, ...labeledPolygons];
@@ -556,6 +557,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
         address: address,
         total_area: totalArea,
         segments: segments,
+        lead_id: leadId || null,
         created_at: new Date().toISOString()
       };
 
@@ -814,11 +816,28 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ address, mapProvider,
 
               {mode === 'labeling' && (
                 <>
+                  <div className="flex items-center gap-2 bg-white border-2 border-slate-200 rounded-lg px-3 py-1">
+                    <span className="text-xs text-slate-500 font-medium">Quick:</span>
+                    {['Main Roof', 'Garage', 'Porch', 'Ridge', 'Valley', 'Hip', 'Eave', 'Rake'].map((label) => (
+                      <button
+                        key={label}
+                        onClick={() => setCurrentLabel(label)}
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                          currentLabel === label
+                            ? 'bg-blue-600 text-white font-semibold'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
                   <input
                     type="text"
                     value={currentLabel}
                     onChange={(e) => setCurrentLabel(e.target.value)}
-                    placeholder="Enter label (e.g., North Face)"
+                    placeholder="Or enter custom label"
                     className="px-4 py-2 border-2 border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none"
                   />
 

@@ -704,6 +704,17 @@ const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({ lead, onClose, onUpda
              <div className="space-y-4">
                 <div className="flex justify-between items-center">
                    <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide">Roof Measurements</h3>
+                   <button
+                      onClick={() => {
+                         addToast('Measurement tool opening...', 'info');
+                         // Navigate to measurements tab with pre-filled address
+                         window.location.hash = '#measurements';
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                   >
+                      <Ruler size={16}/>
+                      New Measurement
+                   </button>
                 </div>
                 {measurements.filter(m => m.leadId === lead.id).length > 0 ? (
                    <div className="space-y-3">
