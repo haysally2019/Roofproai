@@ -49,6 +49,7 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
   const [csvPreview, setCsvPreview] = useState<string[]>([]); // Headers
   const [parsedData, setParsedData] = useState<any[]>([]);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
+  const [assignToUserId, setAssignToUserId] = useState<string>(currentUser.id);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Markdown Helper
@@ -231,7 +232,9 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
               const newMapping: Record<string, string> = {};
               headers.forEach(h => {
                   const lower = h.toLowerCase();
-                  if (lower.includes('name') || lower.includes('customer') || lower.includes('client')) newMapping[h] = 'name';
+                  if (lower.includes('business') || lower.includes('company')) newMapping[h] = 'name';
+                  else if (lower.includes('name') || lower.includes('customer') || lower.includes('client')) newMapping[h] = 'name';
+                  else if (lower.includes('city') && !headers.some(hdr => hdr.toLowerCase().includes('address'))) newMapping[h] = 'address';
                   else if (lower.includes('address') || lower.includes('street') || lower.includes('location')) newMapping[h] = 'address';
                   else if (lower.includes('phone') || lower.includes('mobile') || lower.includes('cell')) newMapping[h] = 'phone';
                   else if (lower.includes('email') || lower.includes('e-mail')) newMapping[h] = 'email';
@@ -262,7 +265,7 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
               projectType: 'Unknown',
               lastContact: new Date().toISOString(),
               createdAt: new Date().toISOString().split('T')[0],
-              assignedTo: currentUser.id,
+              assignedTo: assignToUserId,
               notes: 'Imported from ' + importSource
           };
 
@@ -270,10 +273,15 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
               const roofProField = columnMapping[csvHeader];
               if (roofProField && row[csvHeader]) {
                   if (roofProField === 'estimatedValue') {
-                      const value = row[csvHeader].replace(/[^0-9.]/g, '');
+                      const value = row[csvHeader].toString().replace(/[^0-9.]/g, '');
                       lead.estimatedValue = parseFloat(value) || 0;
+                  } else if (roofProField === 'phone') {
+                      let phoneValue = row[csvHeader].toString().trim();
+                      phoneValue = phoneValue.replace(/\.0+$/, '');
+                      (lead as any)[roofProField] = phoneValue;
                   } else {
-                      (lead as any)[roofProField] = row[csvHeader];
+                      const value = row[csvHeader].toString().trim();
+                      (lead as any)[roofProField] = value;
                   }
               }
           });
@@ -815,6 +823,20 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
                             <div className="flex items-center justify-between bg-indigo-50 p-3 rounded-lg border border-indigo-100">
                                 <span className="text-sm font-medium text-indigo-900 flex items-center gap-2"><CheckCircle size={16}/> File Loaded: {csvFile?.name}</span>
                                 <span className="text-xs font-bold bg-white px-2 py-1 rounded text-indigo-600">{parsedData.length} Rows</span>
+                            </div>
+
+                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Assign All Leads To:</label>
+                                <select
+                                    value={assignToUserId}
+                                    onChange={(e) => setAssignToUserId(e.target.value)}
+                                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-slate-700 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                                >
+                                    {users.map(user => (
+                                        <option key={user.id} value={user.id}>{user.name} ({user.email})</option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-slate-500 mt-2">All {parsedData.length} leads will be assigned to this user</p>
                             </div>
 
                             <div className="border border-slate-200 rounded-xl overflow-hidden">

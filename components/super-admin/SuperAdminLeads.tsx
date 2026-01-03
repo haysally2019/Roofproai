@@ -48,6 +48,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
   const [csvPreview, setCsvPreview] = useState<string[]>([]);
   const [parsedData, setParsedData] = useState<any[]>([]);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
+  const [assignToUserId, setAssignToUserId] = useState<string>(currentUser.id);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const columns: SoftwareLeadStatus[] = ['Prospect', 'Contacted', 'Demo Booked', 'Trial', 'Closed Won', 'Lost'];
@@ -299,7 +300,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         source: 'Inbound',
         estimatedValue: 0,
         potentialUsers: 1,
-        assignedTo: currentUser.id,
+        assignedTo: assignToUserId,
         activities: [],
         tags: []
       };
@@ -339,7 +340,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
           source: lead.source as LeadSource || 'Inbound',
           potentialUsers: lead.potentialUsers || 1,
           estimatedValue: lead.estimatedValue || 0,
-          assignedTo: currentUser.id,
+          assignedTo: assignToUserId,
           notes: `Imported from ${importSource}`,
           createdAt: now,
           updatedAt: now,
@@ -1031,6 +1032,20 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                   <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg border border-blue-100">
                     <span className="text-sm font-medium text-blue-900 flex items-center gap-2"><CheckCircle2 size={16}/> File Loaded: {csvFile?.name}</span>
                     <span className="text-xs font-bold bg-white px-2 py-1 rounded text-blue-600">{parsedData.length} Rows</span>
+                  </div>
+
+                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Assign All Leads To:</label>
+                    <select
+                      value={assignToUserId}
+                      onChange={(e) => setAssignToUserId(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-slate-700 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                    >
+                      {users.map(user => (
+                        <option key={user.id} value={user.id}>{user.name} ({user.email})</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-500 mt-2">All {parsedData.length} leads will be assigned to this user</p>
                   </div>
 
                   <div className="border border-slate-200 rounded-xl overflow-hidden">
