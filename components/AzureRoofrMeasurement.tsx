@@ -34,7 +34,7 @@ interface RoofEdgeLine {
 interface AzureRoofrMeasurementProps {
   address: string;
   leadId?: string;
-  mapProvider: 'satellite' | 'satellite_road_labels';
+  mapProvider: 'satellite';
   onSave: (measurement: any) => void;
   onCancel: () => void;
 }
@@ -126,7 +126,7 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({
       const mapInstance = new atlas.Map(mapRef.current, {
         center: [location.lon, location.lat],
         zoom: 20,
-        style: mapProvider === 'satellite' ? 'satellite' : 'satellite_road_labels',
+        style: 'satellite',
         authOptions: {
           authType: atlas.AuthenticationType.subscriptionKey,
           subscriptionKey: azureApiKey

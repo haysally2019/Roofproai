@@ -71,7 +71,12 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
 
   useEffect(() => {
     loadCredits();
-    loadGoogleMaps();
+
+    const timer = setTimeout(() => {
+      loadGoogleMaps();
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, []);
 
   const loadCredits = async () => {
@@ -100,52 +105,87 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   };
 
   const loadGoogleMaps = () => {
+    console.log('loadGoogleMaps called');
+
     if (!googleApiKey) {
+      console.error('Google Maps API key not configured');
       setMapError('Google Maps API key not configured');
+      setMapLoading(false);
       return;
     }
 
     const onScriptLoad = () => {
+      console.log('Google Maps script loaded, checking API...');
       if (!window.google?.maps) {
+        console.error('Google Maps API not available after script load');
         setMapError('Google Maps failed to load');
+        setMapLoading(false);
         return;
       }
+      console.log('Google Maps API ready, initializing map');
       initializeMap();
     };
 
     if (window.google?.maps) {
-      onScriptLoad();
+      console.log('Google Maps already loaded');
+      initializeMap();
       return;
     }
 
     const scriptId = 'google-maps-script';
-    if (!document.getElementById(scriptId)) {
-      const script = document.createElement('script');
-      script.id = scriptId;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=geometry,places`;
-      script.async = true;
-      script.defer = true;
-      script.addEventListener('load', onScriptLoad);
-      script.addEventListener('error', () => {
-        setMapError('Failed to load Google Maps');
-        setMapLoading(false);
-      });
-      document.head.appendChild(script);
+    const existingScript = document.getElementById(scriptId);
+
+    if (existingScript) {
+      console.log('Google Maps script already exists in DOM');
+      if (window.google?.maps) {
+        initializeMap();
+      } else {
+        console.log('Waiting for existing script to load');
+        existingScript.addEventListener('load', onScriptLoad);
+      }
+      return;
     }
+
+    console.log('Creating new Google Maps script tag');
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=geometry,places`;
+    script.async = true;
+    script.defer = true;
+    script.addEventListener('load', onScriptLoad);
+    script.addEventListener('error', (err) => {
+      console.error('Failed to load Google Maps script:', err);
+      setMapError('Failed to load Google Maps');
+      setMapLoading(false);
+    });
+    document.head.appendChild(script);
   };
 
   const initializeMap = async () => {
-    if (!mapRef.current || !window.google?.maps) {
-      setMapError('Map initialization failed');
+    if (!mapRef.current) {
+      console.error('Map ref not available');
+      setMapError('Map container not ready');
+      setMapLoading(false);
+      return;
+    }
+
+    if (!window.google?.maps) {
+      console.error('Google Maps API not loaded');
+      setMapError('Google Maps API not loaded');
+      setMapLoading(false);
       return;
     }
 
     try {
+      console.log('Geocoding address:', address);
       const geocoder = new window.google.maps.Geocoder();
 
       geocoder.geocode({ address: address }, (results: any, status: any) => {
+        console.log('Geocode status:', status, 'results:', results);
+
         if (status === 'OK' && results[0]) {
           const location = results[0].geometry.location;
+          console.log('Creating map at location:', location.toString());
 
           const mapInstance = new window.google.maps.Map(mapRef.current, {
             center: location,
@@ -160,12 +200,16 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
             gestureHandling: 'greedy',
           });
 
-          setMap(mapInstance);
-          setMapLoading(false);
+          window.google.maps.event.addListenerOnce(mapInstance, 'tilesloaded', () => {
+            console.log('Map tiles loaded successfully');
+            setMap(mapInstance);
+            setMapLoading(false);
+          });
 
           mapInstance.addListener('click', (e: any) => handleMapClick(e.latLng));
         } else {
-          setMapError('Address not found');
+          console.error('Geocoding failed:', status);
+          setMapError(`Address not found: ${status}`);
           setMapLoading(false);
         }
       });

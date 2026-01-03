@@ -44,7 +44,7 @@ const MeasurementsSimple: React.FC = () => {
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
-  const [selectedMapProvider, setSelectedMapProvider] = useState<'google' | 'azure_satellite' | 'azure_labels'>('google');
+  const [selectedMapProvider, setSelectedMapProvider] = useState<'google' | 'azure_satellite'>('google');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLead, setSelectedLead] = useState<string>('');
   const [has3DAvailable, setHas3DAvailable] = useState<boolean | null>(null);
@@ -333,7 +333,7 @@ const MeasurementsSimple: React.FC = () => {
         <AzureRoofrMeasurement
           address={address}
           leadId={selectedLead || undefined}
-          mapProvider={selectedMapProvider === 'azure_satellite' ? 'satellite' : 'satellite_road_labels'}
+          mapProvider="satellite"
           onSave={handleSaveMeasurement}
           onCancel={() => {
             setShowNewMeasurement(false);
