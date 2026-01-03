@@ -230,18 +230,54 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
               setParsedData(data);
 
               const newMapping: Record<string, string> = {};
+              console.log('CSV Headers detected:', headers);
+
               headers.forEach(h => {
-                  const lower = h.toLowerCase();
-                  if (lower.includes('business') || lower.includes('company')) newMapping[h] = 'name';
-                  else if (lower.includes('name') || lower.includes('customer') || lower.includes('client')) newMapping[h] = 'name';
-                  else if (lower.includes('city') && !headers.some(hdr => hdr.toLowerCase().includes('address'))) newMapping[h] = 'address';
-                  else if (lower.includes('address') || lower.includes('street') || lower.includes('location')) newMapping[h] = 'address';
-                  else if (lower.includes('phone') || lower.includes('mobile') || lower.includes('cell')) newMapping[h] = 'phone';
-                  else if (lower.includes('email') || lower.includes('e-mail')) newMapping[h] = 'email';
-                  else if (lower.includes('source') || lower.includes('channel')) newMapping[h] = 'source';
-                  else if (lower.includes('value') || lower.includes('revenue') || lower.includes('estimate')) newMapping[h] = 'estimatedValue';
+                  const lower = h.toLowerCase().trim();
+                  console.log(`Processing header: "${h}" (lowercase: "${lower}")`);
+
+                  if (lower.includes('business') || lower.includes('company')) {
+                      newMapping[h] = 'name';
+                      console.log(`  -> Mapped to: name (business/company match)`);
+                  }
+                  else if (lower.includes('name') && !lower.includes('unnamed')) {
+                      newMapping[h] = 'name';
+                      console.log(`  -> Mapped to: name (name match)`);
+                  }
+                  else if (lower.includes('customer') || lower.includes('client')) {
+                      newMapping[h] = 'name';
+                      console.log(`  -> Mapped to: name (customer/client match)`);
+                  }
+                  else if (lower.includes('city') && !headers.some(hdr => hdr.toLowerCase().includes('address'))) {
+                      newMapping[h] = 'address';
+                      console.log(`  -> Mapped to: address (city match)`);
+                  }
+                  else if (lower.includes('address') || lower.includes('street') || lower.includes('location')) {
+                      newMapping[h] = 'address';
+                      console.log(`  -> Mapped to: address`);
+                  }
+                  else if (lower.includes('phone') || lower.includes('mobile') || lower.includes('cell')) {
+                      newMapping[h] = 'phone';
+                      console.log(`  -> Mapped to: phone`);
+                  }
+                  else if (lower.includes('email') || lower.includes('e-mail')) {
+                      newMapping[h] = 'email';
+                      console.log(`  -> Mapped to: email`);
+                  }
+                  else if (lower.includes('source') || lower.includes('channel')) {
+                      newMapping[h] = 'source';
+                      console.log(`  -> Mapped to: source`);
+                  }
+                  else if (lower.includes('value') || lower.includes('revenue') || lower.includes('estimate')) {
+                      newMapping[h] = 'estimatedValue';
+                      console.log(`  -> Mapped to: estimatedValue`);
+                  } else {
+                      console.log(`  -> Not mapped (ignored)`);
+                  }
               });
-              console.log('Auto-mapping:', newMapping);
+
+              console.log('Final column mapping:', newMapping);
+              console.log('Sample data row:', data[0]);
               setColumnMapping(newMapping);
               setImportStep(2);
           };
@@ -291,10 +327,14 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
               console.log(`Row ${index + 2} skipped - Missing required fields:`, {
                   name: lead.name,
                   address: lead.address,
-                  rowData: row
+                  allLeadData: lead,
+                  rawRowData: row
               });
           } else {
               leadsToImport.push(lead);
+              if (index < 3) {
+                  console.log(`Row ${index + 2} WILL BE IMPORTED:`, lead);
+              }
           }
       });
 
