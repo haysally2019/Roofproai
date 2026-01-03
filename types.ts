@@ -105,6 +105,49 @@ export interface MeasurementSegment {
   displayOrder: number;
 }
 
+export type EdgeType = 'Ridge' | 'Hip' | 'Valley' | 'Eave' | 'Rake' | 'Penetration' | 'Unlabeled';
+
+export interface RoofEdge {
+  id: string;
+  measurementId: string;
+  edgeType: EdgeType;
+  geometry: { lat: number; lng: number }[];
+  lengthFt: number;
+  autoDetected: boolean;
+  confidenceScore: number;
+  detectionReason?: string;
+  userModified: boolean;
+  angleToNorth?: number;
+  connectsTo: string[];
+  elevationRank?: number;
+  displayOrder: number;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface EdgeLabelingHistory {
+  id: string;
+  measurementId: string;
+  edgeId?: string;
+  actionType: 'Created' | 'Updated' | 'Deleted' | 'AutoDetected';
+  previousType?: EdgeType;
+  newType?: EdgeType;
+  userId?: string;
+  timestamp: string;
+}
+
+export interface EdgeTypeConfig {
+  type: EdgeType;
+  color: string;
+  strokeColor: string;
+  hoverColor: string;
+  label: string;
+  abbreviation: string;
+  description: string;
+  icon: string;
+}
+
 export interface RoofMeasurement {
   id: string;
   companyId: string;

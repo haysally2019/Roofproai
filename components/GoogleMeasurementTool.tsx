@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MapPin, Check, X, AlertCircle, ChevronRight, Undo2, RotateCcw, Save, Maximize2, ZoomIn, ZoomOut, Crosshair, Move } from 'lucide-react';
+import { MapPin, Check, X, AlertCircle, ChevronRight, Undo2, RotateCcw, Save, Maximize2, ZoomIn, ZoomOut, Crosshair, Move, PenTool, Tag } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import CreditPurchaseModal from './CreditPurchaseModal';
+import RoofEdgeLabelingTool from './RoofEdgeLabelingTool';
+import { RoofEdge } from '../types';
 
 declare global {
   interface Window {
@@ -29,6 +31,8 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(20);
+  const [showEdgeLabeling, setShowEdgeLabeling] = useState(false);
+  const [labeledEdges, setLabeledEdges] = useState<RoofEdge[]>([]);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const googleApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -330,6 +334,32 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
 
       if (measurementError) throw measurementError;
 
+      if (labeledEdges.length > 0) {
+        const edgesData = labeledEdges.map(edge => ({
+          measurement_id: measurement.id,
+          edge_type: edge.edgeType,
+          geometry: edge.geometry,
+          length_ft: edge.lengthFt,
+          auto_detected: edge.autoDetected,
+          confidence_score: edge.confidenceScore,
+          detection_reason: edge.detectionReason,
+          user_modified: edge.userModified,
+          angle_to_north: edge.angleToNorth,
+          connects_to: edge.connectsTo,
+          elevation_rank: edge.elevationRank,
+          display_order: edge.displayOrder,
+          notes: edge.notes
+        }));
+
+        const { error: edgesError } = await supabase
+          .from('roof_edges')
+          .insert(edgesData);
+
+        if (edgesError) {
+          console.error('Error saving edges:', edgesError);
+        }
+      }
+
       const { error: creditError } = await supabase.rpc('decrement_measurement_credits', {
         p_company_id: userData.company_id
       });
@@ -556,6 +586,16 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
               </button>
 
               <button
+                onClick={() => setShowEdgeLabeling(true)}
+                disabled={polygons.length === 0}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                title="Label roof edges (optional)"
+              >
+                <Tag size={18} />
+                Label Edges {labeledEdges.length > 0 && `(${labeledEdges.length})`}
+              </button>
+
+              <button
                 onClick={handleSave}
                 disabled={saving || credits < 1 || polygons.length === 0}
                 className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
@@ -624,6 +664,18 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
             setShowCreditModal(false);
             loadCredits();
           }}
+        />
+      )}
+
+      {showEdgeLabeling && (
+        <RoofEdgeLabelingTool
+          measurementId="temp-measurement-id"
+          mapPolygons={polygons}
+          onSave={(edges) => {
+            setLabeledEdges(edges);
+            setShowEdgeLabeling(false);
+          }}
+          onCancel={() => setShowEdgeLabeling(false)}
         />
       )}
     </>
