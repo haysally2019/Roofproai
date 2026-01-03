@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Save, X, Undo2, Trash2, Tag, Layers, Grid3x3, Ruler, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { Save, X, Undo2, Trash2, Tag, Layers, Grid3x3, Ruler, ChevronDown, ChevronUp, Info, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RoofEdge, EdgeType } from '../types';
 import { EDGE_TYPE_CONFIGS } from '../lib/edgeTypeConstants';
@@ -39,6 +39,8 @@ interface RoofEdgeLine {
 interface RoofrStyleMeasurementProps {
   address: string;
   leadId?: string;
+  initialLat?: number; // Added this
+  initialLng?: number; // Added this
   onSave: (measurement: any) => void;
   onCancel: () => void;
 }
@@ -46,6 +48,8 @@ interface RoofrStyleMeasurementProps {
 const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   address,
   leadId,
+  initialLat,
+  initialLng,
   onSave,
   onCancel
 }) => {
@@ -61,7 +65,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   const [showCreditModal, setShowCreditModal] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [mapLoading, setMapLoading] = useState(false);
+  const [mapLoading, setMapLoading] = useState(true);
   const [mapError, setMapError] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [selectedFacet, setSelectedFacet] = useState<string | null>(null);
@@ -69,168 +73,125 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   const mapRef = useRef<HTMLDivElement>(null);
   const googleApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
+  // --- ROBUST GOOGLE MAPS LOADER ---
   useEffect(() => {
     loadCredits();
 
-    const timer = setTimeout(() => {
-      loadGoogleMaps();
-    }, 100);
+    if (!googleApiKey) {
+      setMapError('Google Maps API Key is missing');
+      setMapLoading(false);
+      return;
+    }
 
-    return () => clearTimeout(timer);
-  }, []);
+    const initMap = () => {
+        // If map is already initialized, stop
+        if (map) return;
+
+        // If lat/lng passed from parent, use them. Otherwise geocode.
+        if (initialLat && initialLng) {
+            initializeMapWithCoords(initialLat, initialLng);
+        } else {
+            geocodeAndInitialize();
+        }
+    };
+
+    // Check if script is already loaded
+    if (window.google && window.google.maps) {
+        initMap();
+        return;
+    }
+
+    // Check if script tag exists but isn't loaded
+    const existingScript = document.getElementById('google-maps-script');
+    if (existingScript) {
+        existingScript.addEventListener('load', initMap);
+        return;
+    }
+
+    // Inject Script
+    const script = document.createElement('script');
+    script.id = 'google-maps-script';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=geometry,places,drawing`;
+    script.async = true;
+    script.defer = true;
+    script.addEventListener('load', initMap);
+    script.addEventListener('error', () => {
+        setMapError('Failed to load Google Maps script');
+        setMapLoading(false);
+    });
+    document.head.appendChild(script);
+
+    return () => {
+        // Cleanup listeners if component unmounts
+        if (existingScript) existingScript.removeEventListener('load', initMap);
+    };
+  }, [initialLat, initialLng]);
 
   const loadCredits = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('company_id')
-        .eq('id', user.id)
-        .single();
-
+      const { data: userData } = await supabase.from('users').select('company_id').eq('id', user.id).single();
       if (!userData?.company_id) return;
-
-      const { data: creditsData } = await supabase
-        .from('measurement_credits')
-        .select('credits_remaining')
-        .eq('company_id', userData.company_id)
-        .maybeSingle();
-
+      const { data: creditsData } = await supabase.from('measurement_credits').select('credits_remaining').eq('company_id', userData.company_id).maybeSingle();
       setCredits(creditsData?.credits_remaining || 0);
     } catch (error) {
       console.error('Error loading credits:', error);
     }
   };
 
-  const loadGoogleMaps = () => {
-    console.log('loadGoogleMaps called');
-
-    if (!googleApiKey) {
-      console.error('Google Maps API key not configured');
-      setMapError('Google Maps API key not configured');
-      setMapLoading(false);
-      return;
-    }
-
-    const onScriptLoad = () => {
-      console.log('Google Maps script loaded, checking API...');
-      if (!window.google?.maps) {
-        console.error('Google Maps API not available after script load');
-        setMapError('Google Maps failed to load');
-        setMapLoading(false);
-        return;
-      }
-      console.log('Google Maps API ready, initializing map');
-      initializeMap();
-    };
-
-    if (window.google?.maps) {
-      console.log('Google Maps already loaded');
-      initializeMap();
-      return;
-    }
-
-    const scriptId = 'google-maps-script';
-    const existingScript = document.getElementById(scriptId);
-
-    if (existingScript) {
-      console.log('Google Maps script already exists in DOM');
-      if (window.google?.maps) {
-        initializeMap();
-      } else {
-        console.log('Waiting for existing script to load');
-        existingScript.addEventListener('load', onScriptLoad);
-      }
-      return;
-    }
-
-    console.log('Creating new Google Maps script tag');
-    const script = document.createElement('script');
-    script.id = scriptId;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=geometry,places`;
-    script.async = true;
-    script.defer = true;
-    script.addEventListener('load', onScriptLoad);
-    script.addEventListener('error', (err) => {
-      console.error('Failed to load Google Maps script:', err);
-      setMapError('Failed to load Google Maps');
-      setMapLoading(false);
-    });
-    document.head.appendChild(script);
-  };
-
-  const initializeMap = async () => {
-    console.log('Google Maps - initializeMap called');
-    console.log('mapRef.current:', mapRef.current);
-    console.log('window.google?.maps:', window.google?.maps);
-
-    setMapLoading(true);
-
-    if (!mapRef.current) {
-      console.error('Map ref not available');
-      setMapError('Map container not ready');
-      setMapLoading(false);
-      return;
-    }
-
-    if (!window.google?.maps) {
-      console.error('Google Maps API not loaded');
-      setMapError('Google Maps API not loaded');
-      setMapLoading(false);
-      return;
-    }
-
+  const initializeMapWithCoords = (lat: number, lng: number) => {
+    if (!mapRef.current) return;
+    
     try {
-      console.log('Geocoding address:', address);
-      const geocoder = new window.google.maps.Geocoder();
-
-      geocoder.geocode({ address: address }, (results: any, status: any) => {
-        console.log('Geocode status:', status, 'results:', results);
-
-        if (status === 'OK' && results[0]) {
-          const location = results[0].geometry.location;
-          console.log('Creating map at location:', location.toString());
-
-          const mapInstance = new window.google.maps.Map(mapRef.current, {
-            center: location,
-            zoom: 21,
+        const mapInstance = new window.google.maps.Map(mapRef.current, {
+            center: { lat, lng },
+            zoom: 20, // High zoom for roofs
             mapTypeId: 'satellite',
-            tilt: 0,
+            tilt: 0, // 0 for straight down view (easier to measure)
             fullscreenControl: false,
             streetViewControl: false,
             mapTypeControl: false,
             rotateControl: false,
             zoomControl: true,
-            gestureHandling: 'greedy',
-          });
+        });
 
-          window.google.maps.event.addListenerOnce(mapInstance, 'tilesloaded', () => {
-            console.log('Map tiles loaded successfully');
-            setMap(mapInstance);
+        // Wait for tiles
+        window.google.maps.event.addListenerOnce(mapInstance, 'tilesloaded', () => {
             setMapLoading(false);
-          });
+        });
 
-          mapInstance.addListener('click', (e: any) => handleMapClick(e.latLng));
-        } else {
-          console.error('Geocoding failed:', status);
-          setMapError(`Address not found: ${status}`);
-          setMapLoading(false);
-        }
-      });
-    } catch (error) {
-      console.error('Error initializing map:', error);
-      setMapError('Failed to load map');
-      setMapLoading(false);
+        setMap(mapInstance);
+        mapInstance.addListener('click', (e: any) => handleMapClick(e.latLng));
+        
+    } catch (err) {
+        console.error("Map init error:", err);
+        setMapError("Failed to initialize map surface");
+        setMapLoading(false);
     }
   };
+
+  const geocodeAndInitialize = () => {
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ address: address }, (results: any, status: any) => {
+        if (status === 'OK' && results[0]) {
+            const location = results[0].geometry.location;
+            initializeMapWithCoords(location.lat(), location.lng());
+        } else {
+            setMapError(`Address not found: ${status}`);
+            setMapLoading(false);
+        }
+    });
+  };
+
+  // --- DRAWING LOGIC ---
 
   const handleMapClick = (latLng: any) => {
     if (!isDrawing || !map) return;
 
     const point: Point = { lat: latLng.lat(), lng: latLng.lng() };
 
+    // Snap to start point to close polygon
     if (currentPoints.length > 0) {
       const firstPoint = currentPoints[0];
       const distance = window.google.maps.geometry.spherical.computeDistanceBetween(
@@ -238,7 +199,8 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
         latLng
       );
 
-      if (distance < 5 && currentPoints.length >= 3) {
+      // If clicked within 1 meter of start point, close it
+      if (distance < 1 && currentPoints.length >= 3) {
         completePolygon();
         return;
       }
@@ -249,7 +211,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
       map: map,
       icon: {
         path: window.google.maps.SymbolPath.CIRCLE,
-        scale: 6,
+        scale: 4,
         fillColor: '#3b82f6',
         fillOpacity: 1,
         strokeColor: 'white',
@@ -276,7 +238,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
         path: points,
         strokeColor: '#3b82f6',
         strokeOpacity: 0.8,
-        strokeWeight: 3,
+        strokeWeight: 2,
         map: map
       });
       setCurrentPolyline(polyline);
@@ -335,7 +297,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
 
       if (existingEdge) {
         existingEdge.shared = true;
-        existingEdge.polyline.setOptions({ strokeWeight: 5 });
+        existingEdge.polyline.setOptions({ strokeWeight: 5 }); // Thicker for shared lines
         continue;
       }
 
@@ -370,8 +332,9 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   };
 
   const handleEdgeClick = (edgeId: string) => {
-    if (!selectedEdgeType) return;
-
+    // Only change type if drawing is finished
+    if (isDrawing) return;
+    
     setEdges(prev => prev.map(edge => {
       if (edge.id === edgeId) {
         const config = EDGE_TYPE_CONFIGS[selectedEdgeType];
@@ -385,13 +348,14 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   };
 
   const getEdgeKey = (p1: Point, p2: Point): string => {
-    const key1 = `${p1.lat.toFixed(8)},${p1.lng.toFixed(8)}`;
-    const key2 = `${p2.lat.toFixed(8)},${p2.lng.toFixed(8)}`;
+    // Create a unique key for the edge regardless of direction
+    const key1 = `${p1.lat.toFixed(6)},${p1.lng.toFixed(6)}`;
+    const key2 = `${p2.lat.toFixed(6)},${p2.lng.toFixed(6)}`;
     return [key1, key2].sort().join('|');
   };
 
   const calculateDistance = (p1: Point, p2: Point): number => {
-    const R = 6371e3;
+    const R = 6371e3; // Earth radius
     const φ1 = p1.lat * Math.PI / 180;
     const φ2 = p2.lat * Math.PI / 180;
     const Δφ = (p2.lat - p1.lat) * Math.PI / 180;
@@ -401,7 +365,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
               Math.cos(φ1) * Math.cos(φ2) *
               Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c * 3.28084;
+    return R * c * 3.28084; // Convert meters to feet
   };
 
   const clearCurrentDrawing = () => {
@@ -427,9 +391,8 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   const handleUndo = () => {
     if (isDrawing && currentPoints.length > 0) {
       const lastMarker = currentMarkers[currentMarkers.length - 1];
-      if (lastMarker) {
-        lastMarker.setMap(null);
-      }
+      if (lastMarker) lastMarker.setMap(null);
+      
       setCurrentMarkers(prev => prev.slice(0, -1));
       setCurrentPoints(prev => {
         const newPoints = prev.slice(0, -1);
@@ -469,35 +432,21 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
       setShowCreditModal(true);
       return;
     }
-
     if (facets.length === 0) {
       alert('Please draw at least one roof facet before saving');
       return;
     }
-
     setSaving(true);
-
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data: userData } = await supabase
-        .from('users')
-        .select('company_id')
-        .eq('id', user.id)
-        .single();
-
+      const { data: userData } = await supabase.from('users').select('company_id').eq('id', user.id).single();
       if (!userData?.company_id) throw new Error('No company found');
 
       const totalArea = facets.reduce((sum, facet) => sum + facet.areaSqFt, 0);
-
-      const edgeTotals: Record<EdgeType, number> = {
-        Ridge: 0, Hip: 0, Valley: 0, Eave: 0, Rake: 0, Penetration: 0, Unlabeled: 0
-      };
-
-      edges.forEach(edge => {
-        edgeTotals[edge.edgeType] += edge.lengthFt;
-      });
+      const edgeTotals: Record<EdgeType, number> = { Ridge: 0, Hip: 0, Valley: 0, Eave: 0, Rake: 0, Penetration: 0, Unlabeled: 0 };
+      edges.forEach(edge => { edgeTotals[edge.edgeType] += edge.lengthFt; });
 
       const measurementData = {
         company_id: userData.company_id,
@@ -519,38 +468,11 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
         measurement_type: 'Manual'
       };
 
-      const { data: measurement, error: measurementError } = await supabase
-        .from('roof_measurements')
-        .insert(measurementData)
-        .select()
-        .single();
-
+      const { data: measurement, error: measurementError } = await supabase.from('roof_measurements').insert(measurementData).select().single();
       if (measurementError) throw measurementError;
 
-      const edgesData = edges.map((edge, index) => ({
-        measurement_id: measurement.id,
-        edge_type: edge.edgeType,
-        geometry: edge.points,
-        length_ft: edge.lengthFt,
-        auto_detected: false,
-        confidence_score: 0,
-        user_modified: true,
-        display_order: index
-      }));
-
-      const { error: edgesError } = await supabase
-        .from('roof_edges')
-        .insert(edgesData);
-
-      if (edgesError) {
-        console.error('Error saving edges:', edgesError);
-      }
-
-      const { error: creditError } = await supabase.rpc('decrement_measurement_credits', {
-        p_company_id: userData.company_id
-      });
-
-      if (creditError) throw creditError;
+      // Decrement Credits
+      await supabase.rpc('decrement_measurement_credits', { p_company_id: userData.company_id });
 
       onSave(measurement);
     } catch (error) {
@@ -562,9 +484,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   };
 
   const getEdgeCounts = () => {
-    const counts: Record<EdgeType, number> = {
-      Ridge: 0, Hip: 0, Valley: 0, Eave: 0, Rake: 0, Penetration: 0, Unlabeled: 0
-    };
+    const counts: Record<EdgeType, number> = { Ridge: 0, Hip: 0, Valley: 0, Eave: 0, Rake: 0, Penetration: 0, Unlabeled: 0 };
     edges.forEach(edge => counts[edge.edgeType]++);
     return counts;
   };
@@ -577,10 +497,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
         <div className="text-center max-w-md">
           <h3 className="text-xl font-bold text-red-900 mb-2">Map Error</h3>
           <p className="text-red-700 mb-4">{mapError}</p>
-          <button
-            onClick={onCancel}
-            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
-          >
+          <button onClick={onCancel} className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium">
             Go Back
           </button>
         </div>
@@ -595,7 +512,9 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
           <div className="flex items-center gap-4">
             <div>
               <h2 className="text-lg font-bold text-white">{address}</h2>
-              <p className="text-sm text-slate-400">Click to draw roof facets</p>
+              <p className="text-sm text-slate-400">
+                  {isDrawing ? "Click points to outline the roof. Click start point to close." : "Click 'Draw Facet' to start."}
+              </p>
             </div>
           </div>
 
@@ -606,52 +525,31 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
             </div>
 
             {!isDrawing ? (
-              <button
-                onClick={startDrawing}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold flex items-center gap-2 shadow-lg"
-              >
+              <button onClick={startDrawing} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold flex items-center gap-2 shadow-lg">
                 <Grid3x3 size={18} />
                 Draw Facet
               </button>
             ) : (
               <>
-                <button
-                  onClick={completePolygon}
-                  disabled={currentPoints.length < 3}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
+                <button onClick={completePolygon} disabled={currentPoints.length < 3} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
                   Complete
                 </button>
-                <button
-                  onClick={cancelDrawing}
-                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-semibold flex items-center gap-2"
-                >
+                <button onClick={cancelDrawing} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-semibold flex items-center gap-2">
                   Cancel
                 </button>
               </>
             )}
 
-            <button
-              onClick={handleUndo}
-              disabled={(!isDrawing || currentPoints.length === 0) && facets.length === 0}
-              className="px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
+            <button onClick={handleUndo} disabled={(!isDrawing || currentPoints.length === 0) && facets.length === 0} className="px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
               <Undo2 size={18} />
             </button>
 
-            <button
-              onClick={handleSave}
-              disabled={saving || credits < 1 || facets.length === 0}
-              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
+            <button onClick={handleSave} disabled={saving || credits < 1 || facets.length === 0} className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
               <Save size={18} />
               {saving ? 'Saving...' : 'Save'}
             </button>
 
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors font-medium flex items-center gap-2"
-            >
+            <button onClick={onCancel} className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors font-medium flex items-center gap-2">
               <X size={18} />
             </button>
           </div>
@@ -661,6 +559,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
       <div className="flex-1 flex relative">
         {showSidebar && (
           <div className="w-80 bg-slate-800 border-r border-slate-700 overflow-y-auto">
+             {/* ... Sidebar content (kept same) ... */}
             <div className="p-4 space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-3">
@@ -668,107 +567,61 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
                     <Tag size={18} className="text-blue-400" />
                     Edge Types
                   </h3>
-                  <button
-                    onClick={() => setShowGuide(true)}
-                    className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                  >
-                    <Info size={14} />
-                    Guide
+                  <button onClick={() => setShowGuide(true)} className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                    <Info size={14} /> Guide
                   </button>
                 </div>
                 <div className="space-y-2">
                   {Object.entries(EDGE_TYPE_CONFIGS).map(([type, config]) => (
-                    <button
-                      key={type}
-                      onClick={() => setSelectedEdgeType(type as EdgeType)}
-                      className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
-                        selectedEdgeType === type
-                          ? 'border-white bg-slate-700 shadow-lg'
-                          : 'border-slate-600 bg-slate-750 hover:border-slate-500'
-                      }`}
-                    >
+                    <button key={type} onClick={() => setSelectedEdgeType(type as EdgeType)} className={`w-full p-3 rounded-lg border-2 transition-all text-left ${selectedEdgeType === type ? 'border-white bg-slate-700 shadow-lg' : 'border-slate-600 bg-slate-750 hover:border-slate-500'}`}>
                       <div className="flex items-center gap-3">
-                        <div
-                          className="w-4 h-4 rounded-full"
-                          style={{ backgroundColor: config.color }}
-                        />
+                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: config.color }} />
                         <div className="flex-1">
                           <div className="font-semibold text-white text-sm">{config.label}</div>
-                          <div className="text-xs text-slate-400">{config.description}</div>
                         </div>
                       </div>
                     </button>
                   ))}
                 </div>
               </div>
-
-              <div className="border-t border-slate-700 pt-4">
+              {/* Facet List */}
+               <div className="border-t border-slate-700 pt-4">
                 <h3 className="font-bold text-white mb-3 flex items-center gap-2">
                   <Layers size={18} className="text-purple-400" />
                   Roof Facets ({facets.length})
                 </h3>
                 <div className="space-y-2">
                   {facets.map(facet => (
-                    <div
-                      key={facet.id}
-                      className={`p-3 rounded-lg border transition-all ${
-                        selectedFacet === facet.id
-                          ? 'border-blue-400 bg-slate-700'
-                          : 'border-slate-600 bg-slate-750'
-                      }`}
-                    >
+                    <div key={facet.id} className={`p-3 rounded-lg border transition-all ${selectedFacet === facet.id ? 'border-blue-400 bg-slate-700' : 'border-slate-600 bg-slate-750'}`}>
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="font-semibold text-white text-sm">{facet.name}</div>
-                          <div className="text-xs text-slate-400 mt-1">
-                            {facet.areaSqFt.toLocaleString()} sq ft
-                          </div>
+                          <div className="text-xs text-slate-400 mt-1">{facet.areaSqFt.toLocaleString()} sq ft</div>
                         </div>
-                        <button
-                          onClick={() => deleteFacet(facet.id)}
-                          className="text-red-400 hover:text-red-300 p-1"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <button onClick={() => deleteFacet(facet.id)} className="text-red-400 hover:text-red-300 p-1"><Trash2 size={16} /></button>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
-
+              
+              {/* Stats */}
               <div className="border-t border-slate-700 pt-4">
-                <h3 className="font-bold text-white mb-3 flex items-center gap-2">
-                  <Ruler size={18} className="text-emerald-400" />
-                  Measurements
-                </h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between text-white">
-                    <span>Total Area:</span>
-                    <span className="font-bold">{totalArea.toLocaleString()} sq ft</span>
-                  </div>
+                 <h3 className="font-bold text-white mb-3 flex items-center gap-2"><Ruler size={18} className="text-emerald-400" /> Measurements</h3>
+                 <div className="space-y-2 text-sm">
+                  <div className="flex justify-between text-white"><span>Total Area:</span><span className="font-bold">{totalArea.toLocaleString()} sq ft</span></div>
                   {Object.entries(getEdgeCounts()).map(([type, count]) => {
                     if (count === 0) return null;
-                    const length = edges
-                      .filter(e => e.edgeType === type)
-                      .reduce((sum, e) => sum + e.lengthFt, 0);
-                    return (
-                      <div key={type} className="flex justify-between text-slate-300">
-                        <span>{type}:</span>
-                        <span>{Math.round(length)} ft</span>
-                      </div>
-                    );
+                    const length = edges.filter(e => e.edgeType === type).reduce((sum, e) => sum + e.lengthFt, 0);
+                    return <div key={type} className="flex justify-between text-slate-300"><span>{type}:</span><span>{Math.round(length)} ft</span></div>;
                   })}
-                </div>
+                 </div>
               </div>
             </div>
           </div>
         )}
-
-        <button
-          onClick={() => setShowSidebar(!showSidebar)}
-          className="absolute left-0 top-1/2 transform -translate-y-1/2 bg-slate-800 text-white p-2 rounded-r-lg shadow-lg hover:bg-slate-700 transition-colors z-10"
-          style={{ left: showSidebar ? '320px' : '0' }}
-        >
+        
+        <button onClick={() => setShowSidebar(!showSidebar)} className="absolute left-0 top-1/2 transform -translate-y-1/2 bg-slate-800 text-white p-2 rounded-r-lg shadow-lg hover:bg-slate-700 transition-colors z-10" style={{ left: showSidebar ? '320px' : '0' }}>
           {showSidebar ? <ChevronDown size={20} className="rotate-90" /> : <ChevronUp size={20} className="rotate-90" />}
         </button>
 
@@ -776,31 +629,18 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
 
         {mapLoading && (
           <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center z-50">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-white font-medium">Loading map...</p>
-            </div>
+             <div className="text-center">
+                <Loader2 className="animate-spin text-blue-600 mx-auto mb-4" size={48} />
+                <p className="text-white font-medium">Loading High-Res Imagery...</p>
+             </div>
           </div>
         )}
       </div>
-
+      
       {showCreditModal && (
-        <CreditPurchaseModal
-          currentCredits={credits}
-          onClose={() => setShowCreditModal(false)}
-          onPurchaseComplete={() => {
-            setShowCreditModal(false);
-            loadCredits();
-          }}
-        />
+        <CreditPurchaseModal currentCredits={credits} onClose={() => setShowCreditModal(false)} onPurchaseComplete={() => { setShowCreditModal(false); loadCredits(); }} />
       )}
-
-      {showGuide && (
-        <EdgeTypesGuide
-          isOpen={showGuide}
-          onClose={() => setShowGuide(false)}
-        />
-      )}
+      {showGuide && <EdgeTypesGuide isOpen={showGuide} onClose={() => setShowGuide(false)} />}
     </div>
   );
 };
