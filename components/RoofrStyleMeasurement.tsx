@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Save, X, Undo2, Trash2, Tag, Layers, Grid3x3, Ruler, ChevronDown, ChevronUp, Info, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RoofEdge, EdgeType } from '../types';
@@ -39,8 +39,8 @@ interface RoofEdgeLine {
 interface RoofrStyleMeasurementProps {
   address: string;
   leadId?: string;
-  initialLat?: number; // Added this
-  initialLng?: number; // Added this
+  initialLat?: number;
+  initialLng?: number;
   onSave: (measurement: any) => void;
   onCancel: () => void;
 }
@@ -71,9 +71,23 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   const [selectedFacet, setSelectedFacet] = useState<string | null>(null);
 
   const mapRef = useRef<HTMLDivElement>(null);
+  
+  // REFS TO FIX STALE STATE IN EVENT LISTENERS
+  const isDrawingRef = useRef(false);
+  const currentPointsRef = useRef<Point[]>([]);
   const googleApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-  // --- ROBUST GOOGLE MAPS LOADER ---
+  useEffect(() => {
+    // Sync state to refs
+    isDrawingRef.current = isDrawing;
+    currentPointsRef.current = currentPoints;
+    
+    // Update cursor based on mode
+    if (map) {
+      map.setOptions({ draggableCursor: isDrawing ? 'crosshair' : 'grab' });
+    }
+  }, [isDrawing, currentPoints, map]);
+
   useEffect(() => {
     loadCredits();
 
@@ -84,10 +98,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
     }
 
     const initMap = () => {
-        // If map is already initialized, stop
         if (map) return;
-
-        // If lat/lng passed from parent, use them. Otherwise geocode.
         if (initialLat && initialLng) {
             initializeMapWithCoords(initialLat, initialLng);
         } else {
@@ -95,20 +106,17 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
         }
     };
 
-    // Check if script is already loaded
     if (window.google && window.google.maps) {
         initMap();
         return;
     }
 
-    // Check if script tag exists but isn't loaded
     const existingScript = document.getElementById('google-maps-script');
     if (existingScript) {
         existingScript.addEventListener('load', initMap);
         return;
     }
 
-    // Inject Script
     const script = document.createElement('script');
     script.id = 'google-maps-script';
     script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=geometry,places,drawing`;
@@ -122,7 +130,6 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
     document.head.appendChild(script);
 
     return () => {
-        // Cleanup listeners if component unmounts
         if (existingScript) existingScript.removeEventListener('load', initMap);
     };
   }, [initialLat, initialLng]);
@@ -146,23 +153,27 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
     try {
         const mapInstance = new window.google.maps.Map(mapRef.current, {
             center: { lat, lng },
-            zoom: 20, // High zoom for roofs
+            zoom: 20,
             mapTypeId: 'satellite',
-            tilt: 0, // 0 for straight down view (easier to measure)
+            tilt: 0,
             fullscreenControl: false,
             streetViewControl: false,
             mapTypeControl: false,
             rotateControl: false,
             zoomControl: true,
+            draggableCursor: 'grab' // Default cursor
         });
 
-        // Wait for tiles
         window.google.maps.event.addListenerOnce(mapInstance, 'tilesloaded', () => {
             setMapLoading(false);
         });
 
+        // Use a persistent listener that checks refs
+        mapInstance.addListener('click', (e: any) => {
+            handleMapClick(e.latLng, mapInstance);
+        });
+
         setMap(mapInstance);
-        mapInstance.addListener('click', (e: any) => handleMapClick(e.latLng));
         
     } catch (err) {
         console.error("Map init error:", err);
@@ -186,29 +197,36 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
 
   // --- DRAWING LOGIC ---
 
-  const handleMapClick = (latLng: any) => {
-    if (!isDrawing || !map) return;
+  const handleMapClick = (latLng: any, mapInstance: any) => {
+    // Check refs instead of state
+    if (!isDrawingRef.current) return;
 
     const point: Point = { lat: latLng.lat(), lng: latLng.lng() };
+    const currentPts = currentPointsRef.current;
 
     // Snap to start point to close polygon
-    if (currentPoints.length > 0) {
-      const firstPoint = currentPoints[0];
-      const distance = window.google.maps.geometry.spherical.computeDistanceBetween(
-        new window.google.maps.LatLng(firstPoint.lat, firstPoint.lng),
-        latLng
-      );
+    if (currentPts.length > 0) {
+      const firstPoint = currentPts[0];
+      
+      // Ensure geometry library is loaded
+      if (window.google.maps.geometry) {
+          const distance = window.google.maps.geometry.spherical.computeDistanceBetween(
+            new window.google.maps.LatLng(firstPoint.lat, firstPoint.lng),
+            latLng
+          );
 
-      // If clicked within 1 meter of start point, close it
-      if (distance < 1 && currentPoints.length >= 3) {
-        completePolygon();
-        return;
+          // Increased snap distance to 3 meters for easier closing
+          if (distance < 3 && currentPts.length >= 3) {
+            completePolygon(mapInstance);
+            return;
+          }
       }
     }
 
+    // Add marker
     const marker = new window.google.maps.Marker({
       position: latLng,
-      map: map,
+      map: mapInstance,
       icon: {
         path: window.google.maps.SymbolPath.CIRCLE,
         scale: 4,
@@ -221,14 +239,17 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
     });
 
     setCurrentMarkers(prev => [...prev, marker]);
-    setCurrentPoints(prev => {
-      const newPoints = [...prev, point];
-      updateCurrentPolyline(newPoints);
-      return newPoints;
-    });
+    
+    // Update state AND ref
+    const newPoints = [...currentPts, point];
+    setCurrentPoints(newPoints);
+    currentPointsRef.current = newPoints;
+    
+    updateCurrentPolyline(newPoints, mapInstance);
   };
 
-  const updateCurrentPolyline = (points: Point[]) => {
+  const updateCurrentPolyline = (points: Point[], mapInstance: any) => {
+    // We need to manage the polyline manually since state updates are async
     if (currentPolyline) {
       currentPolyline.setMap(null);
     }
@@ -239,20 +260,21 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
         strokeColor: '#3b82f6',
         strokeOpacity: 0.8,
         strokeWeight: 2,
-        map: map
+        map: mapInstance
       });
       setCurrentPolyline(polyline);
     }
   };
 
-  const completePolygon = () => {
-    if (currentPoints.length < 3) return;
+  const completePolygon = (mapInstance: any) => {
+    const points = currentPointsRef.current;
+    if (points.length < 3) return;
 
     const facetId = `facet-${Date.now()}`;
     const facetName = `Facet ${facets.length + 1}`;
 
     const polygon = new window.google.maps.Polygon({
-      paths: currentPoints,
+      paths: points,
       strokeColor: '#3b82f6',
       strokeOpacity: 0.8,
       strokeWeight: 2,
@@ -260,18 +282,23 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
       fillOpacity: 0.2,
       editable: false,
       draggable: false,
-      map: map
+      map: mapInstance
     });
 
-    const path = currentPoints.map(p => new window.google.maps.LatLng(p.lat, p.lng));
-    const areaSqFt = Math.round(
-      window.google.maps.geometry.spherical.computeArea(path) * 10.7639
-    );
+    const path = points.map(p => new window.google.maps.LatLng(p.lat, p.lng));
+    
+    // Safety check for geometry library
+    let areaSqFt = 0;
+    if (window.google.maps.geometry) {
+        areaSqFt = Math.round(
+          window.google.maps.geometry.spherical.computeArea(path) * 10.7639
+        );
+    }
 
     const newFacet: RoofFacet = {
       id: facetId,
       name: facetName,
-      points: [...currentPoints],
+      points: [...points],
       polygon: polygon,
       areaSqFt: areaSqFt
     };
@@ -281,11 +308,11 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
     });
 
     setFacets(prev => [...prev, newFacet]);
-    createEdgesForFacet(newFacet);
+    createEdgesForFacet(newFacet, mapInstance);
     clearCurrentDrawing();
   };
 
-  const createEdgesForFacet = (facet: RoofFacet) => {
+  const createEdgesForFacet = (facet: RoofFacet, mapInstance: any) => {
     const newEdges: RoofEdgeLine[] = [];
 
     for (let i = 0; i < facet.points.length; i++) {
@@ -297,11 +324,15 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
 
       if (existingEdge) {
         existingEdge.shared = true;
-        existingEdge.polyline.setOptions({ strokeWeight: 5 }); // Thicker for shared lines
+        existingEdge.polyline.setOptions({ strokeWeight: 5 });
         continue;
       }
 
-      const lengthFt = calculateDistance(point1, point2);
+      let lengthFt = 0;
+      if (window.google.maps.geometry) {
+         lengthFt = calculateDistance(point1, point2);
+      }
+      
       const edgeId = `edge-${Date.now()}-${i}`;
 
       const polyline = new window.google.maps.Polyline({
@@ -310,7 +341,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
         strokeOpacity: 1,
         strokeWeight: 4,
         clickable: true,
-        map: map
+        map: mapInstance
       });
 
       polyline.addListener('click', () => handleEdgeClick(edgeId));
@@ -332,8 +363,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   };
 
   const handleEdgeClick = (edgeId: string) => {
-    // Only change type if drawing is finished
-    if (isDrawing) return;
+    if (isDrawingRef.current) return;
     
     setEdges(prev => prev.map(edge => {
       if (edge.id === edgeId) {
@@ -348,14 +378,13 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   };
 
   const getEdgeKey = (p1: Point, p2: Point): string => {
-    // Create a unique key for the edge regardless of direction
     const key1 = `${p1.lat.toFixed(6)},${p1.lng.toFixed(6)}`;
     const key2 = `${p2.lat.toFixed(6)},${p2.lng.toFixed(6)}`;
     return [key1, key2].sort().join('|');
   };
 
   const calculateDistance = (p1: Point, p2: Point): number => {
-    const R = 6371e3; // Earth radius
+    const R = 6371e3;
     const φ1 = p1.lat * Math.PI / 180;
     const φ2 = p2.lat * Math.PI / 180;
     const Δφ = (p2.lat - p1.lat) * Math.PI / 180;
@@ -365,7 +394,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
               Math.cos(φ1) * Math.cos(φ2) *
               Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c * 3.28084; // Convert meters to feet
+    return R * c * 3.28084;
   };
 
   const clearCurrentDrawing = () => {
@@ -375,6 +404,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
     }
     setCurrentMarkers([]);
     setCurrentPoints([]);
+    currentPointsRef.current = []; // Clear ref
     setCurrentPolyline(null);
     setIsDrawing(false);
   };
@@ -393,12 +423,15 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
       const lastMarker = currentMarkers[currentMarkers.length - 1];
       if (lastMarker) lastMarker.setMap(null);
       
-      setCurrentMarkers(prev => prev.slice(0, -1));
-      setCurrentPoints(prev => {
-        const newPoints = prev.slice(0, -1);
-        updateCurrentPolyline(newPoints);
-        return newPoints;
-      });
+      const newMarkers = currentMarkers.slice(0, -1);
+      setCurrentMarkers(newMarkers);
+      
+      const newPoints = currentPoints.slice(0, -1);
+      setCurrentPoints(newPoints);
+      currentPointsRef.current = newPoints; // Update ref
+
+      updateCurrentPolyline(newPoints, map);
+      
     } else if (!isDrawing && facets.length > 0) {
       const lastFacet = facets[facets.length - 1];
       lastFacet.polygon.setMap(null);
@@ -471,7 +504,6 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
       const { data: measurement, error: measurementError } = await supabase.from('roof_measurements').insert(measurementData).select().single();
       if (measurementError) throw measurementError;
 
-      // Decrement Credits
       await supabase.rpc('decrement_measurement_credits', { p_company_id: userData.company_id });
 
       onSave(measurement);
@@ -531,7 +563,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
               </button>
             ) : (
               <>
-                <button onClick={completePolygon} disabled={currentPoints.length < 3} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                <button onClick={() => completePolygon(map)} disabled={currentPoints.length < 3} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
                   Complete
                 </button>
                 <button onClick={cancelDrawing} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-semibold flex items-center gap-2">
@@ -559,8 +591,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
       <div className="flex-1 flex relative">
         {showSidebar && (
           <div className="w-80 bg-slate-800 border-r border-slate-700 overflow-y-auto">
-             {/* ... Sidebar content (kept same) ... */}
-            <div className="p-4 space-y-4">
+             <div className="p-4 space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-bold text-white flex items-center gap-2">
@@ -584,7 +615,6 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
                   ))}
                 </div>
               </div>
-              {/* Facet List */}
                <div className="border-t border-slate-700 pt-4">
                 <h3 className="font-bold text-white mb-3 flex items-center gap-2">
                   <Layers size={18} className="text-purple-400" />
@@ -604,8 +634,6 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
                   ))}
                 </div>
               </div>
-              
-              {/* Stats */}
               <div className="border-t border-slate-700 pt-4">
                  <h3 className="font-bold text-white mb-3 flex items-center gap-2"><Ruler size={18} className="text-emerald-400" /> Measurements</h3>
                  <div className="space-y-2 text-sm">
