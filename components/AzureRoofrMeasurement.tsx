@@ -63,6 +63,7 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({
   const [selectedFacet, setSelectedFacet] = useState<string | null>(null);
 
   const mapRef = useRef<HTMLDivElement>(null);
+  const isDrawingRef = useRef<boolean>(false);
   const azureApiKey = import.meta.env.VITE_AZURE_MAPS_KEY;
 
   useEffect(() => {
@@ -169,19 +170,34 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({
           strokeWidth: ['get', 'strokeWidth']
         });
 
-        mapInstance.layers.add([polygonLayer, lineLayer]);
+        const symbolLayer = new atlas.layer.SymbolLayer(ds, undefined, {
+          iconOptions: {
+            image: 'marker-blue',
+            allowOverlap: true,
+            ignorePlacement: true,
+            size: 0.5
+          },
+          filter: ['any', ['==', ['get', 'isTemporary'], true], ['==', ['geometry-type'], 'Point']]
+        });
+
+        mapInstance.layers.add([polygonLayer, lineLayer, symbolLayer]);
 
         mapInstance.events.add('click', lineLayer, (e: any) => {
-          if (!isDrawing && e.shapes && e.shapes.length > 0) {
+          if (e.shapes && e.shapes.length > 0) {
             const shape = e.shapes[0];
             const edgeId = shape.getProperties().edgeId;
-            if (edgeId) {
+            if (edgeId && !isDrawingRef.current) {
               handleEdgeClick(edgeId);
+              e.preventDefault();
             }
           }
         });
 
-        mapInstance.events.add('click', handleMapClick);
+        mapInstance.events.add('click', (e: any) => {
+          if (isDrawingRef.current && ds) {
+            handleMapClick(e);
+          }
+        });
 
         setMap(mapInstance);
         setMapLoading(false);
@@ -385,11 +401,13 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({
     }
     setCurrentPoints([]);
     setIsDrawing(false);
+    isDrawingRef.current = false;
   };
 
   const startDrawing = () => {
     clearCurrentDrawing();
     setIsDrawing(true);
+    isDrawingRef.current = true;
   };
 
   const cancelDrawing = () => {
