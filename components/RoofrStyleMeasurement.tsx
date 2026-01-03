@@ -61,7 +61,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
   const [showCreditModal, setShowCreditModal] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [mapLoading, setMapLoading] = useState(true);
+  const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [selectedFacet, setSelectedFacet] = useState<string | null>(null);
@@ -165,6 +165,8 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
     console.log('Google Maps - initializeMap called');
     console.log('mapRef.current:', mapRef.current);
     console.log('window.google?.maps:', window.google?.maps);
+
+    setMapLoading(true);
 
     if (!mapRef.current) {
       console.error('Map ref not available');
@@ -569,17 +571,6 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
 
   const totalArea = facets.reduce((sum, f) => sum + f.areaSqFt, 0);
 
-  if (mapLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-slate-100">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-slate-600 font-medium">Loading map...</p>
-        </div>
-      </div>
-    );
-  }
-
   if (mapError) {
     return (
       <div className="h-screen flex items-center justify-center bg-red-50">
@@ -782,6 +773,15 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
         </button>
 
         <div ref={mapRef} className="flex-1" style={{ width: '100%', height: '100%' }} />
+
+        {mapLoading && (
+          <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center z-50">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-white font-medium">Loading map...</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {showCreditModal && (
