@@ -41,6 +41,12 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
   // New Lead Form State
   const [newLeadData, setNewLeadData] = useState<Partial<Lead>>({ name: '', address: '', source: 'Door Knocking', notes: '' });
   const notesRef = useRef<HTMLTextAreaElement>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+  const addressSuggestionsRef = useRef<HTMLDivElement>(null);
+  const [addressSuggestions, setAddressSuggestions] = useState<Array<{ address: string; position: { lat: number; lon: number } }>>([]);
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
+  const [isGeocodingAddress, setIsGeocodingAddress] = useState(false);
+  const azureApiKey = import.meta.env.VITE_AZURE_MAPS_KEY;
 
   // --- IMPORT STATE ---
   const [importStep, setImportStep] = useState<1 | 2 | 3>(1);
@@ -60,7 +66,7 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const text = newLeadData.notes || '';
-    
+
     let newText = '';
     if (wrap) {
         newText = text.substring(0, start) + symbol + text.substring(start, end) + symbol + text.substring(end);
@@ -69,12 +75,79 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
     }
 
     setNewLeadData({ ...newLeadData, notes: newText });
-    
+
     setTimeout(() => {
         textarea.focus();
         textarea.setSelectionRange(start + symbol.length, wrap ? end + symbol.length : start + symbol.length);
     }, 0);
   };
+
+  // Address Autocomplete Functions
+  const searchAddress = async (query: string) => {
+    if (!azureApiKey || query.length < 3) return;
+
+    setIsGeocodingAddress(true);
+    try {
+      const response = await fetch(
+        `https://atlas.microsoft.com/search/address/json?api-version=1.0&subscription-key=${azureApiKey}&query=${encodeURIComponent(query)}&limit=5&countrySet=US`
+      );
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        const suggestions = data.results.map((result: any) => ({
+          address: result.address.freeformAddress,
+          position: {
+            lat: result.position.lat,
+            lon: result.position.lon
+          }
+        }));
+        setAddressSuggestions(suggestions);
+        setShowAddressSuggestions(true);
+      } else {
+        setAddressSuggestions([]);
+        setShowAddressSuggestions(false);
+      }
+    } catch (error) {
+      console.error('Address search error:', error);
+      setAddressSuggestions([]);
+    } finally {
+      setIsGeocodingAddress(false);
+    }
+  };
+
+  const selectAddressSuggestion = (suggestion: { address: string; position: { lat: number; lon: number } }) => {
+    setNewLeadData({ ...newLeadData, address: suggestion.address });
+    setShowAddressSuggestions(false);
+  };
+
+  // Address autocomplete effects
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        addressSuggestionsRef.current &&
+        !addressSuggestionsRef.current.contains(event.target as Node) &&
+        addressInputRef.current &&
+        !addressInputRef.current.contains(event.target as Node)
+      ) {
+        setShowAddressSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  React.useEffect(() => {
+    if (newLeadData.address && newLeadData.address.length >= 3) {
+      const timer = setTimeout(() => {
+        searchAddress(newLeadData.address || '');
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      setAddressSuggestions([]);
+      setShowAddressSuggestions(false);
+    }
+  }, [newLeadData.address]);
 
   // --- Derived State (Filtering & Sorting) ---
   const filteredAndSortedLeads = useMemo(() => {
@@ -763,9 +836,39 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Full Name</label>
                          <input autoFocus placeholder="e.g. John Smith" value={newLeadData.name} onChange={e=>setNewLeadData({...newLeadData, name: e.target.value})} className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" />
                     </div>
-                    <div>
+                    <div className="relative">
                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Address</label>
-                         <input placeholder="e.g. 123 Maple Dr" value={newLeadData.address} onChange={e=>setNewLeadData({...newLeadData, address: e.target.value})} className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" />
+                         <div className="relative">
+                           <input
+                             ref={addressInputRef}
+                             placeholder="e.g. 123 Maple Dr, Dallas, TX"
+                             value={newLeadData.address}
+                             onChange={e=>setNewLeadData({...newLeadData, address: e.target.value})}
+                             className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                           />
+                           {isGeocodingAddress && (
+                             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
+                             </div>
+                           )}
+                         </div>
+                         {showAddressSuggestions && addressSuggestions.length > 0 && (
+                           <div
+                             ref={addressSuggestionsRef}
+                             className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-200 rounded-lg shadow-xl max-h-64 overflow-y-auto"
+                           >
+                             {addressSuggestions.map((suggestion, index) => (
+                               <button
+                                 key={index}
+                                 type="button"
+                                 onClick={() => selectAddressSuggestion(suggestion)}
+                                 className="w-full text-left px-4 py-3 hover:bg-indigo-50 transition-colors border-b border-slate-100 last:border-b-0"
+                               >
+                                 <p className="font-medium text-slate-900">{suggestion.address}</p>
+                               </button>
+                             ))}
+                           </div>
+                         )}
                     </div>
                     <div>
                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Phone</label>
