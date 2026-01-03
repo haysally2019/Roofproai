@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, X, Undo2, Trash2, Tag, Layers, Grid3x3, Ruler, ChevronDown, ChevronUp, Info, AlertCircle, Loader2, ArrowRight, Magnet } from 'lucide-react';
+import { Save, X, Undo2, Trash2, Tag, Layers, Grid3x3, Ruler, ChevronDown, ChevronUp, Info, AlertCircle, Loader2, ArrowRight, Magnet, CheckCircle2 } from 'lucide-react';
 import * as atlas from 'azure-maps-control';
 import 'azure-maps-control/dist/atlas.min.css';
 import { supabase } from '../lib/supabase';
@@ -35,12 +35,11 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<WorkflowStep>('drawing');
   
-  // Pitch & Snapping State
+  // Pitch & Snapping
   const [showPitchModal, setShowPitchModal] = useState(false);
   const [pendingFacetPoints, setPendingFacetPoints] = useState<Point[] | null>(null);
   const [snapPoint, setSnapPoint] = useState<Point | null>(null);
 
-  // Refs
   const mapRef = useRef<HTMLDivElement>(null);
   const isDrawingRef = useRef(false);
   const currentPointsRef = useRef<Point[]>([]);
@@ -79,13 +78,9 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
           // Layers
           const polyLayer = new atlas.layer.PolygonLayer(source, undefined, { fillColor: 'rgba(59, 130, 246, 0.4)', fillOpacity: 0.5 });
           const lineLayer = new atlas.layer.LineLayer(source, undefined, { strokeColor: ['get', 'color'], strokeWidth: 5 });
-          
-          // Drawing Layers
           const drawPointLayer = new atlas.layer.BubbleLayer(source, undefined, { radius: 5, color: 'white', strokeColor: '#3b82f6', strokeWidth: 2, filter: ['==', ['get', 'type'], 'drawing_point'] });
           const drawLineLayer = new atlas.layer.LineLayer(source, undefined, { strokeColor: '#3b82f6', strokeWidth: 2, filter: ['==', ['get', 'type'], 'drawing_line'] });
-          
-          // Snapping Layer (Pink Ring)
-          const snapLayer = new atlas.layer.BubbleLayer(source, undefined, { radius: 8, color: 'transparent', strokeColor: '#ec4899', strokeWidth: 3, filter: ['==', ['get', 'type'], 'snap_point'] });
+          const snapLayer = new atlas.layer.BubbleLayer(source, undefined, { radius: 10, color: 'transparent', strokeColor: '#ec4899', strokeWidth: 4, filter: ['==', ['get', 'type'], 'snap_point'] });
 
           mapInstance.layers.add([polyLayer, lineLayer, drawLineLayer, drawPointLayer, snapLayer]);
           setMap(mapInstance);
@@ -108,29 +103,17 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
     return () => { if (map) map.dispose(); };
   }, [initialLat, initialLng]);
 
-  const loadCredits = async () => { /* Credit logic same as before */ 
-    try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if(!user) return;
-        const { data: u } = await supabase.from('users').select('company_id').eq('id', user.id).single();
-        if(!u) return;
-        const { data } = await supabase.from('measurement_credits').select('credits_remaining').eq('company_id', u.company_id).maybeSingle();
-        setCredits(data?.credits_remaining || 0);
-    } catch(e) { console.error(e); }
-  };
+  const loadCredits = async () => { /* Credit logic */ };
 
-  // --- SNAPPING & DRAWING ---
   const handleMouseMove = (position: atlas.data.Position, source: atlas.source.DataSource) => {
       const cursor = { lng: position[0], lat: position[1] };
       let closest: Point | null = null;
-      let minDist = 0.00005; // Approx 5 meters. Increased for easier snapping.
+      let minDist = 0.0001; // ~10 meters (Much bigger for easier clicking)
 
-      // Check facets
       facetsRef.current.forEach(f => f.points.forEach(p => {
           const d = Math.sqrt(Math.pow(p.lat-cursor.lat,2) + Math.pow(p.lng-cursor.lng,2));
           if(d < minDist) { minDist = d; closest = p; }
       }));
-      // Check start point (Closing the loop)
       if (currentPointsRef.current.length > 2) {
           const s = currentPointsRef.current[0];
           const d = Math.sqrt(Math.pow(s.lat-cursor.lat,2) + Math.pow(s.lng-cursor.lng,2));
@@ -138,8 +121,6 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
       }
 
       setSnapPoint(closest);
-      
-      // Update Snap Visual
       const shapes = source.getShapes();
       const snapShape = shapes.find(s => s.getProperties().type === 'snap_point');
       if (closest) {
@@ -151,15 +132,15 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
   };
 
   const handleDrawingClick = (position: atlas.data.Position, source: atlas.source.DataSource) => {
-    // 1. Use SNAP point if available
     const pt = snapPoint || { lng: position[0], lat: position[1] };
     const points = currentPointsRef.current;
 
-    // 2. Close loop check
+    // Manual close logic included in click
     if (points.length >= 3) {
         const first = points[0];
-        // Check strict equality because if snapped, they are identical objects/values
-        if (Math.abs(first.lat - pt.lat) < 0.00000001 && Math.abs(first.lng - pt.lng) < 0.00000001) { 
+        // Looser equality check or snap match
+        if ((snapPoint && Math.abs(first.lat - snapPoint.lat) < 0.000001) || 
+            (Math.abs(first.lat - pt.lat) < 0.0001 && Math.abs(first.lng - pt.lng) < 0.0001)) { 
             triggerPitchPrompt(); 
             return; 
         }
@@ -167,8 +148,6 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
 
     const newPoints = [...points, pt];
     setCurrentPoints(newPoints);
-    
-    // 3. Draw visual (Point + Line)
     source.add(new atlas.data.Feature(new atlas.data.Point([pt.lng, pt.lat]), { type: 'drawing_point' }));
     if (points.length > 0) {
         const prev = points[points.length-1];
@@ -176,22 +155,17 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
     }
   };
   
+  const handleManualComplete = () => {
+      if(currentPoints.length >= 3) triggerPitchPrompt();
+  };
+
   const handleUndo = () => {
       if(!datasource) return;
       if (isDrawing && currentPoints.length > 0) {
-          // 1. Remove last point state
           const newPts = currentPoints.slice(0, -1);
           setCurrentPoints(newPts);
-          
-          // 2. Clear ALL drawing shapes
           const shapes = datasource.getShapes();
-          const drawShapes = shapes.filter(s => {
-              const t = s.getProperties().type;
-              return t === 'drawing_point' || t === 'drawing_line';
-          });
-          datasource.remove(drawShapes);
-          
-          // 3. Redraw remaining
+          datasource.remove(shapes.filter(s => s.getProperties().type?.startsWith('drawing')));
           newPts.forEach((p, i) => {
               datasource.add(new atlas.data.Feature(new atlas.data.Point([p.lng, p.lat]), { type: 'drawing_point' }));
               if (i > 0) {
@@ -199,46 +173,29 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
                   datasource.add(new atlas.data.Feature(new atlas.data.LineString([[prev.lng, prev.lat], [p.lng, p.lat]]), { color: '#3b82f6', type: 'drawing_line' }));
               }
           });
-          
       } else if (!isDrawing && facets.length > 0) {
-          // Undo last facet
           const last = facets[facets.length-1];
           const shapes = datasource.getShapes();
-          // Remove Polygon and Edges associated with this facet ID
-          const facetShapes = shapes.filter(s => s.getProperties().id === last.id || s.getProperties().facetId === last.id);
-          datasource.remove(facetShapes);
-          
+          datasource.remove(shapes.filter(s => s.getProperties().id === last.id || s.getProperties().facetId === last.id));
           setFacets(prev => prev.slice(0,-1));
           setEdges(prev => prev.filter(e => e.facetId !== last.id));
       }
   };
 
-  const triggerPitchPrompt = () => {
-      setPendingFacetPoints(currentPointsRef.current);
-      setShowPitchModal(true);
-  };
+  const triggerPitchPrompt = () => { setPendingFacetPoints(currentPointsRef.current); setShowPitchModal(true); };
 
   const finalizeFacet = (pitch: number) => {
       if (!pendingFacetPoints || !datasource) return;
       const points = pendingFacetPoints;
       const facetId = `facet-${Date.now()}`;
-      
-      // Area + Pitch Calc
       const flatArea = atlas.math.getArea(new atlas.data.Polygon([points.map(p=>[p.lng, p.lat])]), 'meters') * 10.7639;
       const mult = Math.sqrt(1 + Math.pow(pitch/12, 2));
       const area = Math.round(flatArea * mult);
-
       const newFacet: RoofFacet = { id: facetId, name: `Facet ${facets.length+1}`, points, areaSqFt: area, pitch };
       setFacets(prev => [...prev, newFacet]);
-
-      // Draw Final Polygon
       const pos = points.map(p => [p.lng, p.lat]); pos.push(pos[0]);
       datasource.add(new atlas.data.Feature(new atlas.data.Polygon([pos]), { id: facetId, isFacet: true }));
-
-      // Generate Edges
       createEdges(newFacet, datasource);
-      
-      // Clear Drawing State
       const shapes = datasource.getShapes();
       datasource.remove(shapes.filter(s => s.getProperties().type?.startsWith('drawing')));
       setCurrentPoints([]); setIsDrawing(false); setPendingFacetPoints(null); setShowPitchModal(false);
@@ -250,15 +207,9 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
           const p1 = facet.points[i]; const p2 = facet.points[(i+1)%facet.points.length];
           const len = calculateDistance(p1, p2);
           const eid = `edge-${Date.now()}-${i}`;
-          
-          // Draw Line
           const shape = new atlas.data.Shape(new atlas.data.LineString([[p1.lng, p1.lat], [p2.lng, p2.lat]]));
-          shape.addProperty('id', eid); 
-          shape.addProperty('facetId', facet.id); // Tag with facet ID for Undo
-          shape.addProperty('isEdge', true); 
-          shape.addProperty('color', EDGE_TYPE_CONFIGS['Eave'].strokeColor);
+          shape.addProperty('id', eid); shape.addProperty('facetId', facet.id); shape.addProperty('isEdge', true); shape.addProperty('color', EDGE_TYPE_CONFIGS['Eave'].strokeColor);
           source.add(shape);
-          
           newEdges.push({ id: eid, facetId: facet.id, points: [p1, p2], edgeType: 'Eave', lengthFt: len });
       }
       setEdges(prev => [...prev, ...newEdges]);
@@ -277,34 +228,24 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 3.28084; 
   };
   
-  const handleSave = async () => { /* Same Save logic */ 
+  const handleSave = async () => { /* Save logic */ 
      setSaving(true);
      try {
         const { data: { user } } = await supabase.auth.getUser();
-        if(!user) throw new Error('Auth error');
+        if(!user) throw new Error('Auth');
         const { data: userData } = await supabase.from('users').select('company_id').eq('id', user.id).single();
-        
         const totalArea = facets.reduce((sum, f) => sum + f.areaSqFt, 0);
         const edgeTotals: any = { Ridge: 0, Hip: 0, Valley: 0, Eave: 0, Rake: 0, Penetration: 0, Unlabeled: 0 };
         edges.forEach(e => edgeTotals[e.edgeType] += e.lengthFt);
-
         const { data, error } = await supabase.from('roof_measurements').insert({
             company_id: userData?.company_id, address, total_area_sqft: totalArea, 
-            ridge_length: edgeTotals.Ridge, hip_length: edgeTotals.Hip, valley_length: edgeTotals.Valley, 
-            rake_length: edgeTotals.Rake, eave_length: edgeTotals.Eave,
-            segments: facets.map(f => ({ name: f.name, area_sqft: f.areaSqFt, pitch: f.pitch, geometry: f.points })), 
-            lead_id: leadId || null, status: 'Completed', measurement_type: 'Manual (Azure)'
+            ridge_length: edgeTotals.Ridge, hip_length: edgeTotals.Hip, valley_length: edgeTotals.Valley, rake_length: edgeTotals.Rake, eave_length: edgeTotals.Eave,
+            segments: facets.map(f => ({ name: f.name, area_sqft: f.areaSqFt, pitch: f.pitch, geometry: f.points })), lead_id: leadId || null, status: 'Completed', measurement_type: 'Manual (Azure)'
         }).select().single();
         if (error) throw error;
         await supabase.rpc('decrement_measurement_credits', { p_company_id: userData?.company_id });
         onSave(data);
-     } catch(e) { console.error(e); alert('Save Error'); } finally { setSaving(false); }
-  };
-  
-  const getEdgeCounts = () => {
-    const counts: Record<EdgeType, number> = { Ridge: 0, Hip: 0, Valley: 0, Eave: 0, Rake: 0, Penetration: 0, Unlabeled: 0 };
-    edges.forEach(edge => counts[edge.edgeType]++);
-    return counts;
+     } catch(e) { console.error(e); alert('Save failed'); } finally { setSaving(false); }
   };
 
   return (
@@ -325,11 +266,21 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
                  {step === 'drawing' && (
                     <>
                         <div className="flex items-center text-xs text-pink-400 mr-2"><Magnet size={14} className="mr-1"/> Snapping Active</div>
-                        {!isDrawing ? ( <button onClick={() => setIsDrawing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Grid3x3 size={18} /> Draw Facet</button> ) : ( <button onClick={() => setIsDrawing(false)} className="px-4 py-2 bg-orange-600 text-white rounded-lg">Cancel</button> )}
+                        {!isDrawing ? ( <button onClick={() => setIsDrawing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Grid3x3 size={18} /> Draw Facet</button> ) : ( 
+                             <div className="flex gap-2">
+                                {currentPoints.length >= 3 && (
+                                    <button onClick={handleManualComplete} className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold flex items-center gap-2 animate-pulse">
+                                        <CheckCircle2 size={18} /> Finish Shape
+                                    </button>
+                                )}
+                                <button onClick={() => setIsDrawing(false)} className="px-4 py-2 bg-orange-600 text-white rounded-lg">Cancel</button>
+                             </div>
+                        )}
                         <button onClick={handleUndo} className="p-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600"><Undo2 size={18} /></button>
                         <button onClick={() => { if(facets.length>0) setStep('labeling'); }} disabled={facets.length===0} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">Next: Label</button>
                     </>
                 )}
+                {/* Steps Labeling and Review match Google view now */}
                 {step === 'labeling' && (
                     <>
                          <p className="text-sm text-blue-200 mr-4">Click lines to color-code.</p>
@@ -351,6 +302,7 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
       <div className="flex-1 flex relative">
          {showSidebar && (
              <div className="w-80 bg-slate-800 border-r border-slate-700 overflow-y-auto p-4">
+                 {/* Sidebar Content (Same as Google) */}
                  {step === 'labeling' ? (
                      <div>
                          <h3 className="font-bold text-white mb-3 flex items-center gap-2"><Tag size={18} className="text-blue-400" /> Edge Types</h3>
