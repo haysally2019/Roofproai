@@ -733,7 +733,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({
           {showSidebar ? <ChevronDown size={20} className="rotate-90" /> : <ChevronUp size={20} className="rotate-90" />}
         </button>
 
-        <div ref={mapRef} className="flex-1" />
+        <div ref={mapRef} className="flex-1" style={{ width: '100%', height: '100%' }} />
       </div>
 
       {showCreditModal && (

@@ -150,6 +150,16 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({
 
         mapInstance.layers.add([polygonLayer, lineLayer]);
 
+        mapInstance.events.add('click', lineLayer, (e: any) => {
+          if (!isDrawing && e.shapes && e.shapes.length > 0) {
+            const shape = e.shapes[0];
+            const edgeId = shape.getProperties().edgeId;
+            if (edgeId) {
+              handleEdgeClick(edgeId);
+            }
+          }
+        });
+
         mapInstance.events.add('click', handleMapClick);
 
         setMap(mapInstance);
@@ -168,18 +178,7 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({
   };
 
   const handleMapClick = (e: any) => {
-    if (!dataSource) return;
-
-    if (!isDrawing) {
-      if (e.shapes && e.shapes.length > 0) {
-        const shape = e.shapes[0];
-        const edgeId = shape.getProperties().edgeId;
-        if (edgeId) {
-          handleEdgeClick(edgeId);
-        }
-      }
-      return;
-    }
+    if (!dataSource || !isDrawing) return;
 
     const position = e.position;
     const point: Point = { position };
@@ -332,12 +331,15 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({
   };
 
   const handleEdgeClick = (edgeId: string) => {
-    if (!selectedEdgeType) return;
+    if (!selectedEdgeType || !dataSource) return;
 
     setEdges(prev => prev.map(edge => {
       if (edge.id === edgeId && edge.line) {
         const config = EDGE_TYPE_CONFIGS[selectedEdgeType];
-        edge.line.addProperty('strokeColor', config.strokeColor);
+        edge.line.setProperties({
+          ...edge.line.getProperties(),
+          strokeColor: config.strokeColor
+        });
         return { ...edge, edgeType: selectedEdgeType };
       }
       return edge;
@@ -742,7 +744,7 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({
           {showSidebar ? <ChevronDown size={20} className="rotate-90" /> : <ChevronUp size={20} className="rotate-90" />}
         </button>
 
-        <div ref={mapRef} className="flex-1" />
+        <div ref={mapRef} className="flex-1" style={{ width: '100%', height: '100%' }} />
       </div>
 
       {showCreditModal && (

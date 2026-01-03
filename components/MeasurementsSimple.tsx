@@ -480,7 +480,7 @@ const MeasurementsSimple: React.FC = () => {
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Select Map Provider
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <button
                   type="button"
                   onClick={() => setSelectedMapProvider('google')}
@@ -516,27 +516,7 @@ const MeasurementsSimple: React.FC = () => {
                       <p className={`font-semibold text-sm ${selectedMapProvider === 'azure_satellite' ? 'text-blue-900' : 'text-slate-900'}`}>
                         Azure Satellite
                       </p>
-                      <p className="text-xs text-slate-500">Clean view</p>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedMapProvider('azure_labels')}
-                  className={`p-4 rounded-lg border-2 transition-all ${
-                    selectedMapProvider === 'azure_labels'
-                      ? 'border-blue-600 bg-blue-50 shadow-md'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex flex-col items-center gap-2">
-                    <MapIcon size={24} className={selectedMapProvider === 'azure_labels' ? 'text-blue-600' : 'text-slate-600'} />
-                    <div className="text-center">
-                      <p className={`font-semibold text-sm ${selectedMapProvider === 'azure_labels' ? 'text-blue-900' : 'text-slate-900'}`}>
-                        Azure + Labels
-                      </p>
-                      <p className="text-xs text-slate-500">With streets</p>
+                      <p className="text-xs text-slate-500">High-res imagery</p>
                     </div>
                   </div>
                 </button>
