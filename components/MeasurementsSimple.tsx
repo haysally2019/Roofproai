@@ -5,7 +5,7 @@ import RoofrStyleMeasurement from './RoofrStyleMeasurement';
 import AzureRoofrMeasurement from './AzureRoofrMeasurement';
 import CreditPurchaseModal from './CreditPurchaseModal';
 import MapDiagnostics from './MapDiagnostics';
-import { checkSolarAvailability } from '../lib/googleSolarApi';
+import { checkSolarAvailability, fetchBuildingInsights } from '../lib/googleSolarApi';
 import { generateMeasurementReportPDF } from '../lib/pdfGenerator';
 
 interface Measurement {
@@ -271,6 +271,83 @@ const MeasurementsSimple: React.FC = () => {
     setShowNewMeasurement(true);
   };
 
+  const handleAutoGenerate3D = async () => {
+    if (!selectedCoordinates || !has3DAvailable) {
+      alert('3D data not available for this location');
+      return;
+    }
+
+    if (credits < 2) {
+      alert('You need at least 2 credits to use 3D auto-generation');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const insights = await fetchBuildingInsights(selectedCoordinates.lat, selectedCoordinates.lon);
+
+      if (!insights.available || !insights.roofSegments) {
+        alert('Failed to fetch 3D building data. Please try manual measurement.');
+        return;
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: userData } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!userData?.company_id) return;
+
+      const segments = insights.roofSegments.map((segment, index) => ({
+        id: `segment-${index}`,
+        name: `Roof Section ${index + 1}`,
+        area: segment.area,
+        pitch: segment.pitch,
+        azimuth: segment.azimuth,
+        edges: []
+      }));
+
+      const { data: measurement, error } = await supabase
+        .from('roof_measurements')
+        .insert({
+          company_id: userData.company_id,
+          lead_id: selectedLead || null,
+          address: address,
+          total_area: insights.totalArea || 0,
+          segments: segments,
+          has_3d_model: true,
+          measurement_type: '3D Auto-Generated',
+          imagery_date: insights.imageryDate,
+          imagery_quality: insights.imageryQuality
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await supabase.rpc('decrement_measurement_credits', { p_company_id: userData.company_id });
+      await supabase.rpc('decrement_measurement_credits', { p_company_id: userData.company_id });
+
+      await loadMeasurements();
+      await loadCredits();
+      setAddress('');
+      setSelectedLead('');
+      setSelectedCoordinates(null);
+      setHas3DAvailable(null);
+
+      alert('3D measurement generated successfully!');
+    } catch (error) {
+      console.error('Error generating 3D measurement:', error);
+      alert('Failed to generate 3D measurement. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSaveMeasurement = async (measurement: any) => {
     await loadMeasurements();
     await loadCredits();
@@ -468,9 +545,17 @@ const MeasurementsSimple: React.FC = () => {
                     <CheckCircle className="text-emerald-600" size={18} />
                     <h4 className="font-bold text-emerald-900">3D Model Available - Recommended!</h4>
                   </div>
-                  <p className="text-sm text-emerald-700">
-                    High-quality 3D roof model detected from Google Solar API. Automated measurements will be more accurate. Uses 2 credits.
+                  <p className="text-sm text-emerald-700 mb-3">
+                    High-quality 3D roof model detected from Google Solar API. Auto-generate measurements instantly or use manual tool. Uses 2 credits for auto-generation, 1 credit for manual.
                   </p>
+                  <button
+                    onClick={handleAutoGenerate3D}
+                    disabled={credits < 2 || loading}
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-lg hover:from-emerald-700 hover:to-green-700 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Sparkles size={18} />
+                    {loading ? 'Generating...' : 'Auto-Generate from 3D (2 Credits)'}
+                  </button>
                 </div>
               </div>
             )}
@@ -539,7 +624,7 @@ const MeasurementsSimple: React.FC = () => {
               className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Plus size={20} />
-              Start Measurement
+              {has3DAvailable ? 'Manual Measurement (1 Credit)' : 'Start Measurement'}
             </button>
           </div>
 

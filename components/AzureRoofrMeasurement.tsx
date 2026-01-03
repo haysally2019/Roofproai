@@ -67,14 +67,14 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({
 
   useEffect(() => {
     loadCredits();
-  }, []);
-
-  useEffect(() => {
-    if (mapRef.current && !map) {
+    const timer = setTimeout(() => {
       initializeMap();
-    }
-    return () => cleanupMap();
-  }, [mapRef.current]);
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      cleanupMap();
+    };
+  }, []);
 
   const cleanupMap = () => {
     if (map) {
