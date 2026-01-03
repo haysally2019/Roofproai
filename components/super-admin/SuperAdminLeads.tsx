@@ -248,75 +248,85 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
     }
   };
 
-  const handleImportSubmit = () => {
+  const handleImportSubmit = async () => {
     setImportStep(3);
 
-    setTimeout(() => {
-      let count = 0;
-      parsedData.forEach(row => {
-        const lead: Partial<SoftwareLead> = {
-          status: 'Prospect',
-          priority: 'Warm',
-          source: 'Inbound',
-          estimatedValue: 0,
-          potentialUsers: 1,
-          assignedTo: currentUser.id,
-          activities: [],
-          tags: []
-        };
+    const leadsToImport: SoftwareLead[] = [];
 
-        Object.keys(columnMapping).forEach(csvHeader => {
-          const fieldName = columnMapping[csvHeader];
-          if (fieldName) {
-            const value = row[csvHeader];
-            if (fieldName === 'estimatedValue' || fieldName === 'potentialUsers') {
-              (lead as any)[fieldName] = parseInt(value) || 0;
-            } else {
-              (lead as any)[fieldName] = value;
-            }
+    parsedData.forEach((row, index) => {
+      const lead: Partial<SoftwareLead> = {
+        status: 'Prospect',
+        priority: 'Warm',
+        source: 'Inbound',
+        estimatedValue: 0,
+        potentialUsers: 1,
+        assignedTo: currentUser.id,
+        activities: [],
+        tags: []
+      };
+
+      Object.keys(columnMapping).forEach(csvHeader => {
+        const fieldName = columnMapping[csvHeader];
+        if (fieldName) {
+          const value = row[csvHeader];
+          if (fieldName === 'estimatedValue' || fieldName === 'potentialUsers') {
+            (lead as any)[fieldName] = parseInt(value) || 0;
+          } else {
+            (lead as any)[fieldName] = value;
           }
-        });
-
-        if (lead.companyName && lead.contactName) {
-          const now = new Date().toISOString();
-          const newLead: SoftwareLead = {
-            id: `sl-${Date.now()}-${count}`,
-            companyName: lead.companyName,
-            contactName: lead.contactName,
-            email: lead.email || '',
-            phone: lead.phone || '',
-            website: lead.website || '',
-            companySize: lead.companySize || '',
-            status: lead.status as SoftwareLeadStatus || 'Prospect',
-            priority: lead.priority as LeadPriority || 'Warm',
-            source: lead.source as LeadSource || 'Inbound',
-            potentialUsers: lead.potentialUsers || 1,
-            estimatedValue: lead.estimatedValue || 0,
-            assignedTo: currentUser.id,
-            notes: `Imported from ${importSource}`,
-            createdAt: now,
-            updatedAt: now,
-            activities: [{
-              id: `act-${Date.now()}-${count}`,
-              type: 'Note',
-              description: `Lead imported from ${importSource}`,
-              timestamp: now,
-              userId: currentUser.id,
-              userName: currentUser.name
-            }],
-            tags: []
-          };
-          onAddLead(newLead);
-          count++;
         }
       });
+
+      if (lead.companyName && lead.contactName) {
+        const now = new Date().toISOString();
+        const newLead: SoftwareLead = {
+          id: `sl-${Date.now()}-${index}`,
+          companyName: lead.companyName,
+          contactName: lead.contactName,
+          email: lead.email || '',
+          phone: lead.phone || '',
+          website: lead.website || '',
+          companySize: lead.companySize || '',
+          status: lead.status as SoftwareLeadStatus || 'Prospect',
+          priority: lead.priority as LeadPriority || 'Warm',
+          source: lead.source as LeadSource || 'Inbound',
+          potentialUsers: lead.potentialUsers || 1,
+          estimatedValue: lead.estimatedValue || 0,
+          assignedTo: currentUser.id,
+          notes: `Imported from ${importSource}`,
+          createdAt: now,
+          updatedAt: now,
+          activities: [{
+            id: `act-${Date.now()}-${index}`,
+            type: 'Note',
+            description: `Lead imported from ${importSource}`,
+            timestamp: now,
+            userId: currentUser.id,
+            userName: currentUser.name
+          }],
+          tags: []
+        };
+        leadsToImport.push(newLead);
+      }
+    });
+
+    try {
+      for (const lead of leadsToImport) {
+        await onAddLead(lead);
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
 
       setShowImportModal(false);
       setImportStep(1);
       setCsvFile(null);
       setParsedData([]);
-      alert(`Successfully imported ${count} software leads!`);
-    }, 1500);
+      setColumnMapping({});
+      alert(`Successfully imported ${leadsToImport.length} software leads!`);
+    } catch (error) {
+      console.error('Import error:', error);
+      alert('Failed to import some leads. Please try again.');
+      setImportStep(2);
+    }
   };
 
   const saasReps = users.filter(u => u.role === UserRole.SAAS_REP || u.role === UserRole.SUPER_ADMIN);

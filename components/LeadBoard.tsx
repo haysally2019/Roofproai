@@ -216,46 +216,54 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
       }
   };
 
-  const handleImportSubmit = () => {
-      setImportStep(3); // Loading state
-      
-      setTimeout(() => {
-          let count = 0;
-          parsedData.forEach(row => {
-              const lead: Partial<Lead> = {
-                  status: LeadStatus.NEW,
-                  projectType: 'Unknown',
-                  lastContact: new Date().toISOString(),
-                  createdAt: new Date().toISOString().split('T')[0],
-                  assignedTo: currentUser.id,
-                  notes: 'Imported from ' + importSource
-              };
+  const handleImportSubmit = async () => {
+      setImportStep(3);
 
-              // Apply mapping
-              Object.keys(columnMapping).forEach(csvHeader => {
-                  const roofProField = columnMapping[csvHeader];
-                  if (roofProField) {
-                      if (roofProField === 'estimatedValue') {
-                          lead.estimatedValue = parseFloat(row[csvHeader]) || 0;
-                      } else {
-                          // @ts-ignore
-                          lead[roofProField] = row[csvHeader];
-                      }
+      const leadsToImport: Partial<Lead>[] = [];
+
+      parsedData.forEach(row => {
+          const lead: Partial<Lead> = {
+              status: LeadStatus.NEW,
+              projectType: 'Unknown',
+              lastContact: new Date().toISOString(),
+              createdAt: new Date().toISOString().split('T')[0],
+              assignedTo: currentUser.id,
+              notes: 'Imported from ' + importSource
+          };
+
+          Object.keys(columnMapping).forEach(csvHeader => {
+              const roofProField = columnMapping[csvHeader];
+              if (roofProField) {
+                  if (roofProField === 'estimatedValue') {
+                      lead.estimatedValue = parseFloat(row[csvHeader]) || 0;
+                  } else {
+                      (lead as any)[roofProField] = row[csvHeader];
                   }
-              });
-
-              if (lead.name && lead.address) {
-                  onAddLead(lead);
-                  count++;
               }
           });
 
-          addToast(`Successfully imported ${count} leads!`, 'success');
+          if (lead.name && lead.address) {
+              leadsToImport.push(lead);
+          }
+      });
+
+      try {
+          for (const lead of leadsToImport) {
+              await onAddLead(lead);
+              await new Promise(resolve => setTimeout(resolve, 100));
+          }
+
+          addToast(`Successfully imported ${leadsToImport.length} leads!`, 'success');
           setIsImporting(false);
           setImportStep(1);
           setCsvFile(null);
           setParsedData([]);
-      }, 1500);
+          setColumnMapping({});
+      } catch (error) {
+          console.error('Import error:', error);
+          addToast('Failed to import some leads. Please try again.', 'error');
+          setImportStep(2);
+      }
   };
 
   const toggleSort = (field: SortField) => {
