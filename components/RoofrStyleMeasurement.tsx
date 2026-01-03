@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Save, X, Undo2, Trash2, Tag, Layers, Grid3x3, Ruler, ChevronDown, ChevronUp, Info, Loader2, ArrowRight, Magnet } from 'lucide-react';
+import { Save, X, Undo2, Trash2, Tag, Layers, Grid3x3, Ruler, ChevronDown, ChevronUp, Info, Loader2, ArrowRight, Magnet, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RoofEdge, EdgeType } from '../types';
 import { EDGE_TYPE_CONFIGS } from '../lib/edgeTypeConstants';
@@ -38,7 +38,6 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   const [selectedEdgeType, setSelectedEdgeType] = useState<EdgeType>('Eave');
   const [credits, setCredits] = useState<number>(0);
   const [showCreditModal, setShowCreditModal] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mapLoading, setMapLoading] = useState(true);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -50,7 +49,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   const [showPitchModal, setShowPitchModal] = useState(false);
   const [pendingFacetPoints, setPendingFacetPoints] = useState<Point[] | null>(null);
 
-  // Refs (Crucial for Event Listeners)
+  // Refs
   const mapRef = useRef<HTMLDivElement>(null);
   const isDrawingRef = useRef(false);
   const currentPointsRef = useRef<Point[]>([]);
@@ -58,7 +57,6 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   const snapMarkerRef = useRef<any>(null);
   const googleApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-  // Sync Refs
   useEffect(() => {
     isDrawingRef.current = isDrawing;
     currentPointsRef.current = currentPoints;
@@ -91,14 +89,16 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   }, [initialLat, initialLng]);
 
   const loadCredits = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-        const { data: userData } = await supabase.from('users').select('company_id').eq('id', user.id).single();
-        if(userData) {
-             const { data } = await supabase.from('measurement_credits').select('credits_remaining').eq('company_id', userData.company_id).maybeSingle();
-             setCredits(data?.credits_remaining || 0);
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if(user) {
+            const { data: userData } = await supabase.from('users').select('company_id').eq('id', user.id).single();
+            if(userData) {
+                const { data } = await supabase.from('measurement_credits').select('credits_remaining').eq('company_id', userData.company_id).maybeSingle();
+                setCredits(data?.credits_remaining || 0);
+            }
         }
-    }
+    } catch (e) {}
   };
 
   const initializeMapWithCoords = (lat: number, lng: number) => {
@@ -106,14 +106,10 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
     const mapInstance = new window.google.maps.Map(mapRef.current, {
         center: { lat, lng }, 
         zoom: 21,
-        // Force Max Zoom
         maxZoom: 26, 
-        mapTypeId: 'hybrid', // Hybrid often allows deeper zoom than 'satellite'
+        mapTypeId: 'hybrid',
         tilt: 0,
-        fullscreenControl: false, 
-        streetViewControl: false, 
-        mapTypeControl: false,
-        zoomControl: true,
+        fullscreenControl: false, streetViewControl: false, mapTypeControl: false, zoomControl: true,
     });
     
     mapInstance.addListener('mousemove', (e: any) => handleMouseMove(e.latLng, mapInstance));
@@ -124,7 +120,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
     
     const marker = new window.google.maps.Marker({
         map: mapInstance,
-        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 6, strokeColor: '#ec4899', strokeWeight: 3, fillOpacity: 0 },
+        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, strokeColor: '#ec4899', strokeWeight: 4, fillOpacity: 0 },
         zIndex: 1000, visible: false
     });
     snapMarkerRef.current = marker;
@@ -145,7 +141,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
       const cursorPoint = { lat: latLng.lat(), lng: latLng.lng() };
       let closestPoint: Point | null = null;
       let minDistance = Infinity;
-      const SNAP_THRESHOLD_METERS = 0.5;
+      const SNAP_THRESHOLD_METERS = 1.0; // Increased to 1 meter for easier snapping
 
       // Snap to existing facets
       facetsRef.current.forEach(facet => {
@@ -172,19 +168,39 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   const handleMapClick = (latLng: any, mapInstance: any) => {
     if (!isDrawingRef.current) return;
 
-    const finalLat = snapMarkerRef.current.getVisible() ? snapMarkerRef.current.getPosition().lat() : latLng.lat();
-    const finalLng = snapMarkerRef.current.getVisible() ? snapMarkerRef.current.getPosition().lng() : latLng.lng();
-    const point: Point = { lat: finalLat, lng: finalLng };
+    // 1. Determine Coordinates (Use Snap if available)
+    let point: Point;
+    const snapVisible = snapMarkerRef.current && snapMarkerRef.current.getVisible();
+    
+    if (snapVisible) {
+        const p = snapMarkerRef.current.getPosition();
+        point = { lat: p.lat(), lng: p.lng() };
+    } else {
+        point = { lat: latLng.lat(), lng: latLng.lng() };
+    }
+
     const currentPts = currentPointsRef.current;
 
-    if (currentPts.length > 0) {
-        const first = currentPts[0];
-        if (Math.abs(first.lat - point.lat) < 0.0000001 && Math.abs(first.lng - point.lng) < 0.0000001) {
-             if(currentPts.length >= 3) triggerPitchPrompt(mapInstance); 
+    // 2. CHECK FOR CLOSING LOOP
+    if (currentPts.length >= 3) {
+        const start = currentPts[0];
+        
+        // Check if snapped point IS the start point
+        const isExactMatch = Math.abs(start.lat - point.lat) < 0.0000001 && Math.abs(start.lng - point.lng) < 0.0000001;
+        
+        // OR Check distance even if not "snapped" perfectly (Backup check)
+        const dist = window.google.maps.geometry.spherical.computeDistanceBetween(
+            new window.google.maps.LatLng(point.lat, point.lng), 
+            new window.google.maps.LatLng(start.lat, start.lng)
+        );
+
+        if (isExactMatch || dist < 1.0) { // Close if within 1 meter
+             triggerPitchPrompt(mapInstance); 
              return; 
         }
     }
 
+    // 3. Add Point
     const marker = new window.google.maps.Marker({
       position: point, map: mapInstance,
       icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 3, fillColor: '#3b82f6', fillOpacity: 1, strokeColor: 'white', strokeWeight: 2 }
@@ -195,7 +211,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
     
     const newPoints = [...currentPts, point];
     setCurrentPoints(newPoints);
-    currentPointsRef.current = newPoints; // Update ref immediately
+    currentPointsRef.current = newPoints;
     
     updatePolyline(newPoints, mapInstance);
   };
@@ -210,32 +226,23 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
     }
   }
 
-  // --- FIXED UNDO LOGIC ---
   const handleUndo = () => {
     if (isDrawing && currentPoints.length > 0) {
-      // 1. Remove last marker from map
       const lastMarker = currentMarkers[currentMarkers.length - 1];
       if (lastMarker) lastMarker.setMap(null);
       
-      // 2. Update Markers State
       const newMarkers = currentMarkers.slice(0, -1);
       setCurrentMarkers(newMarkers);
       
-      // 3. Update Points State & Ref
       const newPoints = currentPoints.slice(0, -1);
       setCurrentPoints(newPoints);
       currentPointsRef.current = newPoints; 
-
-      // 4. Redraw Polyline
       updatePolyline(newPoints, map);
-      
     } else if (!isDrawing && facets.length > 0) {
       const lastFacet = facets[facets.length - 1];
       lastFacet.polygon.setMap(null);
-
       const facetEdges = edges.filter(e => e.facetId === lastFacet.id);
       facetEdges.forEach(edge => edge.polyline.setMap(null));
-
       setEdges(prev => prev.filter(e => e.facetId !== lastFacet.id));
       setFacets(prev => prev.slice(0, -1));
     }
@@ -244,6 +251,13 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   const triggerPitchPrompt = (mapInstance: any) => {
       setPendingFacetPoints(currentPointsRef.current);
       setShowPitchModal(true);
+  };
+  
+  // MANUAL CLOSE TRIGGER
+  const handleManualComplete = () => {
+      if(currentPoints.length >= 3) {
+          triggerPitchPrompt(map);
+      }
   };
 
   const finalizeFacet = (pitch: number) => {
@@ -260,7 +274,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
       const areaSqFt = Math.round(flatArea * pitchMultiplier);
 
       const newFacet: RoofFacet = { id: facetId, name: `Facet ${facets.length + 1}`, points: [...points], polygon, areaSqFt, pitch };
-      polygon.addListener('click', () => setSelectedFacet(facetId));
+      polygon.addListener('click', () => { /* Handle Selection */ });
       
       setFacets(prev => [...prev, newFacet]);
       createEdgesForFacet(newFacet, map);
@@ -346,8 +360,21 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
             <div className="flex items-center gap-3">
                  {step === 'drawing' && (
                     <>
-                        <div className="flex items-center text-xs text-pink-400 mr-2"><Magnet size={14} className="mr-1"/> Snapping Active</div>
-                        {!isDrawing ? ( <button onClick={() => setIsDrawing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Grid3x3 size={18} /> Draw Facet</button> ) : ( <button onClick={() => setIsDrawing(false)} className="px-4 py-2 bg-orange-600 text-white rounded-lg">Cancel</button> )}
+                        <div className="flex items-center text-xs text-pink-400 mr-2"><Magnet size={14} className="mr-1"/> Snap Active</div>
+                        
+                        {!isDrawing ? ( 
+                            <button onClick={() => setIsDrawing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Grid3x3 size={18} /> Draw Facet</button> 
+                        ) : ( 
+                             <div className="flex gap-2">
+                                {/* NEW MANUAL CLOSE BUTTON */}
+                                {currentPoints.length >= 3 && (
+                                    <button onClick={handleManualComplete} className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold flex items-center gap-2 animate-pulse">
+                                        <CheckCircle2 size={18} /> Finish Shape
+                                    </button>
+                                )}
+                                <button onClick={() => setIsDrawing(false)} className="px-4 py-2 bg-orange-600 text-white rounded-lg">Cancel</button>
+                             </div>
+                        )}
                         <button onClick={handleUndo} className="p-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600"><Undo2 size={18} /></button>
                         <button onClick={() => { if(facets.length>0) setStep('labeling'); }} disabled={facets.length===0} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">Next: Label</button>
                     </>
