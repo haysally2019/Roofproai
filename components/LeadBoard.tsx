@@ -174,41 +174,71 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
     setNewLeadData({ name: '', address: '', source: 'Door Knocking', notes: '' });
   };
 
-  // --- IMPORT LOGIC ---
+  const parseCSVLine = (line: string): string[] => {
+      const result: string[] = [];
+      let current = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          const nextChar = line[i + 1];
+
+          if (char === '"') {
+              if (inQuotes && nextChar === '"') {
+                  current += '"';
+                  i++;
+              } else {
+                  inQuotes = !inQuotes;
+              }
+          } else if (char === ',' && !inQuotes) {
+              result.push(current.trim());
+              current = '';
+          } else {
+              current += char;
+          }
+      }
+      result.push(current.trim());
+      return result;
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
           setCsvFile(file);
-          // Simple CSV Parser
           const reader = new FileReader();
           reader.onload = (evt) => {
               const text = evt.target?.result as string;
-              const lines = text.split('\n');
-              const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-              
-              const data = lines.slice(1).filter(l => l.trim()).map(line => {
-                  const values = line.split(','); // Basic split, regex needed for advanced CSVs
+              const lines = text.split(/\r?\n/);
+              const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, ''));
+
+              console.log('CSV Headers:', headers);
+
+              const data = lines.slice(1).filter(l => l.trim()).map((line) => {
+                  const values = parseCSVLine(line);
                   const obj: any = {};
                   headers.forEach((h, i) => {
-                      obj[h] = values[i]?.trim().replace(/"/g, '') || '';
+                      obj[h] = values[i]?.replace(/^"|"$/g, '') || '';
                   });
                   return obj;
               });
 
+              console.log('Parsed data rows:', data.length);
+              console.log('Sample row:', data[0]);
+
               setCsvPreview(headers);
               setParsedData(data);
-              
-              // Auto-Map if possible
+
               const newMapping: Record<string, string> = {};
               headers.forEach(h => {
                   const lower = h.toLowerCase();
-                  if (lower.includes('name') || lower.includes('customer')) newMapping[h] = 'name';
-                  else if (lower.includes('address') || lower.includes('street')) newMapping[h] = 'address';
-                  else if (lower.includes('phone') || lower.includes('mobile')) newMapping[h] = 'phone';
-                  else if (lower.includes('email')) newMapping[h] = 'email';
-                  else if (lower.includes('source')) newMapping[h] = 'source';
-                  else if (lower.includes('value') || lower.includes('revenue')) newMapping[h] = 'estimatedValue';
+                  if (lower.includes('name') || lower.includes('customer') || lower.includes('client')) newMapping[h] = 'name';
+                  else if (lower.includes('address') || lower.includes('street') || lower.includes('location')) newMapping[h] = 'address';
+                  else if (lower.includes('phone') || lower.includes('mobile') || lower.includes('cell')) newMapping[h] = 'phone';
+                  else if (lower.includes('email') || lower.includes('e-mail')) newMapping[h] = 'email';
+                  else if (lower.includes('source') || lower.includes('channel')) newMapping[h] = 'source';
+                  else if (lower.includes('value') || lower.includes('revenue') || lower.includes('estimate')) newMapping[h] = 'estimatedValue';
               });
+              console.log('Auto-mapping:', newMapping);
               setColumnMapping(newMapping);
               setImportStep(2);
           };
@@ -220,8 +250,13 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
       setImportStep(3);
 
       const leadsToImport: Partial<Lead>[] = [];
+      const skippedRows: number[] = [];
 
-      parsedData.forEach(row => {
+      console.log('Starting import process...');
+      console.log('Column mapping:', columnMapping);
+      console.log('Total rows:', parsedData.length);
+
+      parsedData.forEach((row, index) => {
           const lead: Partial<Lead> = {
               status: LeadStatus.NEW,
               projectType: 'Unknown',
@@ -233,27 +268,53 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
 
           Object.keys(columnMapping).forEach(csvHeader => {
               const roofProField = columnMapping[csvHeader];
-              if (roofProField) {
+              if (roofProField && row[csvHeader]) {
                   if (roofProField === 'estimatedValue') {
-                      lead.estimatedValue = parseFloat(row[csvHeader]) || 0;
+                      const value = row[csvHeader].replace(/[^0-9.]/g, '');
+                      lead.estimatedValue = parseFloat(value) || 0;
                   } else {
                       (lead as any)[roofProField] = row[csvHeader];
                   }
               }
           });
 
-          if (lead.name && lead.address) {
+          if (!lead.name || !lead.address) {
+              skippedRows.push(index + 2);
+              console.log(`Row ${index + 2} skipped - Missing required fields:`, {
+                  name: lead.name,
+                  address: lead.address,
+                  rowData: row
+              });
+          } else {
               leadsToImport.push(lead);
           }
       });
 
+      console.log('Leads to import:', leadsToImport.length);
+      console.log('Skipped rows:', skippedRows.length);
+
+      if (leadsToImport.length === 0) {
+          addToast(`No valid leads found. ${skippedRows.length} rows were skipped because they were missing Name or Address. Please check your column mapping.`, 'error');
+          setImportStep(2);
+          return;
+      }
+
       try {
+          let successCount = 0;
+          let errorCount = 0;
+
           for (const lead of leadsToImport) {
-              await onAddLead(lead);
-              await new Promise(resolve => setTimeout(resolve, 100));
+              try {
+                  await onAddLead(lead);
+                  successCount++;
+                  await new Promise(resolve => setTimeout(resolve, 50));
+              } catch (err) {
+                  console.error('Failed to import lead:', lead.name, err);
+                  errorCount++;
+              }
           }
 
-          addToast(`Successfully imported ${leadsToImport.length} leads!`, 'success');
+          addToast(`Import complete! ✓ ${successCount} leads imported${errorCount > 0 ? `, ✗ ${errorCount} failed` : ''}${skippedRows.length > 0 ? `, ⊘ ${skippedRows.length} skipped` : ''}`, successCount > 0 ? 'success' : 'error');
           setIsImporting(false);
           setImportStep(1);
           setCsvFile(null);
@@ -261,7 +322,7 @@ const LeadBoard: React.FC<LeadBoardProps> = ({
           setColumnMapping({});
       } catch (error) {
           console.error('Import error:', error);
-          addToast('Failed to import some leads. Please try again.', 'error');
+          addToast('Failed to import leads. Please check the console for details.', 'error');
           setImportStep(2);
       }
   };

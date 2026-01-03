@@ -205,6 +205,33 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
     return lead.nextFollowUpDate && new Date(lead.nextFollowUpDate) <= new Date();
   };
 
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -212,17 +239,22 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
       const reader = new FileReader();
       reader.onload = (evt) => {
         const text = evt.target?.result as string;
-        const lines = text.split('\n');
-        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        const lines = text.split(/\r?\n/);
+        const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, ''));
 
-        const data = lines.slice(1).filter(l => l.trim()).map(line => {
-          const values = line.split(',');
+        console.log('CSV Headers:', headers);
+
+        const data = lines.slice(1).filter(l => l.trim()).map((line, idx) => {
+          const values = parseCSVLine(line);
           const obj: any = {};
           headers.forEach((h, i) => {
-            obj[h] = values[i]?.trim().replace(/"/g, '') || '';
+            obj[h] = values[i]?.replace(/^"|"$/g, '') || '';
           });
           return obj;
         });
+
+        console.log('Parsed data rows:', data.length);
+        console.log('Sample row:', data[0]);
 
         setCsvPreview(headers);
         setParsedData(data);
@@ -231,16 +263,18 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         headers.forEach(h => {
           const lower = h.toLowerCase();
           if (lower.includes('company') && !lower.includes('size')) newMapping[h] = 'companyName';
-          else if (lower.includes('contact') || lower.includes('name')) newMapping[h] = 'contactName';
-          else if (lower.includes('email')) newMapping[h] = 'email';
-          else if (lower.includes('phone')) newMapping[h] = 'phone';
-          else if (lower.includes('website') || lower.includes('url')) newMapping[h] = 'website';
+          else if (lower.includes('contact') || (lower.includes('name') && !lower.includes('company'))) newMapping[h] = 'contactName';
+          else if (lower.includes('email') || lower.includes('e-mail')) newMapping[h] = 'email';
+          else if (lower.includes('phone') || lower.includes('mobile') || lower.includes('cell')) newMapping[h] = 'phone';
+          else if (lower.includes('website') || lower.includes('url') || lower.includes('web')) newMapping[h] = 'website';
           else if (lower.includes('size') || lower.includes('employees')) newMapping[h] = 'companySize';
-          else if (lower.includes('value') || lower.includes('revenue')) newMapping[h] = 'estimatedValue';
-          else if (lower.includes('users') || lower.includes('seats')) newMapping[h] = 'potentialUsers';
-          else if (lower.includes('source')) newMapping[h] = 'source';
-          else if (lower.includes('priority')) newMapping[h] = 'priority';
+          else if (lower.includes('value') || lower.includes('revenue') || lower.includes('deal')) newMapping[h] = 'estimatedValue';
+          else if (lower.includes('users') || lower.includes('seats') || lower.includes('licenses')) newMapping[h] = 'potentialUsers';
+          else if (lower.includes('source') || lower.includes('channel')) newMapping[h] = 'source';
+          else if (lower.includes('priority') || lower.includes('temp')) newMapping[h] = 'priority';
         });
+
+        console.log('Auto-mapping:', newMapping);
         setColumnMapping(newMapping);
         setImportStep(2);
       };
@@ -252,6 +286,11 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
     setImportStep(3);
 
     const leadsToImport: SoftwareLead[] = [];
+    const skippedRows: number[] = [];
+
+    console.log('Starting import process...');
+    console.log('Column mapping:', columnMapping);
+    console.log('Total rows:', parsedData.length);
 
     parsedData.forEach((row, index) => {
       const lead: Partial<SoftwareLead> = {
@@ -267,17 +306,25 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
       Object.keys(columnMapping).forEach(csvHeader => {
         const fieldName = columnMapping[csvHeader];
-        if (fieldName) {
+        if (fieldName && row[csvHeader]) {
           const value = row[csvHeader];
           if (fieldName === 'estimatedValue' || fieldName === 'potentialUsers') {
-            (lead as any)[fieldName] = parseInt(value) || 0;
+            const numValue = parseInt(value.replace(/[^0-9]/g, '')) || 0;
+            (lead as any)[fieldName] = numValue;
           } else {
             (lead as any)[fieldName] = value;
           }
         }
       });
 
-      if (lead.companyName && lead.contactName) {
+      if (!lead.companyName || !lead.contactName) {
+        skippedRows.push(index + 2);
+        console.log(`Row ${index + 2} skipped - Missing required fields:`, {
+          companyName: lead.companyName,
+          contactName: lead.contactName,
+          rowData: row
+        });
+      } else {
         const now = new Date().toISOString();
         const newLead: SoftwareLead = {
           id: `sl-${Date.now()}-${index}`,
@@ -310,10 +357,28 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
       }
     });
 
+    console.log('Leads to import:', leadsToImport.length);
+    console.log('Skipped rows:', skippedRows.length);
+
+    if (leadsToImport.length === 0) {
+      alert(`No valid leads found. ${skippedRows.length} rows were skipped because they were missing Company Name or Contact Name.\n\nPlease check your column mapping and ensure these fields are mapped correctly.`);
+      setImportStep(2);
+      return;
+    }
+
     try {
+      let successCount = 0;
+      let errorCount = 0;
+
       for (const lead of leadsToImport) {
-        await onAddLead(lead);
-        await new Promise(resolve => setTimeout(resolve, 100));
+        try {
+          await onAddLead(lead);
+          successCount++;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        } catch (err) {
+          console.error('Failed to import lead:', lead.companyName, err);
+          errorCount++;
+        }
       }
 
       setShowImportModal(false);
@@ -321,10 +386,12 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
       setCsvFile(null);
       setParsedData([]);
       setColumnMapping({});
-      alert(`Successfully imported ${leadsToImport.length} software leads!`);
+
+      const message = `Import complete!\n✓ ${successCount} leads imported successfully\n${errorCount > 0 ? `✗ ${errorCount} leads failed\n` : ''}${skippedRows.length > 0 ? `⊘ ${skippedRows.length} rows skipped (missing required fields)` : ''}`;
+      alert(message);
     } catch (error) {
       console.error('Import error:', error);
-      alert('Failed to import some leads. Please try again.');
+      alert('Failed to import leads. Please check the console for details and try again.');
       setImportStep(2);
     }
   };
