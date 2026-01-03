@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { SoftwareLead, SoftwareLeadStatus, LeadPriority, LeadSource, User, UserRole, LeadActivity } from '../../types';
 import {
   Plus, Search, Phone, Mail, User as UserIcon, MoreHorizontal, Trash2, ArrowRightCircle,
   Flame, TrendingUp, Clock, DollarSign, Filter, Calendar, MessageSquare, ExternalLink,
-  LayoutList, LayoutGrid, ArrowUpDown, AlertCircle, CheckCircle2, XCircle, Target
+  LayoutList, LayoutGrid, ArrowUpDown, AlertCircle, CheckCircle2, XCircle, Target, Upload,
+  FileSpreadsheet, Download, Check, X
 } from 'lucide-react';
 
 interface Props {
@@ -22,6 +23,7 @@ type SortField = 'companyName' | 'createdAt' | 'estimatedValue' | 'nextFollowUpD
 const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead, onUpdateLead, onDeleteLead, onConvertLead }) => {
   const [showModal, setShowModal] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState<SoftwareLead | null>(null);
   const [form, setForm] = useState<Partial<SoftwareLead>>({
     status: 'Prospect',
@@ -38,6 +40,15 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
   const [filterAssignedTo, setFilterAssignedTo] = useState<string | 'All'>('All');
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  // Import state
+  const [importStep, setImportStep] = useState<1 | 2 | 3>(1);
+  const [importSource, setImportSource] = useState('Generic CSV');
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvPreview, setCsvPreview] = useState<string[]>([]);
+  const [parsedData, setParsedData] = useState<any[]>([]);
+  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const columns: SoftwareLeadStatus[] = ['Prospect', 'Contacted', 'Demo Booked', 'Trial', 'Closed Won', 'Lost'];
   const priorities: LeadPriority[] = ['Hot', 'Warm', 'Cold'];
@@ -194,6 +205,120 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
     return lead.nextFollowUpDate && new Date(lead.nextFollowUpDate) <= new Date();
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCsvFile(file);
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const text = evt.target?.result as string;
+        const lines = text.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+
+        const data = lines.slice(1).filter(l => l.trim()).map(line => {
+          const values = line.split(',');
+          const obj: any = {};
+          headers.forEach((h, i) => {
+            obj[h] = values[i]?.trim().replace(/"/g, '') || '';
+          });
+          return obj;
+        });
+
+        setCsvPreview(headers);
+        setParsedData(data);
+
+        const newMapping: Record<string, string> = {};
+        headers.forEach(h => {
+          const lower = h.toLowerCase();
+          if (lower.includes('company') && !lower.includes('size')) newMapping[h] = 'companyName';
+          else if (lower.includes('contact') || lower.includes('name')) newMapping[h] = 'contactName';
+          else if (lower.includes('email')) newMapping[h] = 'email';
+          else if (lower.includes('phone')) newMapping[h] = 'phone';
+          else if (lower.includes('website') || lower.includes('url')) newMapping[h] = 'website';
+          else if (lower.includes('size') || lower.includes('employees')) newMapping[h] = 'companySize';
+          else if (lower.includes('value') || lower.includes('revenue')) newMapping[h] = 'estimatedValue';
+          else if (lower.includes('users') || lower.includes('seats')) newMapping[h] = 'potentialUsers';
+          else if (lower.includes('source')) newMapping[h] = 'source';
+          else if (lower.includes('priority')) newMapping[h] = 'priority';
+        });
+        setColumnMapping(newMapping);
+        setImportStep(2);
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const handleImportSubmit = () => {
+    setImportStep(3);
+
+    setTimeout(() => {
+      let count = 0;
+      parsedData.forEach(row => {
+        const lead: Partial<SoftwareLead> = {
+          status: 'Prospect',
+          priority: 'Warm',
+          source: 'Inbound',
+          estimatedValue: 0,
+          potentialUsers: 1,
+          assignedTo: currentUser.id,
+          activities: [],
+          tags: []
+        };
+
+        Object.keys(columnMapping).forEach(csvHeader => {
+          const fieldName = columnMapping[csvHeader];
+          if (fieldName) {
+            const value = row[csvHeader];
+            if (fieldName === 'estimatedValue' || fieldName === 'potentialUsers') {
+              (lead as any)[fieldName] = parseInt(value) || 0;
+            } else {
+              (lead as any)[fieldName] = value;
+            }
+          }
+        });
+
+        if (lead.companyName && lead.contactName) {
+          const now = new Date().toISOString();
+          const newLead: SoftwareLead = {
+            id: `sl-${Date.now()}-${count}`,
+            companyName: lead.companyName,
+            contactName: lead.contactName,
+            email: lead.email || '',
+            phone: lead.phone || '',
+            website: lead.website || '',
+            companySize: lead.companySize || '',
+            status: lead.status as SoftwareLeadStatus || 'Prospect',
+            priority: lead.priority as LeadPriority || 'Warm',
+            source: lead.source as LeadSource || 'Inbound',
+            potentialUsers: lead.potentialUsers || 1,
+            estimatedValue: lead.estimatedValue || 0,
+            assignedTo: currentUser.id,
+            notes: `Imported from ${importSource}`,
+            createdAt: now,
+            updatedAt: now,
+            activities: [{
+              id: `act-${Date.now()}-${count}`,
+              type: 'Note',
+              description: `Lead imported from ${importSource}`,
+              timestamp: now,
+              userId: currentUser.id,
+              userName: currentUser.name
+            }],
+            tags: []
+          };
+          onAddLead(newLead);
+          count++;
+        }
+      });
+
+      setShowImportModal(false);
+      setImportStep(1);
+      setCsvFile(null);
+      setParsedData([]);
+      alert(`Successfully imported ${count} software leads!`);
+    }, 1500);
+  };
+
   const saasReps = users.filter(u => u.role === UserRole.SAAS_REP || u.role === UserRole.SUPER_ADMIN);
 
   return (
@@ -309,6 +434,14 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
             <option value="All">All Reps</option>
             {saasReps.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
+
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-slate-200 shadow-sm whitespace-nowrap border border-slate-200"
+            title="Import leads from CSV"
+          >
+            <Upload size={18}/> Import
+          </button>
 
           <button
             onClick={() => {
@@ -767,6 +900,123 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                   {form.id ? 'Update' : 'Create'} Lead
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl animate-fade-in flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">Import Software Leads</h3>
+                <p className="text-sm text-slate-500">Import prospects from CSV files</p>
+              </div>
+              <button onClick={() => { setShowImportModal(false); setImportStep(1); setCsvFile(null); }} className="text-slate-400 hover:text-slate-600">
+                <X size={20}/>
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              {importStep === 1 && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-3 gap-4">
+                    {['Generic CSV', 'HubSpot', 'Salesforce'].map(src => (
+                      <button
+                        key={src}
+                        onClick={() => setImportSource(src)}
+                        className={`p-4 border rounded-xl text-left transition-all ${importSource === src ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
+                      >
+                        <div className="font-bold text-slate-800 mb-1">{src}</div>
+                        <div className="text-xs text-slate-500">CSV Export</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-slate-300 rounded-xl p-12 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 hover:border-blue-400 transition-colors"
+                  >
+                    <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".csv" />
+                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                      <FileSpreadsheet className="text-slate-400" size={32}/>
+                    </div>
+                    <h4 className="font-bold text-slate-700">Click to upload {importSource} file</h4>
+                    <p className="text-sm text-slate-400 mt-2">or drag and drop CSV here</p>
+                  </div>
+                </div>
+              )}
+
+              {importStep === 2 && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg border border-blue-100">
+                    <span className="text-sm font-medium text-blue-900 flex items-center gap-2"><CheckCircle2 size={16}/> File Loaded: {csvFile?.name}</span>
+                    <span className="text-xs font-bold bg-white px-2 py-1 rounded text-blue-600">{parsedData.length} Rows</span>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 w-1/2">CSV Header ({importSource})</th>
+                          <th className="px-4 py-3 w-1/2">RAFTER AI Field</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {csvPreview.map((header) => (
+                          <tr key={header}>
+                            <td className="px-4 py-3 font-medium text-slate-700">{header}</td>
+                            <td className="px-4 py-3">
+                              <select
+                                className="w-full p-2 border border-slate-200 rounded-lg outline-none text-sm bg-white"
+                                value={columnMapping[header] || ''}
+                                onChange={(e) => setColumnMapping({...columnMapping, [header]: e.target.value})}
+                              >
+                                <option value="">-- Ignore --</option>
+                                <option value="companyName">Company Name</option>
+                                <option value="contactName">Contact Name</option>
+                                <option value="email">Email</option>
+                                <option value="phone">Phone Number</option>
+                                <option value="website">Website</option>
+                                <option value="companySize">Company Size</option>
+                                <option value="status">Status</option>
+                                <option value="priority">Priority</option>
+                                <option value="source">Lead Source</option>
+                                <option value="estimatedValue">Estimated Value ($)</option>
+                                <option value="potentialUsers">Potential Users</option>
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {importStep === 3 && (
+                <div className="flex flex-col items-center justify-center h-64">
+                  <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-6"></div>
+                  <h3 className="text-xl font-bold text-slate-800">Importing Software Leads...</h3>
+                  <p className="text-slate-500">Mapping data and creating records.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 rounded-b-xl">
+              {importStep === 1 && (
+                <button disabled className="px-6 py-2 bg-slate-200 text-slate-400 rounded-lg font-bold cursor-not-allowed">Next Step</button>
+              )}
+              {importStep === 2 && (
+                <>
+                  <button onClick={() => setImportStep(1)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition-colors">Back</button>
+                  <button onClick={handleImportSubmit} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md transition-colors flex items-center gap-2">
+                    <Download size={18}/> Start Import
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
