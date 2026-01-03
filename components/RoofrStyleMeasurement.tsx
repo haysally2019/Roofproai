@@ -24,14 +24,17 @@ interface RoofrStyleMeasurementProps {
 type WorkflowStep = 'drawing' | 'labeling' | 'review';
 
 const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, leadId, initialLat, initialLng, onSave, onCancel }) => {
-  // State
   const [map, setMap] = useState<any>(null);
   const [facets, setFacets] = useState<RoofFacet[]>([]);
   const [edges, setEdges] = useState<RoofEdgeLine[]>([]);
+  
+  // Drawing State
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [currentMarkers, setCurrentMarkers] = useState<any[]>([]);
   const [currentPolyline, setCurrentPolyline] = useState<any>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  
+  // UI State
   const [selectedEdgeType, setSelectedEdgeType] = useState<EdgeType>('Eave');
   const [credits, setCredits] = useState<number>(0);
   const [showCreditModal, setShowCreditModal] = useState(false);
@@ -42,17 +45,17 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   const [showSidebar, setShowSidebar] = useState(true);
   const [step, setStep] = useState<WorkflowStep>('drawing');
   
-  // Snapping & Pitch State
+  // Snapping & Pitch
   const [snapPoint, setSnapPoint] = useState<Point | null>(null);
   const [showPitchModal, setShowPitchModal] = useState(false);
   const [pendingFacetPoints, setPendingFacetPoints] = useState<Point[] | null>(null);
 
-  // Refs
+  // Refs (Crucial for Event Listeners)
   const mapRef = useRef<HTMLDivElement>(null);
   const isDrawingRef = useRef(false);
   const currentPointsRef = useRef<Point[]>([]);
-  const facetsRef = useRef<RoofFacet[]>([]); // Track facets for snapping
-  const snapMarkerRef = useRef<any>(null); // Visual marker for snap
+  const facetsRef = useRef<RoofFacet[]>([]);
+  const snapMarkerRef = useRef<any>(null);
   const googleApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
   // Sync Refs
@@ -64,13 +67,11 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
     if (map) {
         map.setOptions({ 
             draggableCursor: isDrawing ? 'crosshair' : 'default',
-            // Disable default map interactions while drawing to prevent accidents
-            gestureHandling: isDrawing ? 'cooperative' : 'greedy'
+            gestureHandling: 'greedy' 
         });
     }
   }, [isDrawing, currentPoints, facets, map]);
 
-  // Init Map
   useEffect(() => {
     loadCredits();
     if (!googleApiKey) { setMapError('Google Maps API Key is missing'); setMapLoading(false); return; }
@@ -104,9 +105,10 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
     if (!mapRef.current) return;
     const mapInstance = new window.google.maps.Map(mapRef.current, {
         center: { lat, lng }, 
-        zoom: 21, // Start High
-        maxZoom: 25, // SUPER ZOOM ENABLED
-        mapTypeId: 'satellite', 
+        zoom: 21,
+        // Force Max Zoom
+        maxZoom: 26, 
+        mapTypeId: 'hybrid', // Hybrid often allows deeper zoom than 'satellite'
         tilt: 0,
         fullscreenControl: false, 
         streetViewControl: false, 
@@ -114,27 +116,16 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
         zoomControl: true,
     });
     
-    // Snapping Listener (MouseMove)
     mapInstance.addListener('mousemove', (e: any) => handleMouseMove(e.latLng, mapInstance));
-    
-    // Click Listener
     mapInstance.addListener('click', (e: any) => handleMapClick(e.latLng, mapInstance));
     
     window.google.maps.event.addListenerOnce(mapInstance, 'tilesloaded', () => setMapLoading(false));
     setMap(mapInstance);
     
-    // Init Snap Marker
     const marker = new window.google.maps.Marker({
         map: mapInstance,
-        icon: {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            scale: 6,
-            strokeColor: '#ec4899', // Pink Ring
-            strokeWeight: 3,
-            fillOpacity: 0
-        },
-        zIndex: 1000,
-        visible: false
+        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 6, strokeColor: '#ec4899', strokeWeight: 3, fillOpacity: 0 },
+        zIndex: 1000, visible: false
     });
     snapMarkerRef.current = marker;
   };
@@ -149,102 +140,114 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
     });
   };
 
-  // --- SNAPPING SYSTEM ---
   const handleMouseMove = (latLng: any, mapInstance: any) => {
       if (!isDrawingRef.current) return;
-
       const cursorPoint = { lat: latLng.lat(), lng: latLng.lng() };
       let closestPoint: Point | null = null;
       let minDistance = Infinity;
-      const SNAP_THRESHOLD_METERS = 0.5; // Very sticky snapping
+      const SNAP_THRESHOLD_METERS = 0.5;
 
-      // 1. Check existing Facet Points (Connect to old facets)
+      // Snap to existing facets
       facetsRef.current.forEach(facet => {
           facet.points.forEach(p => {
-              const dist = window.google.maps.geometry.spherical.computeDistanceBetween(
-                  new window.google.maps.LatLng(cursorPoint.lat, cursorPoint.lng),
-                  new window.google.maps.LatLng(p.lat, p.lng)
-              );
-              if (dist < SNAP_THRESHOLD_METERS && dist < minDistance) {
-                  minDistance = dist;
-                  closestPoint = p;
-              }
+              const dist = window.google.maps.geometry.spherical.computeDistanceBetween(new window.google.maps.LatLng(cursorPoint.lat, cursorPoint.lng), new window.google.maps.LatLng(p.lat, p.lng));
+              if (dist < SNAP_THRESHOLD_METERS && dist < minDistance) { minDistance = dist; closestPoint = p; }
           });
       });
 
-      // 2. Check current drawing start point (Close the loop)
+      // Snap to start point
       if (currentPointsRef.current.length > 2) {
           const start = currentPointsRef.current[0];
-          const dist = window.google.maps.geometry.spherical.computeDistanceBetween(
-               new window.google.maps.LatLng(cursorPoint.lat, cursorPoint.lng),
-               new window.google.maps.LatLng(start.lat, start.lng)
-          );
-          if (dist < SNAP_THRESHOLD_METERS && dist < minDistance) {
-              minDistance = dist;
-              closestPoint = start;
-          }
+          const dist = window.google.maps.geometry.spherical.computeDistanceBetween(new window.google.maps.LatLng(cursorPoint.lat, cursorPoint.lng), new window.google.maps.LatLng(start.lat, start.lng));
+          if (dist < SNAP_THRESHOLD_METERS && dist < minDistance) { minDistance = dist; closestPoint = start; }
       }
 
-      // Update Snap Visuals
       if (closestPoint) {
-          setSnapPoint(closestPoint);
-          snapMarkerRef.current.setPosition(closestPoint);
-          snapMarkerRef.current.setVisible(true);
+          setSnapPoint(closestPoint); snapMarkerRef.current.setPosition(closestPoint); snapMarkerRef.current.setVisible(true);
       } else {
-          setSnapPoint(null);
-          snapMarkerRef.current.setVisible(false);
+          setSnapPoint(null); snapMarkerRef.current.setVisible(false);
       }
   };
 
   const handleMapClick = (latLng: any, mapInstance: any) => {
     if (!isDrawingRef.current) return;
 
-    // Use Snap Point if available, otherwise clicked point
     const finalLat = snapMarkerRef.current.getVisible() ? snapMarkerRef.current.getPosition().lat() : latLng.lat();
     const finalLng = snapMarkerRef.current.getVisible() ? snapMarkerRef.current.getPosition().lng() : latLng.lng();
-    
     const point: Point = { lat: finalLat, lng: finalLng };
     const currentPts = currentPointsRef.current;
 
-    // Check Closing Loop
     if (currentPts.length > 0) {
         const first = currentPts[0];
-        // Exact match check because we snapped coordinates
         if (Math.abs(first.lat - point.lat) < 0.0000001 && Math.abs(first.lng - point.lng) < 0.0000001) {
              if(currentPts.length >= 3) triggerPitchPrompt(mapInstance); 
              return; 
         }
     }
 
-    // Add Point
     const marker = new window.google.maps.Marker({
       position: point, map: mapInstance,
       icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 3, fillColor: '#3b82f6', fillOpacity: 1, strokeColor: 'white', strokeWeight: 2 }
     });
     
-    setCurrentMarkers(prev => [...prev, marker]);
+    const newMarkers = [...currentMarkers, marker];
+    setCurrentMarkers(newMarkers);
+    
     const newPoints = [...currentPts, point];
     setCurrentPoints(newPoints);
-    currentPointsRef.current = newPoints;
+    currentPointsRef.current = newPoints; // Update ref immediately
     
-    // Draw Line
+    updatePolyline(newPoints, mapInstance);
+  };
+
+  const updatePolyline = (points: Point[], mapInstance: any) => {
     if (currentPolyline) currentPolyline.setMap(null);
-    if (newPoints.length > 1) {
-        const line = new window.google.maps.Polyline({ path: newPoints, strokeColor: '#3b82f6', strokeWeight: 2, map: mapInstance });
+    if (points.length > 1) {
+        const line = new window.google.maps.Polyline({ path: points, strokeColor: '#3b82f6', strokeWeight: 2, map: mapInstance });
         setCurrentPolyline(line);
+    } else {
+        setCurrentPolyline(null);
+    }
+  }
+
+  // --- FIXED UNDO LOGIC ---
+  const handleUndo = () => {
+    if (isDrawing && currentPoints.length > 0) {
+      // 1. Remove last marker from map
+      const lastMarker = currentMarkers[currentMarkers.length - 1];
+      if (lastMarker) lastMarker.setMap(null);
+      
+      // 2. Update Markers State
+      const newMarkers = currentMarkers.slice(0, -1);
+      setCurrentMarkers(newMarkers);
+      
+      // 3. Update Points State & Ref
+      const newPoints = currentPoints.slice(0, -1);
+      setCurrentPoints(newPoints);
+      currentPointsRef.current = newPoints; 
+
+      // 4. Redraw Polyline
+      updatePolyline(newPoints, map);
+      
+    } else if (!isDrawing && facets.length > 0) {
+      const lastFacet = facets[facets.length - 1];
+      lastFacet.polygon.setMap(null);
+
+      const facetEdges = edges.filter(e => e.facetId === lastFacet.id);
+      facetEdges.forEach(edge => edge.polyline.setMap(null));
+
+      setEdges(prev => prev.filter(e => e.facetId !== lastFacet.id));
+      setFacets(prev => prev.slice(0, -1));
     }
   };
 
-  // --- PITCH PROMPT WORKFLOW ---
   const triggerPitchPrompt = (mapInstance: any) => {
-      // Temporarily store points and pause drawing
       setPendingFacetPoints(currentPointsRef.current);
       setShowPitchModal(true);
   };
 
   const finalizeFacet = (pitch: number) => {
       if (!pendingFacetPoints || !map) return;
-
       const points = pendingFacetPoints;
       const facetId = `facet-${Date.now()}`;
       
@@ -252,19 +255,16 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
         paths: points, strokeColor: '#3b82f6', strokeOpacity: 0.8, strokeWeight: 2, fillColor: '#3b82f6', fillOpacity: 0.2, map: map
       });
       
-      // Calculate Area with Pitch Multiplier
       const flatArea = window.google.maps.geometry.spherical.computeArea(points.map(p => new window.google.maps.LatLng(p.lat, p.lng))) * 10.7639;
       const pitchMultiplier = Math.sqrt(1 + Math.pow(pitch / 12, 2));
       const areaSqFt = Math.round(flatArea * pitchMultiplier);
 
       const newFacet: RoofFacet = { id: facetId, name: `Facet ${facets.length + 1}`, points: [...points], polygon, areaSqFt, pitch };
-      
       polygon.addListener('click', () => setSelectedFacet(facetId));
       
       setFacets(prev => [...prev, newFacet]);
       createEdgesForFacet(newFacet, map);
       
-      // Reset Drawing
       currentMarkers.forEach(m => m.setMap(null));
       if (currentPolyline) currentPolyline.setMap(null);
       setCurrentMarkers([]); setCurrentPoints([]); setCurrentPolyline(null); setIsDrawing(false); 
@@ -283,14 +283,9 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
       const polyline = new window.google.maps.Polyline({
         path: [p1, p2], strokeColor: EDGE_TYPE_CONFIGS['Eave'].strokeColor, strokeOpacity: 1, strokeWeight: 5, clickable: true, map: mapInstance, zIndex: 100
       });
-      
-      // Add Click Listener for Labeling
       polyline.addListener('click', () => handleEdgeClick(edgeId));
-      
-      // Hover Effect
       polyline.addListener('mouseover', () => polyline.setOptions({ strokeOpacity: 0.5, strokeWeight: 8 }));
       polyline.addListener('mouseout', () => polyline.setOptions({ strokeOpacity: 1, strokeWeight: 5 }));
-
       newEdges.push({ id: edgeId, facetId: facet.id, points: [p1, p2], edgeType: 'Eave', lengthFt, polyline, shared: false });
     }
     setEdges(prev => [...prev, ...newEdges]);
@@ -328,14 +323,12 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
             company_id: userData?.company_id, address, total_area_sqft: totalArea, ...{ ridge_length: edgeTotals.Ridge, hip_length: edgeTotals.Hip, valley_length: edgeTotals.Valley, rake_length: edgeTotals.Rake, eave_length: edgeTotals.Eave },
             segments: facets.map(f => ({ name: f.name, area_sqft: f.areaSqFt, pitch: f.pitch, geometry: f.points })), lead_id: leadId || null, status: 'Completed', measurement_type: 'Manual'
         }).select().single();
-        
         if (error) throw error;
         await supabase.rpc('decrement_measurement_credits', { p_company_id: userData?.company_id });
         onSave(data);
     } catch(e) { console.error(e); alert('Save failed'); } finally { setSaving(false); }
   };
 
-  // --- COMPONENT RENDER ---
   return (
     <div className="h-screen flex flex-col bg-slate-900">
       <div className="bg-slate-800 border-b border-slate-700 px-4 py-3 shadow-lg">
@@ -355,6 +348,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
                     <>
                         <div className="flex items-center text-xs text-pink-400 mr-2"><Magnet size={14} className="mr-1"/> Snapping Active</div>
                         {!isDrawing ? ( <button onClick={() => setIsDrawing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Grid3x3 size={18} /> Draw Facet</button> ) : ( <button onClick={() => setIsDrawing(false)} className="px-4 py-2 bg-orange-600 text-white rounded-lg">Cancel</button> )}
+                        <button onClick={handleUndo} className="p-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600"><Undo2 size={18} /></button>
                         <button onClick={() => { if(facets.length>0) setStep('labeling'); }} disabled={facets.length===0} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">Next: Label</button>
                     </>
                 )}
@@ -411,25 +405,18 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
          {mapLoading && <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={48} /></div>}
       </div>
 
-      {/* --- PITCH MODAL --- */}
       {showPitchModal && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[2000]">
               <div className="bg-white rounded-xl p-6 w-96 max-w-full shadow-2xl">
                   <h3 className="text-xl font-bold text-slate-900 mb-2">Set Roof Pitch</h3>
-                  <p className="text-slate-600 mb-4 text-sm">What is the slope of this section?</p>
-                  
+                  <p className="text-slate-600 mb-4 text-sm">Slope of this section?</p>
                   <div className="grid grid-cols-4 gap-2 mb-4">
-                      {[1,2,3,4,5,6,7,8,9,10,11,12].map(p => (
-                          <button key={p} onClick={() => finalizeFacet(p)} className="p-3 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg font-bold transition-colors">
-                              {p}/12
-                          </button>
-                      ))}
+                      {[1,2,3,4,5,6,7,8,9,10,11,12].map(p => ( <button key={p} onClick={() => finalizeFacet(p)} className="p-3 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg font-bold transition-colors">{p}/12</button> ))}
                   </div>
                   <button onClick={() => finalizeFacet(0)} className="w-full py-2 border border-slate-300 rounded text-slate-500 hover:bg-slate-50 text-sm">Flat Roof (0/12)</button>
               </div>
           </div>
       )}
-
       {showCreditModal && <CreditPurchaseModal currentCredits={credits} onClose={()=>setShowCreditModal(false)} onPurchaseComplete={()=>{setShowCreditModal(false); loadCredits();}} />}
     </div>
   );
