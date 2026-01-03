@@ -1,7 +1,17 @@
 import jsPDF from 'jspdf';
 import { Proposal } from '../types';
 
-export const generateProposalPDF = (proposal: Proposal, companyName: string = 'RoofPro AI') => {
+interface RoofMeasurement {
+  id: string;
+  address: string;
+  total_area: number;
+  segments: any[];
+  measurement_date: string;
+  has_3d_model?: boolean;
+  measurement_type?: string;
+}
+
+export const generateProposalPDF = (proposal: Proposal, companyName: string = 'RoofPro AI', measurement?: RoofMeasurement) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -96,6 +106,51 @@ export const generateProposalPDF = (proposal: Proposal, companyName: string = 'R
   const descLines = doc.splitTextToSize(proposal.projectDescription, pageWidth - 40);
   doc.text(descLines, 20, yPos);
   yPos += (descLines.length * 5) + 10;
+
+  if (measurement) {
+    checkPageBreak(60);
+    addText('Property Measurements', 16, true, '#1e293b');
+    doc.text('Property Measurements', 20, yPos);
+    yPos += 10;
+
+    doc.setFillColor(239, 246, 255);
+    doc.roundedRect(20, yPos, pageWidth - 40, 40, 3, 3, 'F');
+
+    addText(`Total Roof Area: ${measurement.total_area.toLocaleString()} sq ft`, 11, true, '#1e293b');
+    doc.text(`Total Roof Area: ${measurement.total_area.toLocaleString()} sq ft`, 25, yPos + 8);
+
+    addText(`Roof Sections: ${measurement.segments.length}`, 10, false, '#475569');
+    doc.text(`Roof Sections: ${measurement.segments.length}`, 25, yPos + 18);
+
+    const measurementType = measurement.has_3d_model ? '3D Model (High Accuracy)' : 'Manual Measurement';
+    addText(`Measurement Type: ${measurementType}`, 10, false, '#475569');
+    doc.text(`Measurement Type: ${measurementType}`, 25, yPos + 26);
+
+    addText(`Measured: ${new Date(measurement.measurement_date).toLocaleDateString()}`, 9, false, '#64748b');
+    doc.text(`Measured: ${new Date(measurement.measurement_date).toLocaleDateString()}`, 25, yPos + 34);
+
+    yPos += 50;
+
+    if (measurement.segments && measurement.segments.length > 0) {
+      checkPageBreak(15 + (measurement.segments.length * 8));
+      addText('Roof Section Breakdown:', 11, true, '#1e293b');
+      doc.text('Roof Section Breakdown:', 20, yPos);
+      yPos += 8;
+
+      measurement.segments.slice(0, 10).forEach((segment: any, index: number) => {
+        checkPageBreak(8);
+        addText(`${segment.label || `Section ${index + 1}`}: ${Math.round(segment.area).toLocaleString()} sq ft`, 9, false, '#475569');
+        doc.text(`${segment.label || `Section ${index + 1}`}: ${Math.round(segment.area).toLocaleString()} sq ft`, 25, yPos);
+        yPos += 6;
+      });
+
+      yPos += 8;
+      addText('Note: Measurements are estimates and subject to field verification.', 8, false, '#94a3b8');
+      const noteLines = doc.splitTextToSize('Note: Measurements are estimates and subject to field verification.', pageWidth - 40);
+      doc.text(noteLines, 20, yPos);
+      yPos += (noteLines.length * 5) + 10;
+    }
+  }
 
   checkPageBreak(20);
   addText('Scope of Work', 16, true, '#1e293b');

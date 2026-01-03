@@ -11,11 +11,12 @@ declare global {
 
 interface GoogleMeasurementToolProps {
   address: string;
+  leadId?: string;
   onSave: (measurement: any) => void;
   onCancel: () => void;
 }
 
-const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, onSave, onCancel }) => {
+const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, leadId, onSave, onCancel }) => {
   const [step, setStep] = useState<'instructions' | 'measuring'>('instructions');
   const [map, setMap] = useState<any>(null);
   const [drawingManager, setDrawingManager] = useState<any>(null);
@@ -317,6 +318,7 @@ const GoogleMeasurementTool: React.FC<GoogleMeasurementToolProps> = ({ address, 
         address: address,
         total_area: totalArea,
         segments: segments,
+        lead_id: leadId || null,
         created_at: new Date().toISOString()
       };
 

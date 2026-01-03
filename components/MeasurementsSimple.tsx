@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Ruler, Plus, Search, CreditCard, Eye, Trash2, Download, MapIcon, Satellite, Globe } from 'lucide-react';
+import { Ruler, Plus, Search, CreditCard, Eye, Trash2, Download, MapIcon, Satellite, Globe, Box, CheckCircle, XCircle, Loader2, Sparkles, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import MeasurementTool from './MeasurementTool';
 import GoogleMeasurementTool from './GoogleMeasurementTool';
 import CreditPurchaseModal from './CreditPurchaseModal';
+import { checkSolarAvailability } from '../lib/googleSolarApi';
+import { generateMeasurementReportPDF } from '../lib/pdfGenerator';
 
 interface Measurement {
   id: string;
@@ -11,6 +13,9 @@ interface Measurement {
   total_area: number;
   created_at: string;
   segments: any[];
+  has_3d_model?: boolean;
+  measurement_type?: string;
+  lead_id?: string;
 }
 
 interface AddressSuggestion {
@@ -19,6 +24,13 @@ interface AddressSuggestion {
     lat: number;
     lon: number;
   };
+}
+
+interface Lead {
+  id: string;
+  name: string;
+  address: string;
+  status: string;
 }
 
 const MeasurementsSimple: React.FC = () => {
@@ -33,6 +45,11 @@ const MeasurementsSimple: React.FC = () => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [selectedMapProvider, setSelectedMapProvider] = useState<'google' | 'azure_satellite' | 'azure_labels'>('google');
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [selectedLead, setSelectedLead] = useState<string>('');
+  const [has3DAvailable, setHas3DAvailable] = useState<boolean | null>(null);
+  const [checking3D, setChecking3D] = useState(false);
+  const [selectedCoordinates, setSelectedCoordinates] = useState<{ lat: number; lon: number } | null>(null);
 
   const addressInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -41,6 +58,7 @@ const MeasurementsSimple: React.FC = () => {
   useEffect(() => {
     loadMeasurements();
     loadCredits();
+    loadLeads();
   }, []);
 
   useEffect(() => {
@@ -125,6 +143,32 @@ const MeasurementsSimple: React.FC = () => {
     }
   };
 
+  const loadLeads = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: userData } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!userData?.company_id) return;
+
+      const { data, error } = await supabase
+        .from('leads')
+        .select('id, name, address, status')
+        .eq('company_id', userData.company_id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setLeads(data || []);
+    } catch (error) {
+      console.error('Error loading leads:', error);
+    }
+  };
+
   const searchAddress = async (query: string) => {
     if (!azureApiKey || query.length < 3) return;
 
@@ -157,9 +201,64 @@ const MeasurementsSimple: React.FC = () => {
     }
   };
 
-  const selectAddress = (suggestion: AddressSuggestion) => {
+  const selectAddress = async (suggestion: AddressSuggestion) => {
     setAddress(suggestion.address);
+    setSelectedCoordinates(suggestion.position);
     setShowSuggestions(false);
+    await check3DAvailability(suggestion.position.lat, suggestion.position.lon);
+  };
+
+  const handleLeadSelection = async (leadId: string) => {
+    setSelectedLead(leadId);
+    if (leadId === '') {
+      setAddress('');
+      setSelectedCoordinates(null);
+      setHas3DAvailable(null);
+      return;
+    }
+
+    const lead = leads.find(l => l.id === leadId);
+    if (lead) {
+      setAddress(lead.address);
+      const coords = await geocodeAddressToCoords(lead.address);
+      if (coords) {
+        setSelectedCoordinates(coords);
+        await check3DAvailability(coords.lat, coords.lon);
+      }
+    }
+  };
+
+  const geocodeAddressToCoords = async (address: string): Promise<{ lat: number; lon: number } | null> => {
+    if (!azureApiKey) return null;
+    try {
+      const response = await fetch(
+        `https://atlas.microsoft.com/search/address/json?api-version=1.0&subscription-key=${azureApiKey}&query=${encodeURIComponent(address)}`
+      );
+      const data = await response.json();
+      if (data.results && data.results.length > 0) {
+        return {
+          lat: data.results[0].position.lat,
+          lon: data.results[0].position.lon
+        };
+      }
+    } catch (error) {
+      console.error('Geocoding error:', error);
+    }
+    return null;
+  };
+
+  const check3DAvailability = async (lat: number, lon: number) => {
+    setChecking3D(true);
+    setHas3DAvailable(null);
+    try {
+      const result = await checkSolarAvailability(lat, lon);
+      setHas3DAvailable(result.available && result.hasHighQuality === true);
+    } catch (error) {
+      console.error('3D check error:', error);
+      setHas3DAvailable(false);
+    } finally {
+      setChecking3D(false);
+    }
   };
 
   const handleStartMeasurement = () => {
@@ -194,6 +293,22 @@ const MeasurementsSimple: React.FC = () => {
     }
   };
 
+  const handleDownloadReport = (measurement: Measurement) => {
+    try {
+      generateMeasurementReportPDF({
+        address: measurement.address,
+        total_area: measurement.total_area,
+        segments: measurement.segments || [],
+        measurement_date: measurement.created_at,
+        has_3d_model: measurement.has_3d_model,
+        measurement_type: measurement.measurement_type
+      });
+    } catch (error) {
+      console.error('Error generating report:', error);
+      alert('Failed to generate measurement report');
+    }
+  };
+
   const filteredMeasurements = measurements.filter(m =>
     m.address.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -203,10 +318,13 @@ const MeasurementsSimple: React.FC = () => {
       return (
         <GoogleMeasurementTool
           address={address}
+          leadId={selectedLead || undefined}
           onSave={handleSaveMeasurement}
           onCancel={() => {
             setShowNewMeasurement(false);
             setAddress('');
+            setSelectedLead('');
+            setHas3DAvailable(null);
           }}
         />
       );
@@ -214,11 +332,14 @@ const MeasurementsSimple: React.FC = () => {
       return (
         <MeasurementTool
           address={address}
+          leadId={selectedLead || undefined}
           mapProvider={selectedMapProvider === 'azure_satellite' ? 'satellite' : 'satellite_road_labels'}
           onSave={handleSaveMeasurement}
           onCancel={() => {
             setShowNewMeasurement(false);
             setAddress('');
+            setSelectedLead('');
+            setHas3DAvailable(null);
           }}
         />
       );
@@ -258,20 +379,45 @@ const MeasurementsSimple: React.FC = () => {
         <div className="bg-gradient-to-r from-blue-50 to-slate-50 border-2 border-blue-200 rounded-xl p-6">
           <h3 className="font-bold text-slate-900 mb-3 text-lg">Start New Measurement</h3>
           <p className="text-slate-600 mb-4 text-sm">
-            Enter a property address and select your preferred map view. Each measurement uses 1 credit.
+            Select a lead or enter an address directly. Manual measurements use 1 credit, 3D models use 2 credits.
           </p>
 
           <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Select Lead (Optional)
+              </label>
+              <select
+                value={selectedLead}
+                onChange={(e) => handleLeadSelection(e.target.value)}
+                className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              >
+                <option value="">No Lead - Enter Address Directly</option>
+                {leads.map(lead => (
+                  <option key={lead.id} value={lead.id}>
+                    {lead.name} - {lead.address} ({lead.status})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="flex gap-3 relative">
               <div className="flex-1 relative">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Property Address
+                </label>
                 <input
                   ref={addressInputRef}
                   type="text"
                   placeholder="Enter property address (e.g., 123 Main St, Dallas, TX)"
                   value={address}
-                  onChange={(e) => setAddress(e.target.value)}
+                  onChange={(e) => {
+                    setAddress(e.target.value);
+                    setSelectedLead('');
+                  }}
                   onKeyPress={(e) => e.key === 'Enter' && handleStartMeasurement()}
                   className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={selectedLead !== ''}
                 />
                 {showSuggestions && addressSuggestions.length > 0 && (
                   <div
@@ -296,6 +442,39 @@ const MeasurementsSimple: React.FC = () => {
                 )}
               </div>
             </div>
+
+            {checking3D && (
+              <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <Loader2 className="animate-spin text-blue-600" size={20} />
+                <span className="text-sm font-medium text-blue-700">Checking for 3D model availability...</span>
+              </div>
+            )}
+
+            {has3DAvailable === true && (
+              <div className="flex items-start gap-3 p-4 bg-gradient-to-r from-emerald-50 to-blue-50 border-2 border-emerald-200 rounded-lg">
+                <Sparkles className="text-emerald-600 flex-shrink-0 mt-0.5" size={20} />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle className="text-emerald-600" size={18} />
+                    <h4 className="font-bold text-emerald-900">3D Model Available - Recommended!</h4>
+                  </div>
+                  <p className="text-sm text-emerald-700">
+                    High-quality 3D roof model detected from Google Solar API. Automated measurements will be more accurate. Uses 2 credits.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {has3DAvailable === false && selectedCoordinates && (
+              <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <XCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={18} />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-700">
+                    No 3D model available for this location. Manual measurement will be used (1 credit).
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -438,6 +617,7 @@ const MeasurementsSimple: React.FC = () => {
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
                     <th className="text-left p-4 text-sm font-semibold text-slate-700">Address</th>
+                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Type</th>
                     <th className="text-left p-4 text-sm font-semibold text-slate-700">Total Area</th>
                     <th className="text-left p-4 text-sm font-semibold text-slate-700">Sections</th>
                     <th className="text-left p-4 text-sm font-semibold text-slate-700">Date</th>
@@ -449,6 +629,19 @@ const MeasurementsSimple: React.FC = () => {
                     <tr key={measurement.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                       <td className="p-4">
                         <p className="font-semibold text-slate-900">{measurement.address}</p>
+                        {measurement.lead_id && (
+                          <p className="text-xs text-blue-600 mt-1">Linked to Lead</p>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        {measurement.has_3d_model ? (
+                          <div className="flex items-center gap-1.5">
+                            <Box className="text-emerald-600" size={16} />
+                            <span className="text-xs font-semibold text-emerald-700">3D Model</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-500">{measurement.measurement_type || 'Manual'}</span>
+                        )}
                       </td>
                       <td className="p-4">
                         <p className="font-bold text-blue-600">{(measurement.total_area || 0).toLocaleString()} sq ft</p>
@@ -463,6 +656,13 @@ const MeasurementsSimple: React.FC = () => {
                       </td>
                       <td className="p-4">
                         <div className="flex gap-2">
+                          <button
+                            onClick={() => handleDownloadReport(measurement)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Download Report"
+                          >
+                            <FileText size={18} />
+                          </button>
                           <button
                             onClick={() => handleDeleteMeasurement(measurement.id)}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
