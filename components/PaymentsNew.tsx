@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CreditCard, DollarSign, CheckCircle, Clock, Search, Filter, Download } from 'lucide-react';
+import { CreditCard, DollarSign, CheckCircle, Clock, Search, Filter, Download, Plus, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../lib/store';
 import { loadStripe } from '@stripe/stripe-js';
@@ -57,12 +57,40 @@ const PaymentsNew: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'invoices' | 'contracts'>('invoices');
   const [selectedInvoice, setSelectedInvoice] = useState<DBInvoice | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [leads, setLeads] = useState<Array<{ id: string; name: string; email: string; phone: string; address: string }>>([]);
+  const [newInvoice, setNewInvoice] = useState({
+    leadId: '',
+    items: [{ description: '', quantity: 1, unitPrice: 0 }],
+    dateDue: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    tax: 0
+  });
 
   useEffect(() => {
     loadData();
+    if (activeTab === 'invoices') {
+      loadLeads();
+    }
   }, [currentUser?.companyId, activeTab]);
+
+  const loadLeads = async () => {
+    if (!currentUser?.companyId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('id, name, email, phone, address')
+        .eq('company_id', currentUser.companyId)
+        .order('name');
+
+      if (error) throw error;
+      if (data) setLeads(data);
+    } catch (error) {
+      console.error('Error loading leads:', error);
+    }
+  };
 
   const loadData = async () => {
     if (!currentUser?.companyId) return;
@@ -112,6 +140,63 @@ const PaymentsNew: React.FC = () => {
       addToast('Failed to load payment data', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateInvoice = async () => {
+    if (!newInvoice.leadId) {
+      addToast('Please select a client', 'error');
+      return;
+    }
+
+    const validItems = newInvoice.items.filter(item => item.description.trim() !== '' && item.quantity > 0);
+    if (validItems.length === 0) {
+      addToast('Please add at least one invoice item', 'error');
+      return;
+    }
+
+    try {
+      const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+      const subtotal = validItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+      const total = subtotal + newInvoice.tax;
+
+      const itemsWithIds = validItems.map(item => ({
+        id: `item-${Date.now()}-${Math.random()}`,
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total: item.quantity * item.unitPrice
+      }));
+
+      const { error } = await supabase
+        .from('invoices')
+        .insert({
+          company_id: currentUser!.companyId,
+          lead_id: newInvoice.leadId,
+          number: invoiceNumber,
+          status: 'Draft',
+          date_issued: new Date().toISOString(),
+          date_due: newInvoice.dateDue,
+          items: itemsWithIds,
+          subtotal,
+          tax: newInvoice.tax,
+          total
+        });
+
+      if (error) throw error;
+
+      addToast('Invoice created successfully', 'success');
+      setShowCreateModal(false);
+      setNewInvoice({
+        leadId: '',
+        items: [{ description: '', quantity: 1, unitPrice: 0 }],
+        dateDue: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        tax: 0
+      });
+      loadData();
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      addToast('Failed to create invoice', 'error');
     }
   };
 
@@ -203,6 +288,15 @@ const PaymentsNew: React.FC = () => {
           </h1>
           <p className="text-slate-500 mt-1">Manage payments and track revenue</p>
         </div>
+        {activeTab === 'invoices' && (
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+          >
+            <Plus size={20} />
+            New Invoice
+          </button>
+        )}
       </div>
 
       <div className="flex gap-2 border-b border-slate-200">
@@ -476,6 +570,155 @@ const PaymentsNew: React.FC = () => {
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 {processingPayment ? 'Processing...' : 'Proceed to Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full my-8">
+            <div className="p-6 border-b border-slate-200">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-slate-900">Create New Invoice</h2>
+                <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Client *</label>
+                <select
+                  value={newInvoice.leadId}
+                  onChange={(e) => setNewInvoice({ ...newInvoice, leadId: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select a client</option>
+                  {leads.map(lead => (
+                    <option key={lead.id} value={lead.id}>{lead.name} - {lead.address}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Due Date *</label>
+                <input
+                  type="date"
+                  value={newInvoice.dateDue}
+                  onChange={(e) => setNewInvoice({ ...newInvoice, dateDue: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Line Items</label>
+                {newInvoice.items.map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-2 mb-2">
+                    <input
+                      value={item.description}
+                      onChange={(e) => {
+                        const updated = [...newInvoice.items];
+                        updated[idx].description = e.target.value;
+                        setNewInvoice({ ...newInvoice, items: updated });
+                      }}
+                      className="col-span-5 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Description"
+                    />
+                    <input
+                      type="number"
+                      value={item.quantity || ''}
+                      onChange={(e) => {
+                        const updated = [...newInvoice.items];
+                        updated[idx].quantity = parseInt(e.target.value) || 0;
+                        setNewInvoice({ ...newInvoice, items: updated });
+                      }}
+                      className="col-span-2 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Qty"
+                      min="1"
+                    />
+                    <div className="col-span-4 relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">$</span>
+                      <input
+                        type="number"
+                        value={item.unitPrice || ''}
+                        onChange={(e) => {
+                          const updated = [...newInvoice.items];
+                          updated[idx].unitPrice = parseFloat(e.target.value) || 0;
+                          setNewInvoice({ ...newInvoice, items: updated });
+                        }}
+                        className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0.00"
+                        step="0.01"
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        const updated = newInvoice.items.filter((_, i) => i !== idx);
+                        setNewInvoice({ ...newInvoice, items: updated.length > 0 ? updated : [{ description: '', quantity: 1, unitPrice: 0 }] });
+                      }}
+                      className="col-span-1 p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setNewInvoice({ ...newInvoice, items: [...newInvoice.items, { description: '', quantity: 1, unitPrice: 0 }] })}
+                  className="text-blue-600 hover:text-blue-700 text-sm flex items-center gap-1"
+                >
+                  <Plus size={16} /> Add Line Item
+                </button>
+              </div>
+
+              <div className="border-t border-slate-200 pt-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-slate-700">
+                    <span>Subtotal:</span>
+                    <span className="font-semibold">
+                      ${newInvoice.items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <label className="text-slate-700">Tax:</label>
+                    <div className="relative w-32">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">$</span>
+                      <input
+                        type="number"
+                        value={newInvoice.tax || ''}
+                        onChange={(e) => setNewInvoice({ ...newInvoice, tax: parseFloat(e.target.value) || 0 })}
+                        className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0.00"
+                        step="0.01"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-lg font-bold text-slate-900 pt-2 border-t border-slate-200">
+                    <span>Total:</span>
+                    <span>
+                      ${(newInvoice.items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0) + newInvoice.tax).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-200 flex gap-3">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="flex-1 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateInvoice}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Create Invoice
               </button>
             </div>
           </div>

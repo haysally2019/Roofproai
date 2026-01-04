@@ -47,10 +47,41 @@ const ContractsNew: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [selectedContract, setSelectedContract] = useState<DBContract | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [leads, setLeads] = useState<Array<{ id: string; name: string; email: string; phone: string; address: string }>>([]);
+  const [newContract, setNewContract] = useState({
+    leadId: '',
+    type: 'Residential Roofing',
+    projectDescription: '',
+    scopeOfWork: [''],
+    materials: [''],
+    totalAmount: 0,
+    depositAmount: 0,
+    warranty: '10 Year Workmanship Warranty',
+    terms: ['Payment due within 30 days', 'Work to be completed within agreed timeline']
+  });
 
   useEffect(() => {
     loadContracts();
+    loadLeads();
   }, [currentUser?.companyId]);
+
+  const loadLeads = async () => {
+    if (!currentUser?.companyId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('id, name, email, phone, address')
+        .eq('company_id', currentUser.companyId)
+        .order('name');
+
+      if (error) throw error;
+      if (data) setLeads(data);
+    } catch (error) {
+      console.error('Error loading leads:', error);
+    }
+  };
 
   const loadContracts = async () => {
     if (!currentUser?.companyId) return;
@@ -161,6 +192,59 @@ const ContractsNew: React.FC = () => {
     } catch (error) {
       console.error('Error deleting contract:', error);
       addToast('Failed to delete contract', 'error');
+    }
+  };
+
+  const handleCreateContract = async () => {
+    if (!newContract.leadId) {
+      addToast('Please select a client', 'error');
+      return;
+    }
+
+    try {
+      const contractNumber = `CON-${Date.now().toString().slice(-6)}`;
+
+      const { error } = await supabase
+        .from('contracts')
+        .insert({
+          company_id: currentUser!.companyId,
+          lead_id: newContract.leadId,
+          number: contractNumber,
+          type: newContract.type,
+          status: 'Draft',
+          created_date: new Date().toISOString(),
+          project_description: newContract.projectDescription,
+          scope_of_work: newContract.scopeOfWork.filter(s => s.trim() !== ''),
+          materials: newContract.materials.filter(m => m.trim() !== ''),
+          total_amount: newContract.totalAmount,
+          deposit_amount: newContract.depositAmount,
+          payment_schedule: [
+            { milestone: 'Deposit', amount: newContract.depositAmount, status: 'Pending' },
+            { milestone: 'Final Payment', amount: newContract.totalAmount - newContract.depositAmount, status: 'Pending' }
+          ],
+          terms: newContract.terms,
+          warranty: newContract.warranty
+        });
+
+      if (error) throw error;
+
+      addToast('Contract created successfully', 'success');
+      setShowCreateModal(false);
+      setNewContract({
+        leadId: '',
+        type: 'Residential Roofing',
+        projectDescription: '',
+        scopeOfWork: [''],
+        materials: [''],
+        totalAmount: 0,
+        depositAmount: 0,
+        warranty: '10 Year Workmanship Warranty',
+        terms: ['Payment due within 30 days', 'Work to be completed within agreed timeline']
+      });
+      loadContracts();
+    } catch (error) {
+      console.error('Error creating contract:', error);
+      addToast('Failed to create contract', 'error');
     }
   };
 
@@ -358,6 +442,13 @@ const ContractsNew: React.FC = () => {
           </h1>
           <p className="text-slate-500 mt-1">Manage client contracts and agreements</p>
         </div>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-2"
+        >
+          <Plus size={20} />
+          New Contract
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
@@ -516,6 +607,189 @@ const ContractsNew: React.FC = () => {
           </div>
         )}
       </div>
+
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full my-8">
+            <div className="p-6 border-b border-slate-200">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-slate-900">Create New Contract</h2>
+                <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Client *</label>
+                <select
+                  value={newContract.leadId}
+                  onChange={(e) => setNewContract({ ...newContract, leadId: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  required
+                >
+                  <option value="">Select a client</option>
+                  {leads.map(lead => (
+                    <option key={lead.id} value={lead.id}>{lead.name} - {lead.address}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Contract Type *</label>
+                <select
+                  value={newContract.type}
+                  onChange={(e) => setNewContract({ ...newContract, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option>Residential Roofing</option>
+                  <option>Commercial Roofing</option>
+                  <option>Insurance Claim</option>
+                  <option>Warranty Work</option>
+                  <option>Repair</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Project Description *</label>
+                <textarea
+                  value={newContract.projectDescription}
+                  onChange={(e) => setNewContract({ ...newContract, projectDescription: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  rows={3}
+                  placeholder="Describe the roofing project..."
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Scope of Work</label>
+                {newContract.scopeOfWork.map((scope, idx) => (
+                  <div key={idx} className="flex gap-2 mb-2">
+                    <input
+                      value={scope}
+                      onChange={(e) => {
+                        const updated = [...newContract.scopeOfWork];
+                        updated[idx] = e.target.value;
+                        setNewContract({ ...newContract, scopeOfWork: updated });
+                      }}
+                      className="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="Enter scope item..."
+                    />
+                    <button
+                      onClick={() => {
+                        const updated = newContract.scopeOfWork.filter((_, i) => i !== idx);
+                        setNewContract({ ...newContract, scopeOfWork: updated });
+                      }}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setNewContract({ ...newContract, scopeOfWork: [...newContract.scopeOfWork, ''] })}
+                  className="text-emerald-600 hover:text-emerald-700 text-sm flex items-center gap-1"
+                >
+                  <Plus size={16} /> Add Item
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Materials</label>
+                {newContract.materials.map((material, idx) => (
+                  <div key={idx} className="flex gap-2 mb-2">
+                    <input
+                      value={material}
+                      onChange={(e) => {
+                        const updated = [...newContract.materials];
+                        updated[idx] = e.target.value;
+                        setNewContract({ ...newContract, materials: updated });
+                      }}
+                      className="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="Enter material..."
+                    />
+                    <button
+                      onClick={() => {
+                        const updated = newContract.materials.filter((_, i) => i !== idx);
+                        setNewContract({ ...newContract, materials: updated });
+                      }}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setNewContract({ ...newContract, materials: [...newContract.materials, ''] })}
+                  className="text-emerald-600 hover:text-emerald-700 text-sm flex items-center gap-1"
+                >
+                  <Plus size={16} /> Add Material
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Total Amount *</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">$</span>
+                    <input
+                      type="number"
+                      value={newContract.totalAmount || ''}
+                      onChange={(e) => setNewContract({ ...newContract, totalAmount: parseFloat(e.target.value) || 0 })}
+                      className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="0.00"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Deposit Amount *</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">$</span>
+                    <input
+                      type="number"
+                      value={newContract.depositAmount || ''}
+                      onChange={(e) => setNewContract({ ...newContract, depositAmount: parseFloat(e.target.value) || 0 })}
+                      className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="0.00"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Warranty</label>
+                <input
+                  value={newContract.warranty}
+                  onChange={(e) => setNewContract({ ...newContract, warranty: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="e.g., 10 Year Workmanship Warranty"
+                />
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-200 flex gap-3">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="flex-1 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateContract}
+                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+              >
+                Create Contract
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
