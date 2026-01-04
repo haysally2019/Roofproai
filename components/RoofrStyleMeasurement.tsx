@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Save, X, Undo2, Trash2, Tag, Layers, Grid3x3, Ruler, ChevronDown, ChevronUp, Info, Loader2, ArrowRight, Magnet, CheckCircle2, MousePointerClick } from 'lucide-react';
+import { Save, X, Undo2, Trash2, Tag, Layers, Grid3x3, Ruler, ChevronDown, ChevronUp, Info, Loader2, ArrowRight, Magnet, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { RoofEdge, EdgeType } from '../types';
+import { EdgeType } from '../types';
 import { EDGE_TYPE_CONFIGS } from '../lib/edgeTypeConstants';
 import CreditPurchaseModal from './CreditPurchaseModal';
 import EdgeTypesGuide from './EdgeTypesGuide';
@@ -141,7 +141,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
       const cursorPoint = { lat: latLng.lat(), lng: latLng.lng() };
       let closestPoint: Point | null = null;
       let minDistance = Infinity;
-      const SNAP_THRESHOLD_METERS = 0.4; // Tighter snap (approx 1.3 feet)
+      const SNAP_THRESHOLD_METERS = 0.5;
 
       // Snap to existing facets
       facetsRef.current.forEach(facet => {
@@ -168,7 +168,6 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   const handleMapClick = (latLng: any, mapInstance: any) => {
     if (!isDrawingRef.current) return;
 
-    // 1. Determine Coordinates (Use Snap if available)
     let point: Point;
     const snapVisible = snapMarkerRef.current && snapMarkerRef.current.getVisible();
     
@@ -181,10 +180,9 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
 
     const currentPts = currentPointsRef.current;
 
-    // 2. CHECK FOR CLOSING LOOP
+    // CHECK FOR CLOSING LOOP
     if (currentPts.length >= 3) {
         const start = currentPts[0];
-        // Check if actually snapped to start
         const isExactMatch = Math.abs(start.lat - point.lat) < 0.0000001 && Math.abs(start.lng - point.lng) < 0.0000001;
         
         if (isExactMatch) { 
@@ -193,7 +191,6 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
         }
     }
 
-    // 3. Add Point
     const marker = new window.google.maps.Marker({
       position: point, map: mapInstance,
       icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 3, fillColor: '#3b82f6', fillOpacity: 1, strokeColor: 'white', strokeWeight: 2 }
@@ -242,7 +239,6 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   };
 
   const triggerPitchPrompt = (mapInstance: any) => {
-      // IMPORTANT: Create a COPY of the points to prevent stale reference loss
       setPendingFacetPoints([...currentPointsRef.current]);
       setShowPitchModal(true);
   };
@@ -254,24 +250,34 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   };
 
   const finalizeFacet = (pitch: number) => {
-      if (!pendingFacetPoints || !map) {
-          console.error("Missing points or map instance");
-          return;
-      }
-
       try {
+          // Validate we have what we need
+          if (!pendingFacetPoints || pendingFacetPoints.length < 3 || !map) {
+              throw new Error("Missing drawing points");
+          }
+
           const points = pendingFacetPoints;
           const facetId = `facet-${Date.now()}`;
           
+          // 1. Create Polygon
           const polygon = new window.google.maps.Polygon({
-            paths: points, strokeColor: '#3b82f6', strokeOpacity: 0.8, strokeWeight: 2, fillColor: '#3b82f6', fillOpacity: 0.2, map: map
+            paths: points, 
+            strokeColor: '#3b82f6', 
+            strokeOpacity: 0.8, 
+            strokeWeight: 2, 
+            fillColor: '#3b82f6', 
+            fillOpacity: 0.2, 
+            map: map
           });
           
+          // 2. Calculate Area (Safe Mode)
           let areaSqFt = 0;
           if (window.google.maps.geometry) {
               const flatArea = window.google.maps.geometry.spherical.computeArea(points.map(p => new window.google.maps.LatLng(p.lat, p.lng))) * 10.7639;
               const pitchMultiplier = Math.sqrt(1 + Math.pow(pitch / 12, 2));
               areaSqFt = Math.round(flatArea * pitchMultiplier);
+          } else {
+              console.warn("Google Maps Geometry library missing. Area defaulted to 0.");
           }
 
           const newFacet: RoofFacet = { id: facetId, name: `Facet ${facets.length + 1}`, points: [...points], polygon, areaSqFt, pitch };
@@ -280,20 +286,22 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
           setFacets(prev => [...prev, newFacet]);
           createEdgesForFacet(newFacet, map);
           
-          // Cleanup Drawing
+          // 3. Cleanup Visuals
           currentMarkers.forEach(m => m.setMap(null));
           if (currentPolyline) currentPolyline.setMap(null);
+
+      } catch (err) {
+          console.error("Error finalizing facet:", err);
+          alert("Could not create roof section. Please try again.");
+      } finally {
+          // 4. ALWAYS Reset State (This fixes the box stuck open issue)
           setCurrentMarkers([]); 
           setCurrentPoints([]); 
-          currentPointsRef.current = []; // Clear ref
+          currentPointsRef.current = []; 
           setCurrentPolyline(null); 
           setIsDrawing(false); 
           setPendingFacetPoints(null);
-          setShowPitchModal(false);
-          
-      } catch (err) {
-          console.error("Error finalizing facet:", err);
-          alert("Error creating roof section. Please try again.");
+          setShowPitchModal(false); // <--- IMPORTANT
       }
   };
 
