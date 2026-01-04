@@ -24,7 +24,7 @@ import Onboarding from './components/Onboarding';
 import TrialFunnel from './components/TrialFunnel';
 import UserAnalytics from './components/UserAnalytics';
 import MaterialOrders from './components/MaterialOrders';
-import LaborOrdersNew from './components/LaborOrdersNew';
+import LaborOrders from './components/LaborOrders';
 import ContractsNew from './components/ContractsNew';
 import ProposalsNew from './components/ProposalsNew';
 import PaymentsNew from './components/PaymentsNew';
@@ -242,7 +242,7 @@ const AppLayout: React.FC = () => {
                   {activeTab === Tab.CALENDAR && <CalendarView events={events || []} currentUser={currentUser} onAddEvent={addEvent} />}
                   {activeTab === Tab.TASKS && <TaskBoard tasks={tasks || []} currentUser={currentUser} onAddTask={addTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />}
                   {activeTab === Tab.MATERIAL_ORDERS && <MaterialOrders />}
-                  {activeTab === Tab.LABOR_ORDERS && <LaborOrdersNew />}
+                  {activeTab === Tab.LABOR_ORDERS && <LaborOrders />}
                   {activeTab === Tab.CONTRACTS && <ContractsNew />}
                   {activeTab === Tab.PROPOSALS && <ProposalsNew />}
                   {activeTab === Tab.INVOICES && <PaymentsNew />}
