@@ -188,25 +188,34 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
   };
 
   const finalizeFacet = (pitch: number) => {
-      if (!pendingFacetPoints || !datasource) return;
-      const points = pendingFacetPoints;
-      const facetId = `facet-${Date.now()}`;
-      
-      const flatArea = atlas.math.getArea(new atlas.data.Polygon([points.map(p=>[p.lng, p.lat])]), 'meters') * 10.7639;
-      const mult = Math.sqrt(1 + Math.pow(pitch/12, 2));
-      const area = Math.round(flatArea * mult);
+      try {
+          if (!pendingFacetPoints || !datasource) return;
+          const points = pendingFacetPoints;
+          const facetId = `facet-${Date.now()}`;
+          
+          const flatArea = atlas.math.getArea(new atlas.data.Polygon([points.map(p=>[p.lng, p.lat])]), 'meters') * 10.7639;
+          const mult = Math.sqrt(1 + Math.pow(pitch/12, 2));
+          const area = Math.round(flatArea * mult);
 
-      const newFacet: RoofFacet = { id: facetId, name: `Facet ${facets.length+1}`, points, areaSqFt: area, pitch };
-      setFacets(prev => [...prev, newFacet]);
-      
-      const pos = points.map(p => [p.lng, p.lat]); pos.push(pos[0]);
-      datasource.add(new atlas.data.Feature(new atlas.data.Polygon([pos]), { id: facetId, isFacet: true }));
-      createEdges(newFacet, datasource);
-      
-      // Cleanup
-      const shapes = datasource.getShapes();
-      datasource.remove(shapes.filter(s => s.getProperties().type?.startsWith('drawing')));
-      setCurrentPoints([]); setIsDrawing(false); setPendingFacetPoints(null); setShowPitchModal(false);
+          const newFacet: RoofFacet = { id: facetId, name: `Facet ${facets.length+1}`, points, areaSqFt: area, pitch };
+          setFacets(prev => [...prev, newFacet]);
+          
+          const pos = points.map(p => [p.lng, p.lat]); pos.push(pos[0]);
+          datasource.add(new atlas.data.Feature(new atlas.data.Polygon([pos]), { id: facetId, isFacet: true }));
+          createEdges(newFacet, datasource);
+          
+          // Cleanup
+          const shapes = datasource.getShapes();
+          datasource.remove(shapes.filter(s => s.getProperties().type?.startsWith('drawing')));
+          
+      } catch (err) {
+          console.error("Azure Finalize Error", err);
+      } finally {
+          setCurrentPoints([]); 
+          setIsDrawing(false); 
+          setPendingFacetPoints(null); 
+          setShowPitchModal(false); // Fix for stuck modal
+      }
   };
 
   const createEdges = (facet: RoofFacet, source: atlas.source.DataSource) => {
@@ -282,6 +291,7 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
                         <div className="flex items-center text-xs text-pink-400 mr-2"><Magnet size={14} className="mr-1"/> Snapping Active</div>
                         {!isDrawing ? ( <button onClick={() => setIsDrawing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Grid3x3 size={18} /> Draw Facet</button> ) : ( 
                              <div className="flex gap-2">
+                                {/* MANUAL CLOSE BUTTON */}
                                 {currentPoints.length >= 3 && (
                                     <button onClick={handleManualComplete} className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold flex items-center gap-2 animate-pulse">
                                         <CheckCircle2 size={18} /> Finish Shape
@@ -315,6 +325,7 @@ const AzureRoofrMeasurement: React.FC<AzureRoofrMeasurementProps> = ({ address, 
       <div className="flex-1 flex relative">
          {showSidebar && (
              <div className="w-80 bg-slate-800 border-r border-slate-700 overflow-y-auto p-4">
+                 {/* Sidebar Content (Same as Google) */}
                  {step === 'labeling' ? (
                      <div>
                          <h3 className="font-bold text-white mb-3 flex items-center gap-2"><Tag size={18} className="text-blue-400" /> Edge Types</h3>
