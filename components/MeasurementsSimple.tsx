@@ -398,9 +398,6 @@ const MeasurementsSimple: React.FC = () => {
         <RoofrStyleMeasurement
           address={address}
           leadId={selectedLead || undefined}
-          // Pass the coordinates we already found!
-          initialLat={selectedCoordinates?.lat}
-          initialLng={selectedCoordinates?.lon}
           onSave={handleSaveMeasurement}
           onCancel={() => {
             setShowNewMeasurement(false);

@@ -33,7 +33,6 @@ import MeasurementsErrorBoundary from './components/MeasurementsWrapper';
 import SupplementDetector from './components/SupplementDetector';
 import AIIntelligence from './components/AIIntelligence';
 import ApplicationForm from './components/ApplicationForm';
-import CrewManagement from './components/CrewManagement';
 
 // Types
 import { LeadStatus, UserRole, Tab } from './types';
@@ -247,7 +246,6 @@ const AppLayout: React.FC = () => {
                   {activeTab === Tab.PROPOSALS && <ProposalsNew />}
                   {activeTab === Tab.INVOICES && <PaymentsNew />}
                   {activeTab === Tab.PRICE_BOOK && <PriceBook items={[]} />}
-                  {activeTab === Tab.CREW_MANAGEMENT && <CrewManagement />}
                   {activeTab === Tab.AI_RECEPTIONIST && <AIReceptionist />}
                   {activeTab === Tab.AUTOMATIONS && <Automations />}
                   {activeTab === Tab.SUPPLEMENT_DETECTOR && <SupplementDetector />}

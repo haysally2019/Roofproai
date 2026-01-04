@@ -132,7 +132,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
                         <NavItem tab={Tab.MEASUREMENTS} icon={Ruler} />
                         <NavItem tab={Tab.MATERIAL_ORDERS} icon={Package} label="Materials" />
                         <NavItem tab={Tab.LABOR_ORDERS} icon={HardHat} label="Labor" />
-                        <NavItem tab={Tab.CREW_MANAGEMENT} icon={Users} label="Crew" />
                     </div>
                  )}
               </div>

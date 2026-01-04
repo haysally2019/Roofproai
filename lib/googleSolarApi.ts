@@ -133,8 +133,7 @@ export async function fetchBuildingInsights(
   }
 
   try {
-    // FIX APPLIED: Removed "&requiredQuality=HIGH" to allow MEDIUM quality reports
-    const url = `${SOLAR_API_BASE}/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&key=${apiKey}`;
+    const url = `${SOLAR_API_BASE}/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&requiredQuality=HIGH&key=${apiKey}`;
 
     const response = await fetch(url);
 
@@ -148,7 +147,7 @@ export async function fetchBuildingInsights(
     const data: SolarApiResponse = await response.json();
 
     const roofSegments = data.solarPotential.roofSegmentStats.map(segment => ({
-      area: 0, // Area is calculated per segment if needed, or derived from total
+      area: 0,
       pitch: segment.pitchDegrees,
       azimuth: segment.azimuthDegrees,
       center: data.center

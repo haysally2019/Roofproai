@@ -1,12 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { FileSignature, Plus, Search, X, Eye, Edit2, Download, Send, CheckCircle, Trash2, DollarSign, HardHat, Receipt } from 'lucide-react';
+import { FileSignature, Plus, Search, X, Eye, Edit2, Download, Send, CheckCircle, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../lib/store';
-import {
-  createDepositInvoiceFromContract,
-  createLaborOrderFromContract,
-  getContractFinancialSummary
-} from '../lib/workflowHelpers';
 
 interface DBContract {
   id: string;
@@ -52,19 +47,10 @@ const ContractsNew: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [selectedContract, setSelectedContract] = useState<DBContract | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
-  const [financialSummary, setFinancialSummary] = useState<any>(null);
-  const [showWorkflowModal, setShowWorkflowModal] = useState(false);
-  const [workflowType, setWorkflowType] = useState<'invoice' | 'labor' | null>(null);
 
   useEffect(() => {
     loadContracts();
   }, [currentUser?.companyId]);
-
-  useEffect(() => {
-    if (selectedContract) {
-      loadFinancialSummary(selectedContract.id);
-    }
-  }, [selectedContract]);
 
   const loadContracts = async () => {
     if (!currentUser?.companyId) return;
@@ -175,52 +161,6 @@ const ContractsNew: React.FC = () => {
     } catch (error) {
       console.error('Error deleting contract:', error);
       addToast('Failed to delete contract', 'error');
-    }
-  };
-
-  const loadFinancialSummary = async (contractId: string) => {
-    const result = await getContractFinancialSummary(contractId);
-    if (result.success) {
-      setFinancialSummary(result.data);
-    }
-  };
-
-  const handleCreateDepositInvoice = async (contract: DBContract) => {
-    const result = await createDepositInvoiceFromContract(
-      contract.id,
-      contract.company_id,
-      contract.lead_id,
-      contract.leads.name,
-      contract.deposit_amount
-    );
-
-    if (result.success) {
-      addToast('Deposit invoice created successfully', 'success');
-      loadFinancialSummary(contract.id);
-    } else {
-      addToast('Failed to create deposit invoice', 'error');
-    }
-  };
-
-  const handleCreateLaborOrder = async (contract: DBContract, workType: string, scheduledDate: string, crewIds: string[]) => {
-    const result = await createLaborOrderFromContract({
-      contractId: contract.id,
-      companyId: contract.company_id,
-      leadId: contract.lead_id,
-      leadName: contract.leads.name,
-      workType: workType as any,
-      scheduledDate,
-      estimatedHours: 16,
-      crewMemberIds: crewIds,
-      notes: `Work order for contract ${contract.number}`
-    });
-
-    if (result.success) {
-      addToast('Labor order created successfully', 'success');
-      loadFinancialSummary(contract.id);
-      setShowWorkflowModal(false);
-    } else {
-      addToast('Failed to create labor order', 'error');
     }
   };
 
@@ -385,67 +325,6 @@ const ContractsNew: React.FC = () => {
                 ))}
               </div>
             </div>
-
-            {(selectedContract.status === 'Signed' || selectedContract.status === 'Active') && (
-              <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-6 mb-8">
-                <div className="flex justify-between items-start mb-6">
-                  <h3 className="text-lg font-bold text-slate-900">Contract Workflow</h3>
-                  {financialSummary && (
-                    <div className="text-right">
-                      <p className="text-xs text-slate-500">Financial Summary</p>
-                      <p className="text-sm text-slate-600">Invoiced: ${financialSummary.totalInvoiced?.toLocaleString()}</p>
-                      <p className="text-sm text-emerald-600 font-semibold">Paid: ${financialSummary.totalPaid?.toLocaleString()}</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button
-                    onClick={() => handleCreateDepositInvoice(selectedContract)}
-                    className="flex items-center justify-center gap-3 p-4 bg-white border-2 border-blue-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all group"
-                  >
-                    <div className="p-3 bg-blue-100 rounded-lg group-hover:bg-blue-200">
-                      <Receipt size={24} className="text-blue-600" />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-semibold text-slate-900">Create Deposit Invoice</p>
-                      <p className="text-sm text-slate-600">${selectedContract.deposit_amount.toLocaleString()}</p>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setWorkflowType('labor');
-                      setShowWorkflowModal(true);
-                    }}
-                    className="flex items-center justify-center gap-3 p-4 bg-white border-2 border-orange-200 rounded-lg hover:border-orange-400 hover:bg-orange-50 transition-all group"
-                  >
-                    <div className="p-3 bg-orange-100 rounded-lg group-hover:bg-orange-200">
-                      <HardHat size={24} className="text-orange-600" />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-semibold text-slate-900">Schedule Labor</p>
-                      <p className="text-sm text-slate-600">Create work order</p>
-                    </div>
-                  </button>
-                </div>
-
-                {financialSummary && (financialSummary.invoiceCount > 0 || financialSummary.laborOrderCount > 0) && (
-                  <div className="mt-6 pt-6 border-t border-slate-200">
-                    <div className="grid grid-cols-2 gap-4 text-center">
-                      <div>
-                        <p className="text-2xl font-bold text-blue-600">{financialSummary.invoiceCount}</p>
-                        <p className="text-sm text-slate-600">Invoices Created</p>
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-orange-600">{financialSummary.laborOrderCount}</p>
-                        <p className="text-sm text-slate-600">Work Orders</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             <div className="mb-8">
               <h3 className="text-xl font-bold text-slate-900 mb-3">Warranty</h3>
@@ -637,53 +516,6 @@ const ContractsNew: React.FC = () => {
           </div>
         )}
       </div>
-
-      {showWorkflowModal && selectedContract && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
-            <div className="p-6 border-b border-slate-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-slate-900">Schedule Work</h2>
-                <button
-                  onClick={() => setShowWorkflowModal(false)}
-                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-            <div className="p-6">
-              <p className="text-slate-600 mb-4">
-                This will create a work order for <span className="font-semibold">{selectedContract.leads.name}</span>.
-                You can assign crew members and schedule the work in the Labor Orders section.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowWorkflowModal(false)}
-                  className="flex-1 px-4 py-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors font-semibold text-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    const scheduledDate = new Date();
-                    scheduledDate.setDate(scheduledDate.getDate() + 7);
-                    handleCreateLaborOrder(
-                      selectedContract,
-                      'Installation',
-                      scheduledDate.toISOString().split('T')[0],
-                      []
-                    );
-                  }}
-                  className="flex-1 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-semibold"
-                >
-                  Create Work Order
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -1,333 +1,325 @@
-import React, { useState, useEffect } from 'react';
-import { HardHat, Plus, Search, X, Eye, Edit2, Trash2, Calendar, Clock, DollarSign, Users, CheckCircle, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { useStore } from '../lib/store';
+import React, { useState } from 'react';
+import { HardHat, Plus, Search, Calendar, Clock, DollarSign, Users, Eye, X } from 'lucide-react';
 
 interface CrewMember {
   id: string;
   name: string;
   role: string;
-  labor_rate: number;
-  status: string;
 }
 
-interface LaborOrderCrew {
+interface LaborOrder {
   id: string;
-  crew_member_id: string;
-  hours_worked: number;
-  labor_cost: number;
-  crew_members: {
-    name: string;
-    role: string;
-    labor_rate: number;
-  };
-}
-
-interface DBLaborOrder {
-  id: string;
-  company_id: string;
-  contract_id: string | null;
-  lead_id: string | null;
-  lead_name: string | null;
-  work_order_number: string;
-  work_type: string;
+  workOrderNumber: string;
+  leadId: string;
+  leadName: string;
+  workType: 'Tear-off' | 'Installation' | 'Repair' | 'Inspection';
   status: 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled';
-  scheduled_date: string;
-  completion_date: string | null;
-  estimated_hours: number;
-  actual_hours: number;
-  total_cost: number;
-  notes: string | null;
-  created_at: string;
-  labor_order_crew?: LaborOrderCrew[];
+  scheduledDate: string;
+  estimatedHours: number;
+  actualHours: number | null;
+  crewMembers: CrewMember[];
+  laborRate: number;
+  totalLaborCost: number;
+  notes: string;
 }
 
 const LaborOrders: React.FC = () => {
-  const { currentUser, addToast } = useStore();
-  const [laborOrders, setLaborOrders] = useState<DBLaborOrder[]>([]);
-  const [crewMembers, setCrewMembers] = useState<CrewMember[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
-  const [selectedOrder, setSelectedOrder] = useState<DBLaborOrder | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'detail' | 'create' | 'edit'>('list');
-  const [formData, setFormData] = useState<Partial<DBLaborOrder>>({
-    work_type: 'Installation',
-    status: 'Scheduled',
-    estimated_hours: 8,
-    actual_hours: 0,
-    total_cost: 0,
-    scheduled_date: new Date().toISOString().split('T')[0]
-  });
-  const [selectedCrewIds, setSelectedCrewIds] = useState<string[]>([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<LaborOrder | null>(null);
 
-  useEffect(() => {
-    if (currentUser?.companyId) {
-      loadLaborOrders();
-      loadCrewMembers();
-    }
-  }, [currentUser?.companyId]);
-
-  const loadLaborOrders = async () => {
-    if (!currentUser?.companyId) return;
-
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('labor_orders')
-        .select(`
-          *,
-          labor_order_crew (
-            id,
-            crew_member_id,
-            hours_worked,
-            labor_cost,
-            crew_members (
-              name,
-              role,
-              labor_rate
-            )
-          )
-        `)
-        .eq('company_id', currentUser.companyId)
-        .order('scheduled_date', { ascending: false });
-
-      if (error) throw error;
-      if (data) setLaborOrders(data as unknown as DBLaborOrder[]);
-    } catch (error) {
-      console.error('Error loading labor orders:', error);
-      addToast('Failed to load labor orders', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadCrewMembers = async () => {
-    if (!currentUser?.companyId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('crew_members')
-        .select('*')
-        .eq('company_id', currentUser.companyId)
-        .eq('status', 'Active')
-        .order('name');
-
-      if (error) throw error;
-      if (data) setCrewMembers(data);
-    } catch (error) {
-      console.error('Error loading crew members:', error);
-    }
-  };
-
-  const handleCreateOrder = async () => {
-    if (!currentUser?.companyId) return;
-    if (!formData.work_type || !formData.scheduled_date) {
-      addToast('Please fill in all required fields', 'error');
-      return;
-    }
-
-    try {
-      const timestamp = Date.now();
-      const orderData = {
-        company_id: currentUser.companyId,
-        work_order_number: `WO-${timestamp.toString().slice(-6)}`,
-        work_type: formData.work_type,
-        status: formData.status || 'Scheduled',
-        scheduled_date: formData.scheduled_date,
-        estimated_hours: formData.estimated_hours || 8,
-        actual_hours: 0,
-        total_cost: 0,
-        lead_name: formData.lead_name || null,
-        notes: formData.notes || null
-      };
-
-      const { data: order, error: orderError } = await supabase
-        .from('labor_orders')
-        .insert([orderData])
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      if (selectedCrewIds.length > 0 && order) {
-        const crewInserts = selectedCrewIds.map(crewId => ({
-          labor_order_id: order.id,
-          crew_member_id: crewId,
-          hours_worked: 0,
-          labor_cost: 0
-        }));
-
-        const { error: crewError } = await supabase
-          .from('labor_order_crew')
-          .insert(crewInserts);
-
-        if (crewError) throw crewError;
-      }
-
-      addToast('Labor order created successfully', 'success');
-      setViewMode('list');
-      resetForm();
-      loadLaborOrders();
-    } catch (error) {
-      console.error('Error creating labor order:', error);
-      addToast('Failed to create labor order', 'error');
-    }
-  };
-
-  const handleUpdateOrder = async () => {
-    if (!selectedOrder) return;
-
-    try {
-      const { error } = await supabase
-        .from('labor_orders')
-        .update({
-          work_type: formData.work_type,
-          status: formData.status,
-          scheduled_date: formData.scheduled_date,
-          completion_date: formData.completion_date,
-          estimated_hours: formData.estimated_hours,
-          actual_hours: formData.actual_hours,
-          total_cost: formData.total_cost,
-          notes: formData.notes
-        })
-        .eq('id', selectedOrder.id);
-
-      if (error) throw error;
-
-      addToast('Labor order updated successfully', 'success');
-      setViewMode('list');
-      resetForm();
-      loadLaborOrders();
-    } catch (error) {
-      console.error('Error updating labor order:', error);
-      addToast('Failed to update labor order', 'error');
-    }
-  };
-
-  const handleDeleteOrder = async (orderId: string) => {
-    if (!confirm('Are you sure you want to delete this labor order?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('labor_orders')
-        .delete()
-        .eq('id', orderId);
-
-      if (error) throw error;
-
-      addToast('Labor order deleted successfully', 'success');
-      loadLaborOrders();
-    } catch (error) {
-      console.error('Error deleting labor order:', error);
-      addToast('Failed to delete labor order', 'error');
-    }
-  };
-
-  const handleUpdateCrewHours = async (crewAssignmentId: string, hours: number) => {
-    try {
-      const assignment = selectedOrder?.labor_order_crew?.find(c => c.id === crewAssignmentId);
-      if (!assignment) return;
-
-      const laborCost = hours * assignment.crew_members.labor_rate;
-
-      const { error } = await supabase
-        .from('labor_order_crew')
-        .update({
-          hours_worked: hours,
-          labor_cost: laborCost
-        })
-        .eq('id', crewAssignmentId);
-
-      if (error) throw error;
-
-      const totalCost = selectedOrder?.labor_order_crew?.reduce((sum, c) => {
-        if (c.id === crewAssignmentId) {
-          return sum + laborCost;
-        }
-        return sum + (c.labor_cost || 0);
-      }, 0) || 0;
-
-      const totalHours = selectedOrder?.labor_order_crew?.reduce((sum, c) => {
-        if (c.id === crewAssignmentId) {
-          return sum + hours;
-        }
-        return sum + (c.hours_worked || 0);
-      }, 0) || 0;
-
-      await supabase
-        .from('labor_orders')
-        .update({
-          actual_hours: totalHours,
-          total_cost: totalCost
-        })
-        .eq('id', selectedOrder.id);
-
-      addToast('Crew hours updated', 'success');
-      loadLaborOrders();
-      if (selectedOrder) {
-        const updated = laborOrders.find(o => o.id === selectedOrder.id);
-        if (updated) setSelectedOrder(updated);
-      }
-    } catch (error) {
-      console.error('Error updating crew hours:', error);
-      addToast('Failed to update crew hours', 'error');
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      work_type: 'Installation',
+  const mockOrders: LaborOrder[] = [
+    {
+      id: '1',
+      workOrderNumber: 'WO-2025-001',
+      leadId: 'lead-1',
+      leadName: 'Smith Residence',
+      workType: 'Installation',
       status: 'Scheduled',
-      estimated_hours: 8,
-      actual_hours: 0,
-      total_cost: 0,
-      scheduled_date: new Date().toISOString().split('T')[0]
-    });
-    setSelectedCrewIds([]);
-    setSelectedOrder(null);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Scheduled': return 'bg-blue-100 text-blue-700';
-      case 'In Progress': return 'bg-amber-100 text-amber-700';
-      case 'Completed': return 'bg-emerald-100 text-emerald-700';
-      case 'Cancelled': return 'bg-slate-100 text-slate-700';
-      default: return 'bg-slate-100 text-slate-700';
+      scheduledDate: '2025-01-22',
+      estimatedHours: 16,
+      actualHours: null,
+      crewMembers: [
+        { id: '1', name: 'Mike Johnson', role: 'Crew Lead' },
+        { id: '2', name: 'Carlos Rodriguez', role: 'Roofer' },
+        { id: '3', name: 'Tom Williams', role: 'Roofer' }
+      ],
+      laborRate: 75,
+      totalLaborCost: 3600,
+      notes: 'Full roof replacement, 2-day job'
+    },
+    {
+      id: '2',
+      workOrderNumber: 'WO-2025-002',
+      leadId: 'lead-2',
+      leadName: 'Johnson Commercial',
+      workType: 'Tear-off',
+      status: 'In Progress',
+      scheduledDate: '2025-01-18',
+      estimatedHours: 12,
+      actualHours: 8,
+      crewMembers: [
+        { id: '4', name: 'Steve Davis', role: 'Crew Lead' },
+        { id: '5', name: 'Juan Martinez', role: 'Roofer' }
+      ],
+      laborRate: 75,
+      totalLaborCost: 1800,
+      notes: 'Commercial tear-off, dispose of old materials'
+    },
+    {
+      id: '3',
+      workOrderNumber: 'WO-2025-003',
+      leadId: 'lead-3',
+      leadName: 'Martinez Property',
+      workType: 'Repair',
+      status: 'Completed',
+      scheduledDate: '2025-01-15',
+      estimatedHours: 4,
+      actualHours: 3.5,
+      crewMembers: [
+        { id: '6', name: 'David Lee', role: 'Technician' }
+      ],
+      laborRate: 85,
+      totalLaborCost: 298,
+      notes: 'Storm damage repair - completed under estimate'
     }
+  ];
+
+  const statusColors = {
+    'Scheduled': 'bg-blue-100 text-blue-700',
+    'In Progress': 'bg-yellow-100 text-yellow-700',
+    'Completed': 'bg-green-100 text-green-700',
+    'Cancelled': 'bg-red-100 text-red-700'
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'Completed': return <CheckCircle size={16} />;
-      case 'In Progress': return <Clock size={16} />;
-      default: return <AlertCircle size={16} />;
-    }
+  const workTypeColors = {
+    'Tear-off': 'bg-orange-100 text-orange-700',
+    'Installation': 'bg-purple-100 text-purple-700',
+    'Repair': 'bg-blue-100 text-blue-700',
+    'Inspection': 'bg-gray-100 text-gray-700'
   };
 
-  const filteredOrders = laborOrders.filter(order => {
-    const matchesSearch =
-      order.work_order_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.lead_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.work_type.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredOrders = mockOrders.filter(order => {
+    const matchesSearch = order.workOrderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         order.leadName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         order.workType.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'All' || order.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading labor orders...</p>
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+            <HardHat className="text-orange-600" />
+            Labor Orders
+          </h1>
+          <p className="text-slate-500 mt-1">Manage crew schedules and work orders</p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium"
+        >
+          <Plus size={20} />
+          New Work Order
+        </button>
+      </div>
+
+      <div className="flex gap-4 mb-6">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+          <input
+            type="text"
+            placeholder="Search by work order, job, or work type..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+        >
+          <option>All</option>
+          <option>Scheduled</option>
+          <option>In Progress</option>
+          <option>Completed</option>
+        </select>
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+          <table className="w-full">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Work Order</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Job</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Work Type</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Status</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Schedule</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Hours</th>
+                <th className="text-right px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Labor Cost</th>
+                <th className="text-center px-6 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredOrders.map((order) => (
+                <tr key={order.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-4">
+                    <span className="font-semibold text-slate-900">{order.workOrderNumber}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-slate-700">{order.leadName}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${workTypeColors[order.workType]}`}>
+                      {order.workType}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[order.status]}`}>
+                      {order.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <Calendar size={16} className="text-slate-400" />
+                      {new Date(order.scheduledDate).toLocaleDateString()}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <Clock size={16} className="text-slate-400" />
+                      {order.actualHours || order.estimatedHours}h
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <span className="font-semibold text-slate-900">${order.totalLaborCost.toLocaleString()}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => setSelectedOrder(order)}
+                        className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                        title="View Details"
+                      >
+                        <Eye size={18} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
-    );
-  }
 
-  // Render full component based on view mode...
-  return <div>Labor Orders Component - Full implementation continues from previous code...</div>;
+      {selectedOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-6 border-b border-slate-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-slate-900">{selectedOrder.workOrderNumber}</h2>
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Job</label>
+                  <p className="text-slate-900 font-medium mt-1">{selectedOrder.leadName}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Work Type</label>
+                  <p className="mt-1">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${workTypeColors[selectedOrder.workType]}`}>
+                      {selectedOrder.workType}
+                    </span>
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</label>
+                  <p className="mt-1">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[selectedOrder.status]}`}>
+                      {selectedOrder.status}
+                    </span>
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Scheduled Date</label>
+                  <p className="text-slate-900 font-medium mt-1">
+                    {new Date(selectedOrder.scheduledDate).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-50 rounded-lg">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Estimated Hours</label>
+                  <p className="text-2xl font-bold text-slate-900 mt-1">{selectedOrder.estimatedHours}h</p>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-lg">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Actual Hours</label>
+                  <p className="text-2xl font-bold text-slate-900 mt-1">
+                    {selectedOrder.actualHours ? `${selectedOrder.actualHours}h` : 'TBD'}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                  <Users size={18} />
+                  Crew Members
+                </h3>
+                <div className="space-y-2">
+                  {selectedOrder.crewMembers.map((member) => (
+                    <div key={member.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-orange-600 flex items-center justify-center text-white font-semibold">
+                          {member.name.split(' ').map(n => n[0]).join('')}
+                        </div>
+                        <div>
+                          <p className="font-medium text-slate-900">{member.name}</p>
+                          <p className="text-sm text-slate-500">{member.role}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm text-slate-500">Labor Rate: ${selectedOrder.laborRate}/hr</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm text-slate-500 block">Total Labor Cost</span>
+                    <span className="text-2xl font-bold text-orange-600">${selectedOrder.totalLaborCost.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {selectedOrder.notes && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Notes</label>
+                  <p className="text-slate-700 mt-1">{selectedOrder.notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default LaborOrders;
