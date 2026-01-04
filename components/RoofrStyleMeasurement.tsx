@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Save, X, Undo2, Trash2, Tag, Layers, Grid3x3, Ruler, ChevronDown, ChevronUp, Info, Loader2, ArrowRight, Magnet, CheckCircle2 } from 'lucide-react';
+import { Save, X, Undo2, Trash2, Tag, Layers, Grid3x3, Ruler, ChevronDown, ChevronUp, Info, Loader2, ArrowRight, Magnet, CheckCircle2, MousePointerClick } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { RoofEdge, EdgeType } from '../types';
 import { EDGE_TYPE_CONFIGS } from '../lib/edgeTypeConstants';
@@ -120,7 +120,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
     
     const marker = new window.google.maps.Marker({
         map: mapInstance,
-        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, strokeColor: '#ec4899', strokeWeight: 4, fillOpacity: 0 },
+        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 6, strokeColor: '#ec4899', strokeWeight: 3, fillOpacity: 0 },
         zIndex: 1000, visible: false
     });
     snapMarkerRef.current = marker;
@@ -141,7 +141,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
       const cursorPoint = { lat: latLng.lat(), lng: latLng.lng() };
       let closestPoint: Point | null = null;
       let minDistance = Infinity;
-      const SNAP_THRESHOLD_METERS = 1.0; // Increased to 1 meter for easier snapping
+      const SNAP_THRESHOLD_METERS = 0.4; // Tighter snap (approx 1.3 feet)
 
       // Snap to existing facets
       facetsRef.current.forEach(facet => {
@@ -184,17 +184,10 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
     // 2. CHECK FOR CLOSING LOOP
     if (currentPts.length >= 3) {
         const start = currentPts[0];
-        
-        // Check if snapped point IS the start point
+        // Check if actually snapped to start
         const isExactMatch = Math.abs(start.lat - point.lat) < 0.0000001 && Math.abs(start.lng - point.lng) < 0.0000001;
         
-        // OR Check distance even if not "snapped" perfectly (Backup check)
-        const dist = window.google.maps.geometry.spherical.computeDistanceBetween(
-            new window.google.maps.LatLng(point.lat, point.lng), 
-            new window.google.maps.LatLng(start.lat, start.lng)
-        );
-
-        if (isExactMatch || dist < 1.0) { // Close if within 1 meter
+        if (isExactMatch) { 
              triggerPitchPrompt(mapInstance); 
              return; 
         }
@@ -249,11 +242,11 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   };
 
   const triggerPitchPrompt = (mapInstance: any) => {
-      setPendingFacetPoints(currentPointsRef.current);
+      // IMPORTANT: Create a COPY of the points to prevent stale reference loss
+      setPendingFacetPoints([...currentPointsRef.current]);
       setShowPitchModal(true);
   };
   
-  // MANUAL CLOSE TRIGGER
   const handleManualComplete = () => {
       if(currentPoints.length >= 3) {
           triggerPitchPrompt(map);
@@ -261,29 +254,47 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   };
 
   const finalizeFacet = (pitch: number) => {
-      if (!pendingFacetPoints || !map) return;
-      const points = pendingFacetPoints;
-      const facetId = `facet-${Date.now()}`;
-      
-      const polygon = new window.google.maps.Polygon({
-        paths: points, strokeColor: '#3b82f6', strokeOpacity: 0.8, strokeWeight: 2, fillColor: '#3b82f6', fillOpacity: 0.2, map: map
-      });
-      
-      const flatArea = window.google.maps.geometry.spherical.computeArea(points.map(p => new window.google.maps.LatLng(p.lat, p.lng))) * 10.7639;
-      const pitchMultiplier = Math.sqrt(1 + Math.pow(pitch / 12, 2));
-      const areaSqFt = Math.round(flatArea * pitchMultiplier);
+      if (!pendingFacetPoints || !map) {
+          console.error("Missing points or map instance");
+          return;
+      }
 
-      const newFacet: RoofFacet = { id: facetId, name: `Facet ${facets.length + 1}`, points: [...points], polygon, areaSqFt, pitch };
-      polygon.addListener('click', () => { /* Handle Selection */ });
-      
-      setFacets(prev => [...prev, newFacet]);
-      createEdgesForFacet(newFacet, map);
-      
-      currentMarkers.forEach(m => m.setMap(null));
-      if (currentPolyline) currentPolyline.setMap(null);
-      setCurrentMarkers([]); setCurrentPoints([]); setCurrentPolyline(null); setIsDrawing(false); 
-      setPendingFacetPoints(null);
-      setShowPitchModal(false);
+      try {
+          const points = pendingFacetPoints;
+          const facetId = `facet-${Date.now()}`;
+          
+          const polygon = new window.google.maps.Polygon({
+            paths: points, strokeColor: '#3b82f6', strokeOpacity: 0.8, strokeWeight: 2, fillColor: '#3b82f6', fillOpacity: 0.2, map: map
+          });
+          
+          let areaSqFt = 0;
+          if (window.google.maps.geometry) {
+              const flatArea = window.google.maps.geometry.spherical.computeArea(points.map(p => new window.google.maps.LatLng(p.lat, p.lng))) * 10.7639;
+              const pitchMultiplier = Math.sqrt(1 + Math.pow(pitch / 12, 2));
+              areaSqFt = Math.round(flatArea * pitchMultiplier);
+          }
+
+          const newFacet: RoofFacet = { id: facetId, name: `Facet ${facets.length + 1}`, points: [...points], polygon, areaSqFt, pitch };
+          polygon.addListener('click', () => { /* Handle Selection */ });
+          
+          setFacets(prev => [...prev, newFacet]);
+          createEdgesForFacet(newFacet, map);
+          
+          // Cleanup Drawing
+          currentMarkers.forEach(m => m.setMap(null));
+          if (currentPolyline) currentPolyline.setMap(null);
+          setCurrentMarkers([]); 
+          setCurrentPoints([]); 
+          currentPointsRef.current = []; // Clear ref
+          setCurrentPolyline(null); 
+          setIsDrawing(false); 
+          setPendingFacetPoints(null);
+          setShowPitchModal(false);
+          
+      } catch (err) {
+          console.error("Error finalizing facet:", err);
+          alert("Error creating roof section. Please try again.");
+      }
   };
 
   const createEdgesForFacet = (facet: RoofFacet, mapInstance: any) => {
@@ -318,10 +329,11 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
   };
 
   const calculateDistance = (p1: Point, p2: Point) => {
-    const R = 6371e3; const φ1 = p1.lat * Math.PI/180; const φ2 = p2.lat * Math.PI/180;
-    const Δφ = (p2.lat-p1.lat) * Math.PI/180; const Δλ = (p2.lng-p1.lng) * Math.PI/180;
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 3.28084;
+    if (!window.google.maps.geometry) return 0;
+    return window.google.maps.geometry.spherical.computeDistanceBetween(
+        new window.google.maps.LatLng(p1.lat, p1.lng),
+        new window.google.maps.LatLng(p2.lat, p2.lng)
+    ) * 3.28084;
   };
 
   const handleSave = async () => {
@@ -366,7 +378,7 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
                             <button onClick={() => setIsDrawing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Grid3x3 size={18} /> Draw Facet</button> 
                         ) : ( 
                              <div className="flex gap-2">
-                                {/* NEW MANUAL CLOSE BUTTON */}
+                                {/* MANUAL CLOSE BUTTON */}
                                 {currentPoints.length >= 3 && (
                                     <button onClick={handleManualComplete} className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold flex items-center gap-2 animate-pulse">
                                         <CheckCircle2 size={18} /> Finish Shape
@@ -437,13 +449,19 @@ const RoofrStyleMeasurement: React.FC<RoofrStyleMeasurementProps> = ({ address, 
               <div className="bg-white rounded-xl p-6 w-96 max-w-full shadow-2xl">
                   <h3 className="text-xl font-bold text-slate-900 mb-2">Set Roof Pitch</h3>
                   <p className="text-slate-600 mb-4 text-sm">Slope of this section?</p>
+                  
                   <div className="grid grid-cols-4 gap-2 mb-4">
-                      {[1,2,3,4,5,6,7,8,9,10,11,12].map(p => ( <button key={p} onClick={() => finalizeFacet(p)} className="p-3 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg font-bold transition-colors">{p}/12</button> ))}
+                      {[1,2,3,4,5,6,7,8,9,10,11,12].map(p => (
+                          <button key={p} onClick={() => finalizeFacet(p)} className="p-3 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg font-bold transition-colors">
+                              {p}/12
+                          </button>
+                      ))}
                   </div>
                   <button onClick={() => finalizeFacet(0)} className="w-full py-2 border border-slate-300 rounded text-slate-500 hover:bg-slate-50 text-sm">Flat Roof (0/12)</button>
               </div>
           </div>
       )}
+
       {showCreditModal && <CreditPurchaseModal currentCredits={credits} onClose={()=>setShowCreditModal(false)} onPurchaseComplete={()=>{setShowCreditModal(false); loadCredits();}} />}
     </div>
   );
