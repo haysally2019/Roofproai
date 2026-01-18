@@ -20,6 +20,17 @@ interface Props {
 type ViewMode = 'kanban' | 'list';
 type SortField = 'companyName' | 'createdAt' | 'estimatedValue' | 'nextFollowUpDate' | 'priority';
 
+// Helper to generate valid UUIDs for Supabase
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead, onUpdateLead, onDeleteLead, onConvertLead }) => {
   const [showModal, setShowModal] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -131,8 +142,9 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
       onUpdateLead({ ...form, updatedAt: now, activities: updatedActivities } as SoftwareLead);
     } else {
+      // FIX: Use real UUID instead of sl-timestamp
       const newLead: SoftwareLead = {
-        id: `sl-${Date.now()}`,
+        id: generateUUID(),
         companyName: form.companyName,
         contactName: form.contactName,
         email: form.email || '',
@@ -254,9 +266,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
           return obj;
         });
 
-        console.log('Parsed data rows:', data.length);
-        console.log('Sample row:', data[0]);
-
         setCsvPreview(headers);
         setParsedData(data);
 
@@ -275,7 +284,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
           else if (lower.includes('priority') || lower.includes('temp')) newMapping[h] = 'priority';
         });
 
-        console.log('Auto-mapping:', newMapping);
         setColumnMapping(newMapping);
         setImportStep(2);
       };
@@ -288,10 +296,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
     const leadsToImport: SoftwareLead[] = [];
     const skippedRows: number[] = [];
-
-    console.log('Starting import process...');
-    console.log('Column mapping:', columnMapping);
-    console.log('Total rows:', parsedData.length);
 
     parsedData.forEach((row, index) => {
       const lead: Partial<SoftwareLead> = {
@@ -320,15 +324,11 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
       if (!lead.companyName || !lead.contactName) {
         skippedRows.push(index + 2);
-        console.log(`Row ${index + 2} skipped - Missing required fields:`, {
-          companyName: lead.companyName,
-          contactName: lead.contactName,
-          rowData: row
-        });
       } else {
         const now = new Date().toISOString();
+        // FIX: Use real UUID here too
         const newLead: SoftwareLead = {
-          id: `sl-${Date.now()}-${index}`,
+          id: generateUUID(),
           companyName: lead.companyName,
           contactName: lead.contactName,
           email: lead.email || '',
@@ -358,11 +358,8 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
       }
     });
 
-    console.log('Leads to import:', leadsToImport.length);
-    console.log('Skipped rows:', skippedRows.length);
-
     if (leadsToImport.length === 0) {
-      alert(`No valid leads found. ${skippedRows.length} rows were skipped because they were missing Company Name or Contact Name.\n\nPlease check your column mapping and ensure these fields are mapped correctly.`);
+      alert(`No valid leads found. ${skippedRows.length} rows were skipped because they were missing Company Name or Contact Name.`);
       setImportStep(2);
       return;
     }
@@ -373,8 +370,10 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
       for (const lead of leadsToImport) {
         try {
+          // This calls Supabase via the prop function
           await onAddLead(lead);
           successCount++;
+          // Small delay to prevent rate limits or race conditions
           await new Promise(resolve => setTimeout(resolve, 50));
         } catch (err) {
           console.error('Failed to import lead:', lead.companyName, err);
@@ -388,17 +387,18 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
       setParsedData([]);
       setColumnMapping({});
 
-      const message = `Import complete!\n✓ ${successCount} leads imported successfully\n${errorCount > 0 ? `✗ ${errorCount} leads failed\n` : ''}${skippedRows.length > 0 ? `⊘ ${skippedRows.length} rows skipped (missing required fields)` : ''}`;
+      const message = `Import complete!\n✓ ${successCount} leads imported successfully\n${errorCount > 0 ? `✗ ${errorCount} leads failed (Check console for details)\n` : ''}${skippedRows.length > 0 ? `⊘ ${skippedRows.length} rows skipped (missing required fields)` : ''}`;
       alert(message);
     } catch (error) {
       console.error('Import error:', error);
-      alert('Failed to import leads. Please check the console for details and try again.');
+      alert('Failed to import leads.');
       setImportStep(2);
     }
   };
 
   const saasReps = users.filter(u => u.role === UserRole.SAAS_REP || u.role === UserRole.SUPER_ADMIN);
 
+  // ... rest of the render (JSX) remains the same ...
   return (
     <div className="h-full flex flex-col">
       {/* Metrics Dashboard */}
