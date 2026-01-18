@@ -272,8 +272,14 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         const newMapping: Record<string, string> = {};
         headers.forEach(h => {
           const lower = h.toLowerCase();
-          if (lower.includes('company') && !lower.includes('size')) newMapping[h] = 'companyName';
-          else if (lower.includes('contact') || (lower.includes('name') && !lower.includes('company'))) newMapping[h] = 'contactName';
+          
+          // UPDATED MAPPING LOGIC: Now checks for 'business' and 'organization'
+          if ((lower.includes('company') || lower.includes('business') || lower.includes('organization')) && !lower.includes('size')) {
+            newMapping[h] = 'companyName';
+          }
+          else if (lower.includes('contact') || (lower.includes('name') && !lower.includes('company') && !lower.includes('business'))) {
+             newMapping[h] = 'contactName';
+          }
           else if (lower.includes('email') || lower.includes('e-mail')) newMapping[h] = 'email';
           else if (lower.includes('phone') || lower.includes('mobile') || lower.includes('cell')) newMapping[h] = 'phone';
           else if (lower.includes('website') || lower.includes('url') || lower.includes('web')) newMapping[h] = 'website';
