@@ -328,7 +328,13 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         }
       });
 
-      if (!lead.companyName || !lead.contactName) {
+      // FIX: If company name exists but contact name is missing, fill it with a placeholder
+      if (lead.companyName && !lead.contactName) {
+        lead.contactName = "Authorized Representative";
+      }
+
+      // FIX: Only skip if Company Name is missing
+      if (!lead.companyName) {
         skippedRows.push(index + 2);
       } else {
         const now = new Date().toISOString();
@@ -336,7 +342,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         const newLead: SoftwareLead = {
           id: generateUUID(),
           companyName: lead.companyName,
-          contactName: lead.contactName,
+          contactName: lead.contactName || "Authorized Representative",
           email: lead.email || '',
           phone: lead.phone || '',
           website: lead.website || '',
@@ -365,7 +371,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
     });
 
     if (leadsToImport.length === 0) {
-      alert(`No valid leads found. ${skippedRows.length} rows were skipped because they were missing Company Name or Contact Name.`);
+      alert(`No valid leads found. ${skippedRows.length} rows were skipped because they were missing Company Name.`);
       setImportStep(2);
       return;
     }
