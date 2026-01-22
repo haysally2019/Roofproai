@@ -35,6 +35,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState<SoftwareLead | null>(null);
+  
   const [form, setForm] = useState<Partial<SoftwareLead>>({
     status: 'Prospect',
     priority: 'Warm',
@@ -43,8 +44,8 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
     estimatedValue: 0,
     potentialUsers: 1
   });
+
   const [searchQuery, setSearchQuery] = useState('');
-  
   const [filterStatus, setFilterStatus] = useState<SoftwareLeadStatus | 'All'>('All');
   const [filterPriority, setFilterPriority] = useState<LeadPriority | 'All'>('All');
   const [filterAssignedTo, setFilterAssignedTo] = useState<string | 'All'>('All');
