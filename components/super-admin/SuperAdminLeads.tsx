@@ -3,7 +3,7 @@ import { SoftwareLead, SoftwareLeadStatus, LeadPriority, LeadSource, User, UserR
 import {
   Plus, Search, Phone, Mail, User as UserIcon, MoreHorizontal, Trash2, ArrowRightCircle,
   Flame, TrendingUp, Clock, DollarSign, Filter, Calendar, MessageSquare, ExternalLink,
-  LayoutList, LayoutGrid, ArrowUpDown, AlertCircle, CheckCircle2, XCircle, Target, Upload,
+  LayoutList, ArrowUpDown, AlertCircle, CheckCircle2, XCircle, Target, Upload,
   FileSpreadsheet, Download, Check, X, Pencil
 } from 'lucide-react';
 
@@ -17,7 +17,6 @@ interface Props {
   onConvertLead: (lead: SoftwareLead) => void;
 }
 
-type ViewMode = 'kanban' | 'list';
 type SortField = 'companyName' | 'createdAt' | 'estimatedValue' | 'nextFollowUpDate' | 'priority';
 
 // Helper to generate valid UUIDs for Supabase
@@ -45,7 +44,8 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
     potentialUsers: 1
   });
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<ViewMode>('kanban');
+  
+  // Removed viewMode state since we are forcing List View
   const [filterStatus, setFilterStatus] = useState<SoftwareLeadStatus | 'All'>('All');
   const [filterPriority, setFilterPriority] = useState<LeadPriority | 'All'>('All');
   const [filterAssignedTo, setFilterAssignedTo] = useState<string | 'All'>('All');
@@ -464,28 +464,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* View Toggle */}
-          <div className="flex bg-slate-100 rounded-lg p-1">
-            <button
-              onClick={() => setViewMode('kanban')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                viewMode === 'kanban' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
-              }`}
-            >
-              <LayoutGrid size={16} className="inline mr-1" />
-              Kanban
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                viewMode === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
-              }`}
-            >
-              <LayoutList size={16} className="inline mr-1" />
-              List
-            </button>
-          </div>
-
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
@@ -538,427 +516,307 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         </div>
       </div>
 
-      {/* Kanban View */}
-      {viewMode === 'kanban' && (
-        <div className="flex-1 overflow-x-auto pb-4">
-          <div className="flex gap-4 h-full min-w-[1400px]">
-            {columns.map(status => (
-              <div key={status} className="flex-1 min-w-[280px] flex flex-col bg-slate-50 rounded-xl border border-slate-200">
-                <div className="p-3 border-b border-slate-200 flex justify-between items-center bg-white rounded-t-xl">
-                  <span className="font-bold text-slate-700 text-sm uppercase tracking-wide">{status}</span>
-                  <span className="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-0.5 rounded-full border border-slate-200">
-                    {filteredAndSortedLeads.filter(l => l.status === status).length}
-                  </span>
-                </div>
-                <div className="p-3 flex-1 overflow-y-auto space-y-3 custom-scrollbar">
-                  {filteredAndSortedLeads.filter(l => l.status === status).map(lead => (
-                    <div key={lead.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 hover:shadow-md transition-shadow group relative">
-                      {/* Priority Badge */}
-                      <div className="absolute top-2 right-2 flex gap-1 items-center">
-                        <span className={`px-2 py-0.5 rounded text-xs font-bold border ${getPriorityColor(lead.priority)} flex items-center gap-1`}>
-                          {getPriorityIcon(lead.priority)}
-                          {lead.priority}
-                        </span>
+      {/* List View (Default & Only) */}
+      <div className="flex-1 overflow-auto bg-white rounded-xl border border-slate-200">
+        <table className="w-full">
+          <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+            <tr>
+              <th className="px-4 py-3 text-left">
+                <button
+                  onClick={() => {
+                    if (sortField === 'companyName') {
+                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortField('companyName');
+                      setSortDirection('asc');
+                    }
+                  }}
+                  className="flex items-center gap-1 text-xs font-bold text-slate-600 uppercase tracking-wide hover:text-slate-900"
+                >
+                  Company <ArrowUpDown size={14} />
+                </button>
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wide">Contact</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wide">Status</th>
+              <th className="px-4 py-3 text-left">
+                <button
+                  onClick={() => {
+                    if (sortField === 'priority') {
+                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortField('priority');
+                      setSortDirection('desc');
+                    }
+                  }}
+                  className="flex items-center gap-1 text-xs font-bold text-slate-600 uppercase tracking-wide hover:text-slate-900"
+                >
+                  Priority <ArrowUpDown size={14} />
+                </button>
+              </th>
+              <th className="px-4 py-3 text-left">
+                <button
+                  onClick={() => {
+                    if (sortField === 'estimatedValue') {
+                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortField('estimatedValue');
+                      setSortDirection('desc');
+                    }
+                  }}
+                  className="flex items-center gap-1 text-xs font-bold text-slate-600 uppercase tracking-wide hover:text-slate-900"
+                >
+                  Value <ArrowUpDown size={14} />
+                </button>
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wide">Next Follow-up</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wide">Assigned</th>
+              <th className="px-4 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wide">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filteredAndSortedLeads.map(lead => (
+              <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
+                <td className="px-4 py-3">
+                  <div className="font-semibold text-slate-900">{lead.companyName}</div>
+                  <div className="text-xs text-slate-500">{lead.source}</div>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="text-sm font-medium text-slate-900">{lead.contactName}</div>
+                  <div className="flex flex-col gap-0.5 mt-1">
+                    {lead.email && (
+                      <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                        <Mail size={12} className="text-slate-400" /> {lead.email}
                       </div>
-
-                      {/* Follow-up Alert */}
-                      {isFollowUpOverdue(lead) && (
-                        <div className="mb-2 p-2 bg-orange-50 border border-orange-200 rounded text-xs text-orange-700 flex items-center gap-1">
-                          <AlertCircle size={12} />
-                          Follow-up overdue!
-                        </div>
-                      )}
-
-                      <h4 className="font-bold text-slate-900 pr-20 mb-1 truncate">{lead.companyName}</h4>
-                      <div className="flex items-center gap-2 text-sm text-slate-500 mb-2">
-                        <UserIcon size={12}/> <span className="truncate">{lead.contactName}</span>
-                      </div>
-
-                      {/* Explicit Contact Details in Kanban */}
-                      <div className="space-y-1 mb-3">
-                        {lead.email && (
-                          <div className="flex items-center gap-2 text-xs text-slate-500 overflow-hidden">
-                            <Mail size={12} className="shrink-0" />
-                            <span className="truncate" title={lead.email}>{lead.email}</span>
-                          </div>
-                        )}
-                        {lead.phone && (
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <Phone size={12} className="shrink-0" />
-                            <span className="truncate">{lead.phone}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Key Info */}
-                      <div className="space-y-1 mb-3 text-xs text-slate-600 border-t border-slate-100 pt-2">
-                        <div className="flex items-center gap-1">
-                          <DollarSign size={12} />
-                          <span className="font-semibold">${lead.estimatedValue?.toLocaleString() || 0}</span>
-                          <span className="text-slate-400">• {lead.potentialUsers} users</span>
-                        </div>
-                        {lead.nextFollowUpDate && (
-                          <div className="flex items-center gap-1 text-orange-600">
-                            <Calendar size={12} />
-                            Next: {new Date(lead.nextFollowUpDate).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Quick Actions */}
-                      <div className="flex gap-2 mb-3">
-                        {lead.phone && (
-                          <a
-                            href={`tel:${lead.phone}`}
-                            onClick={() => handleAddActivity(lead, 'Call', `Called ${lead.contactName}`)}
-                            className="p-1.5 bg-green-50 text-green-600 rounded hover:bg-green-100 transition-colors"
-                            title="Call"
-                          >
-                            <Phone size={14}/>
-                          </a>
-                        )}
-                        {lead.email && (
-                          <a
-                            href={`mailto:${lead.email}`}
-                            onClick={() => handleAddActivity(lead, 'Email', `Sent email to ${lead.contactName}`)}
-                            className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors"
-                            title="Email"
-                          >
-                            <Mail size={14}/>
-                          </a>
-                        )}
-                        {lead.website && (
-                          <a
-                            href={lead.website}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 bg-slate-50 text-slate-600 rounded hover:bg-slate-100 transition-colors"
-                            title="Website"
-                          >
-                            <ExternalLink size={14}/>
-                          </a>
-                        )}
-                        <button
-                          onClick={() => { setSelectedLead(lead); setShowActivityModal(true); }}
-                          className="p-1.5 bg-slate-50 text-slate-600 rounded hover:bg-slate-100 transition-colors"
-                          title="View Activities"
-                        >
-                          <MessageSquare size={14}/>
-                        </button>
-                        <button
-                          onClick={() => { setForm(lead); setSelectedLead(lead); setShowModal(true); }}
-                          className="p-1.5 bg-slate-50 text-slate-600 rounded hover:bg-slate-100 transition-colors ml-auto flex items-center gap-1 text-xs font-bold"
-                          title="Edit"
-                        >
-                          <Pencil size={14}/>
-                        </button>
-                      </div>
-
-                      {status === 'Closed Won' && (
-                        <button
-                          onClick={() => onConvertLead(lead)}
-                          className="w-full py-1.5 bg-blue-50 text-blue-700 text-xs font-bold rounded border border-blue-100 hover:bg-blue-100 flex items-center justify-center gap-1 transition-colors"
-                        >
-                          <ArrowRightCircle size={14}/> Convert to Tenant
-                        </button>
-                      )}
-
-                      {/* Footer */}
-                      <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center text-xs">
-                        <span className="text-slate-400">{lead.source}</span>
-                        <div className="flex items-center gap-1" title={`Assigned to ${users.find(u => u.id === lead.assignedTo)?.name || 'Unknown'}`}>
-                          <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[10px] font-bold">
-                            {users.find(u => u.id === lead.assignedTo)?.avatarInitials || '?'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* List View */}
-      {viewMode === 'list' && (
-        <div className="flex-1 overflow-auto bg-white rounded-xl border border-slate-200">
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
-              <tr>
-                <th className="px-4 py-3 text-left">
-                  <button
-                    onClick={() => {
-                      if (sortField === 'companyName') {
-                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortField('companyName');
-                        setSortDirection('asc');
-                      }
-                    }}
-                    className="flex items-center gap-1 text-xs font-bold text-slate-600 uppercase tracking-wide hover:text-slate-900"
-                  >
-                    Company <ArrowUpDown size={14} />
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wide">Contact</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wide">Status</th>
-                <th className="px-4 py-3 text-left">
-                  <button
-                    onClick={() => {
-                      if (sortField === 'priority') {
-                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortField('priority');
-                        setSortDirection('desc');
-                      }
-                    }}
-                    className="flex items-center gap-1 text-xs font-bold text-slate-600 uppercase tracking-wide hover:text-slate-900"
-                  >
-                    Priority <ArrowUpDown size={14} />
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-left">
-                  <button
-                    onClick={() => {
-                      if (sortField === 'estimatedValue') {
-                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortField('estimatedValue');
-                        setSortDirection('desc');
-                      }
-                    }}
-                    className="flex items-center gap-1 text-xs font-bold text-slate-600 uppercase tracking-wide hover:text-slate-900"
-                  >
-                    Value <ArrowUpDown size={14} />
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wide">Next Follow-up</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wide">Assigned</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wide">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredAndSortedLeads.map(lead => (
-                <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="font-semibold text-slate-900">{lead.companyName}</div>
-                    <div className="text-xs text-slate-500">{lead.source}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm font-medium text-slate-900">{lead.contactName}</div>
-                    {/* Explicitly show phone and email text */}
-                    <div className="flex flex-col gap-0.5 mt-1">
-                      {lead.email && (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <Mail size={12} className="text-slate-400" /> {lead.email}
-                        </div>
-                      )}
-                      {lead.phone && (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <Phone size={12} className="text-slate-400" /> {lead.phone}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded">
-                      {lead.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded text-xs font-bold border inline-flex items-center gap-1 ${getPriorityColor(lead.priority)}`}>
-                      {getPriorityIcon(lead.priority)}
-                      {lead.priority}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm font-semibold text-slate-900">${lead.estimatedValue?.toLocaleString() || 0}</div>
-                    <div className="text-xs text-slate-500">{lead.potentialUsers} users</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {lead.nextFollowUpDate ? (
-                      <div className={`text-sm ${isFollowUpOverdue(lead) ? 'text-orange-600 font-semibold' : 'text-slate-700'}`}>
-                        {new Date(lead.nextFollowUpDate).toLocaleDateString()}
-                        {isFollowUpOverdue(lead) && <AlertCircle size={12} className="inline ml-1" />}
-                      </div>
-                    ) : (
-                      <span className="text-slate-400 text-sm">-</span>
                     )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold">
-                        {users.find(u => u.id === lead.assignedTo)?.avatarInitials || '?'}
+                    {lead.phone && (
+                      <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                        <Phone size={12} className="text-slate-400" /> {lead.phone}
                       </div>
-                      <span className="text-sm text-slate-700">{users.find(u => u.id === lead.assignedTo)?.name || 'Unknown'}</span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded">
+                    {lead.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 rounded text-xs font-bold border inline-flex items-center gap-1 ${getPriorityColor(lead.priority)}`}>
+                    {getPriorityIcon(lead.priority)}
+                    {lead.priority}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="text-sm font-semibold text-slate-900">${lead.estimatedValue?.toLocaleString() || 0}</div>
+                  <div className="text-xs text-slate-500">{lead.potentialUsers} users</div>
+                </td>
+                <td className="px-4 py-3">
+                  {lead.nextFollowUpDate ? (
+                    <div className={`text-sm ${isFollowUpOverdue(lead) ? 'text-orange-600 font-semibold' : 'text-slate-700'}`}>
+                      {new Date(lead.nextFollowUpDate).toLocaleDateString()}
+                      {isFollowUpOverdue(lead) && <AlertCircle size={12} className="inline ml-1" />}
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => { setSelectedLead(lead); setShowActivityModal(true); }}
-                        className="p-1.5 bg-slate-50 text-slate-600 rounded hover:bg-slate-100 transition-colors"
-                        title="Activities"
-                      >
-                        <MessageSquare size={14}/>
-                      </button>
-                      <button
-                        onClick={() => { setForm(lead); setSelectedLead(lead); setShowModal(true); }}
-                        className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors flex items-center gap-1 text-xs font-bold"
-                        title="Edit Lead"
-                      >
-                        <Pencil size={12}/> Edit
-                      </button>
+                  ) : (
+                    <span className="text-slate-400 text-sm">-</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold">
+                      {users.find(u => u.id === lead.assignedTo)?.avatarInitials || '?'}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <span className="text-sm text-slate-700">{users.find(u => u.id === lead.assignedTo)?.name || 'Unknown'}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-2">
+                    {lead.phone && (
+                      <a
+                        href={`tel:${lead.phone}`}
+                        onClick={() => handleAddActivity(lead, 'Call', `Called ${lead.contactName}`)}
+                        className="p-1.5 bg-green-50 text-green-600 rounded hover:bg-green-100 transition-colors"
+                        title="Call"
+                      >
+                        <Phone size={14}/>
+                      </a>
+                    )}
+                    {lead.email && (
+                      <a
+                        href={`mailto:${lead.email}`}
+                        onClick={() => handleAddActivity(lead, 'Email', `Sent email to ${lead.contactName}`)}
+                        className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors"
+                        title="Email"
+                      >
+                        <Mail size={14}/>
+                      </a>
+                    )}
+                    <button
+                      onClick={() => { setSelectedLead(lead); setShowActivityModal(true); }}
+                      className="p-1.5 bg-slate-50 text-slate-600 rounded hover:bg-slate-100 transition-colors"
+                      title="Activities"
+                    >
+                      <MessageSquare size={14}/>
+                    </button>
+                    <button
+                      onClick={() => { setForm(lead); setSelectedLead(lead); setShowModal(true); }}
+                      className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors flex items-center gap-1 text-xs font-bold"
+                      title="Edit Lead"
+                    >
+                      <Pencil size={12}/> Edit
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-          {filteredAndSortedLeads.length === 0 && (
-            <div className="text-center py-12 text-slate-500">
-              <Target size={48} className="mx-auto mb-4 text-slate-300" />
-              <p className="text-lg font-medium">No leads found</p>
-              <p className="text-sm">Try adjusting your filters or add a new lead</p>
-            </div>
-          )}
-        </div>
-      )}
+        {filteredAndSortedLeads.length === 0 && (
+          <div className="text-center py-12 text-slate-500">
+            <Target size={48} className="mx-auto mb-4 text-slate-300" />
+            <p className="text-lg font-medium">No leads found</p>
+            <p className="text-sm">Try adjusting your filters or add a new lead</p>
+          </div>
+        )}
+      </div>
 
-      {/* Lead Edit/Create Modal */}
+      {/* Lead Edit/Create Modal (COMPACT 3-COLUMN LAYOUT) */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col animate-fade-in">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-fade-in">
             {/* Header - Fixed */}
-            <div className="p-6 border-b border-slate-200">
+            <div className="px-6 py-4 border-b border-slate-200">
               <h3 className="font-bold text-xl">{form.id ? 'Edit Lead' : 'New SaaS Lead'}</h3>
-              <p className="text-sm text-slate-500 mt-1">Fields marked with * are required</p>
+              <p className="text-xs text-slate-500 mt-0.5">Edit lead details and status</p>
             </div>
 
-            {/* Form Content - Scrollable */}
+            {/* Form Content - Scrollable & Compact */}
             <div className="flex-1 overflow-y-auto p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input
-                  placeholder="Company Name *"
-                  value={form.companyName || ''}
-                  onChange={e => setForm({...form, companyName: e.target.value})}
-                  className="md:col-span-2 p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                />
-                <input
-                  placeholder="Contact Person *"
-                  value={form.contactName || ''}
-                  onChange={e => setForm({...form, contactName: e.target.value})}
-                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                />
-                <input
-                  placeholder="Company Size (e.g., 10-50)"
-                  value={form.companySize || ''}
-                  onChange={e => setForm({...form, companySize: e.target.value})}
-                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                />
-                <input
-                  placeholder="Email"
-                  type="email"
-                  value={form.email || ''}
-                  onChange={e => setForm({...form, email: e.target.value})}
-                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                />
-                <input
-                  placeholder="Phone"
-                  value={form.phone || ''}
-                  onChange={e => setForm({...form, phone: e.target.value})}
-                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                />
-                <input
-                  placeholder="Website"
-                  value={form.website || ''}
-                  onChange={e => setForm({...form, website: e.target.value})}
-                  className="md:col-span-2 p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                />
-
-                {/* Dropdowns Row */}
-                <select
-                  value={form.status}
-                  onChange={e => setForm({...form, status: e.target.value as SoftwareLeadStatus})}
-                  className="p-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                >
-                  {columns.filter(c => c !== 'Lost').map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <select
-                  value={form.priority}
-                  onChange={e => setForm({...form, priority: e.target.value as LeadPriority})}
-                  className="p-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                >
-                  {priorities.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-                <select
-                  value={form.source}
-                  onChange={e => setForm({...form, source: e.target.value as LeadSource})}
-                  className="p-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                >
-                  {sources.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <select
-                  value={form.assignedTo}
-                  onChange={e => setForm({...form, assignedTo: e.target.value})}
-                  className="p-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                >
-                  {saasReps.map(u => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
-                </select>
-
-                {/* Numbers Row */}
-                <input
-                  type="number"
-                  placeholder="Potential Users"
-                  value={form.potentialUsers || ''}
-                  onChange={e => setForm({...form, potentialUsers: parseInt(e.target.value) || 0})}
-                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                />
-                <input
-                  type="number"
-                  placeholder="Estimated Value ($)"
-                  value={form.estimatedValue || ''}
-                  onChange={e => setForm({...form, estimatedValue: parseInt(e.target.value) || 0})}
-                  className="p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                />
-
-                {/* Dates Row */}
-                <div>
-                  <label className="block text-xs text-slate-600 mb-1">Next Follow-up</label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                {/* Column 1: Core Info */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Details</h4>
                   <input
-                    type="date"
-                    value={form.nextFollowUpDate?.split('T')[0] || ''}
-                    onChange={e => setForm({...form, nextFollowUpDate: e.target.value ? new Date(e.target.value).toISOString() : undefined})}
-                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    placeholder="Company Name *"
+                    value={form.companyName || ''}
+                    onChange={e => setForm({...form, companyName: e.target.value})}
+                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-600 mb-1">Demo Date</label>
                   <input
-                    type="date"
-                    value={form.demoScheduledDate?.split('T')[0] || ''}
-                    onChange={e => setForm({...form, demoScheduledDate: e.target.value ? new Date(e.target.value).toISOString() : undefined})}
-                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    placeholder="Contact Person *"
+                    value={form.contactName || ''}
+                    onChange={e => setForm({...form, contactName: e.target.value})}
+                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                  <input
+                    placeholder="Company Size"
+                    value={form.companySize || ''}
+                    onChange={e => setForm({...form, companySize: e.target.value})}
+                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                  <input
+                    placeholder="Website"
+                    value={form.website || ''}
+                    onChange={e => setForm({...form, website: e.target.value})}
+                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                   />
                 </div>
 
-                {/* Notes */}
-                <textarea
-                  placeholder="Notes..."
-                  value={form.notes || ''}
-                  onChange={e => setForm({...form, notes: e.target.value})}
-                  className="md:col-span-2 p-2.5 border border-slate-300 rounded-lg h-20 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm"
-                />
+                {/* Column 2: Contact & Status */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Contact & Status</h4>
+                  <input
+                    placeholder="Email"
+                    type="email"
+                    value={form.email || ''}
+                    onChange={e => setForm({...form, email: e.target.value})}
+                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                  <input
+                    placeholder="Phone"
+                    value={form.phone || ''}
+                    onChange={e => setForm({...form, phone: e.target.value})}
+                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={form.status}
+                      onChange={e => setForm({...form, status: e.target.value as SoftwareLeadStatus})}
+                      className="w-full p-2 border border-slate-300 rounded bg-white outline-none text-sm"
+                    >
+                      {columns.filter(c => c !== 'Lost').map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <select
+                      value={form.priority}
+                      onChange={e => setForm({...form, priority: e.target.value as LeadPriority})}
+                      className="w-full p-2 border border-slate-300 rounded bg-white outline-none text-sm"
+                    >
+                      {priorities.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                  <select
+                    value={form.assignedTo}
+                    onChange={e => setForm({...form, assignedTo: e.target.value})}
+                    className="w-full p-2 border border-slate-300 rounded bg-white outline-none text-sm"
+                  >
+                    {saasReps.map(u => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Column 3: Value & Notes */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Deal & Notes</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      placeholder="Users"
+                      value={form.potentialUsers || ''}
+                      onChange={e => setForm({...form, potentialUsers: parseInt(e.target.value) || 0})}
+                      className="w-full p-2 border border-slate-300 rounded outline-none text-sm"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Value ($)"
+                      value={form.estimatedValue || ''}
+                      onChange={e => setForm({...form, estimatedValue: parseInt(e.target.value) || 0})}
+                      className="w-full p-2 border border-slate-300 rounded outline-none text-sm"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-0.5">Follow-up</label>
+                      <input
+                        type="date"
+                        value={form.nextFollowUpDate?.split('T')[0] || ''}
+                        onChange={e => setForm({...form, nextFollowUpDate: e.target.value ? new Date(e.target.value).toISOString() : undefined})}
+                        className="w-full p-1.5 border border-slate-300 rounded text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-0.5">Demo</label>
+                      <input
+                        type="date"
+                        value={form.demoScheduledDate?.split('T')[0] || ''}
+                        onChange={e => setForm({...form, demoScheduledDate: e.target.value ? new Date(e.target.value).toISOString() : undefined})}
+                        className="w-full p-1.5 border border-slate-300 rounded text-xs"
+                      />
+                    </div>
+                  </div>
+                  <textarea
+                    placeholder="Notes..."
+                    value={form.notes || ''}
+                    onChange={e => setForm({...form, notes: e.target.value})}
+                    className="w-full p-2 border border-slate-300 rounded h-20 outline-none resize-none text-sm"
+                  />
+                </div>
               </div>
             </div>
 
             {/* Footer - Fixed */}
-            <div className="p-6 border-t border-slate-200 flex justify-between items-center bg-slate-50">
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-between items-center bg-slate-50">
               {form.id ? (
                 <button
                   onClick={() => {
@@ -967,22 +825,22 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                       setShowModal(false);
                     }
                   }}
-                  className="text-red-600 hover:text-red-700 flex items-center gap-1 font-medium px-4 py-2 hover:bg-red-50 rounded-lg transition-colors"
+                  className="text-red-600 hover:text-red-700 flex items-center gap-1 font-medium px-3 py-2 hover:bg-red-50 rounded transition-colors text-sm"
                 >
                   <Trash2 size={16}/> Delete
                 </button>
               ) : <div/>}
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 <button
                   onClick={() => { setShowModal(false); setForm({ status: 'Prospect', priority: 'Warm', source: 'Inbound', activities: [], estimatedValue: 0, potentialUsers: 1 }); setSelectedLead(null); }}
-                  className="px-5 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded font-medium transition-colors text-sm"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={!form.companyName || !form.contactName}
-                  className="px-5 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                  className="px-6 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors text-sm"
                 >
                   {form.id ? 'Update' : 'Create'} Lead
                 </button>
