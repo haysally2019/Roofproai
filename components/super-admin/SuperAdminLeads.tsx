@@ -4,7 +4,7 @@ import {
   Plus, Search, Phone, Mail, User as UserIcon, MoreHorizontal, Trash2, ArrowRightCircle,
   Flame, TrendingUp, Clock, DollarSign, Filter, Calendar, MessageSquare, ExternalLink,
   LayoutList, LayoutGrid, ArrowUpDown, AlertCircle, CheckCircle2, XCircle, Target, Upload,
-  FileSpreadsheet, Download, Check, X
+  FileSpreadsheet, Download, Check, X, Pencil
 } from 'lucide-react';
 
 interface Props {
@@ -142,7 +142,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
       onUpdateLead({ ...form, updatedAt: now, activities: updatedActivities } as SoftwareLead);
     } else {
-      // FIX: Use real UUID instead of sl-timestamp
       const newLead: SoftwareLead = {
         id: generateUUID(),
         companyName: form.companyName,
@@ -273,7 +272,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         headers.forEach(h => {
           const lower = h.toLowerCase();
           
-          // UPDATED MAPPING LOGIC: Now checks for 'business' and 'organization'
           if ((lower.includes('company') || lower.includes('business') || lower.includes('organization')) && !lower.includes('size')) {
             newMapping[h] = 'companyName';
           }
@@ -328,17 +326,14 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         }
       });
 
-      // FIX: If company name exists but contact name is missing, fill it with a placeholder
       if (lead.companyName && !lead.contactName) {
         lead.contactName = "Authorized Representative";
       }
 
-      // FIX: Only skip if Company Name is missing
       if (!lead.companyName) {
         skippedRows.push(index + 2);
       } else {
         const now = new Date().toISOString();
-        // FIX: Use real UUID here too
         const newLead: SoftwareLead = {
           id: generateUUID(),
           companyName: lead.companyName,
@@ -382,10 +377,8 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
       for (const lead of leadsToImport) {
         try {
-          // This calls Supabase via the prop function
           await onAddLead(lead);
           successCount++;
-          // Small delay to prevent rate limits or race conditions
           await new Promise(resolve => setTimeout(resolve, 50));
         } catch (err) {
           console.error('Failed to import lead:', lead.companyName, err);
@@ -399,7 +392,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
       setParsedData([]);
       setColumnMapping({});
 
-      const message = `Import complete!\n✓ ${successCount} leads imported successfully\n${errorCount > 0 ? `✗ ${errorCount} leads failed (Check console for details)\n` : ''}${skippedRows.length > 0 ? `⊘ ${skippedRows.length} rows skipped (missing required fields)` : ''}`;
+      const message = `Import complete!\n✓ ${successCount} leads imported successfully\n${errorCount > 0 ? `✗ ${errorCount} leads failed\n` : ''}${skippedRows.length > 0 ? `⊘ ${skippedRows.length} rows skipped` : ''}`;
       alert(message);
     } catch (error) {
       console.error('Import error:', error);
@@ -410,7 +403,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
   const saasReps = users.filter(u => u.role === UserRole.SAAS_REP || u.role === UserRole.SUPER_ADMIN);
 
-  // ... rest of the render (JSX) remains the same ...
   return (
     <div className="h-full flex flex-col">
       {/* Metrics Dashboard */}
@@ -577,13 +569,29 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                         </div>
                       )}
 
-                      <h4 className="font-bold text-slate-900 pr-20 mb-1">{lead.companyName}</h4>
+                      <h4 className="font-bold text-slate-900 pr-20 mb-1 truncate">{lead.companyName}</h4>
                       <div className="flex items-center gap-2 text-sm text-slate-500 mb-2">
-                        <UserIcon size={12}/> {lead.contactName}
+                        <UserIcon size={12}/> <span className="truncate">{lead.contactName}</span>
+                      </div>
+
+                      {/* Explicit Contact Details in Kanban */}
+                      <div className="space-y-1 mb-3">
+                        {lead.email && (
+                          <div className="flex items-center gap-2 text-xs text-slate-500 overflow-hidden">
+                            <Mail size={12} className="shrink-0" />
+                            <span className="truncate" title={lead.email}>{lead.email}</span>
+                          </div>
+                        )}
+                        {lead.phone && (
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <Phone size={12} className="shrink-0" />
+                            <span className="truncate">{lead.phone}</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Key Info */}
-                      <div className="space-y-1 mb-3 text-xs text-slate-600">
+                      <div className="space-y-1 mb-3 text-xs text-slate-600 border-t border-slate-100 pt-2">
                         <div className="flex items-center gap-1">
                           <DollarSign size={12} />
                           <span className="font-semibold">${lead.estimatedValue?.toLocaleString() || 0}</span>
@@ -639,10 +647,10 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                         </button>
                         <button
                           onClick={() => { setForm(lead); setSelectedLead(lead); setShowModal(true); }}
-                          className="p-1.5 bg-slate-50 text-slate-600 rounded hover:bg-slate-100 transition-colors ml-auto"
+                          className="p-1.5 bg-slate-50 text-slate-600 rounded hover:bg-slate-100 transition-colors ml-auto flex items-center gap-1 text-xs font-bold"
                           title="Edit"
                         >
-                          <MoreHorizontal size={14}/>
+                          <Pencil size={14}/>
                         </button>
                       </div>
 
@@ -656,7 +664,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                       )}
 
                       {/* Footer */}
-                      <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center text-xs">
+                      <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center text-xs">
                         <span className="text-slate-400">{lead.source}</span>
                         <div className="flex items-center gap-1" title={`Assigned to ${users.find(u => u.id === lead.assignedTo)?.name || 'Unknown'}`}>
                           <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[10px] font-bold">
@@ -739,10 +747,19 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                     <div className="text-xs text-slate-500">{lead.source}</div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="text-sm text-slate-700">{lead.contactName}</div>
-                    <div className="text-xs text-slate-500 flex items-center gap-2">
-                      {lead.email && <Mail size={10} />}
-                      {lead.phone && <Phone size={10} />}
+                    <div className="text-sm font-medium text-slate-900">{lead.contactName}</div>
+                    {/* Explicitly show phone and email text */}
+                    <div className="flex flex-col gap-0.5 mt-1">
+                      {lead.email && (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <Mail size={12} className="text-slate-400" /> {lead.email}
+                        </div>
+                      )}
+                      {lead.phone && (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <Phone size={12} className="text-slate-400" /> {lead.phone}
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -780,26 +797,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      {lead.phone && (
-                        <a
-                          href={`tel:${lead.phone}`}
-                          onClick={() => handleAddActivity(lead, 'Call', `Called ${lead.contactName}`)}
-                          className="p-1.5 bg-green-50 text-green-600 rounded hover:bg-green-100 transition-colors"
-                          title="Call"
-                        >
-                          <Phone size={14}/>
-                        </a>
-                      )}
-                      {lead.email && (
-                        <a
-                          href={`mailto:${lead.email}`}
-                          onClick={() => handleAddActivity(lead, 'Email', `Sent email to ${lead.contactName}`)}
-                          className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors"
-                          title="Email"
-                        >
-                          <Mail size={14}/>
-                        </a>
-                      )}
                       <button
                         onClick={() => { setSelectedLead(lead); setShowActivityModal(true); }}
                         className="p-1.5 bg-slate-50 text-slate-600 rounded hover:bg-slate-100 transition-colors"
@@ -809,10 +806,10 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                       </button>
                       <button
                         onClick={() => { setForm(lead); setSelectedLead(lead); setShowModal(true); }}
-                        className="p-1.5 bg-slate-50 text-slate-600 rounded hover:bg-slate-100 transition-colors"
-                        title="Edit"
+                        className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors flex items-center gap-1 text-xs font-bold"
+                        title="Edit Lead"
                       >
-                        <MoreHorizontal size={14}/>
+                        <Pencil size={12}/> Edit
                       </button>
                     </div>
                   </td>
