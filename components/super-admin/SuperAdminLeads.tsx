@@ -1096,3 +1096,22 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 };
 
 export default SuperAdminLeads;
+              </div>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-slate-200">
+              <button
+                onClick={() => { setShowActivityModal(false); setForm(selectedLead); setShowModal(true); }}
+                className="w-full py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Edit Lead
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default SuperAdminLeads;
