@@ -59,13 +59,17 @@ const SaaSRepDashboard: React.FC<Props> = ({
   onAddSoftwareLead,
   onUpdateSoftwareLead
 }) => {
-  const { logout } = useStore();
+  // FIX: Added deleteSoftwareLead and addToast from store
+  const { logout, deleteSoftwareLead, addToast } = useStore();
   const [activeTab, setActiveTab] = useState<SalesTab>(SalesTab.OVERVIEW);
   const [referralCode, setReferralCode] = useState<string>('');
   const [commissions, setCommissions] = useState<Commission[]>([]);
   const [payoutInfo, setPayoutInfo] = useState<PayoutInfo | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // FIX: Added state for lead conversion to tenant
+  const [onboardingInitialData, setOnboardingInitialData] = useState<Partial<Company> | null>(null);
 
   const referralUrl = `${window.location.origin}/r/${referralCode}`;
 
@@ -150,6 +154,16 @@ const SaaSRepDashboard: React.FC<Props> = ({
       console.error('Error saving payout info:', error);
       alert('Failed to save payout information. Please try again.');
     }
+  };
+
+  // FIX: Handler to convert lead to tenant
+  const handleConvertLead = (lead: SoftwareLead) => {
+    setOnboardingInitialData({
+        name: lead.companyName,
+        phone: lead.phone
+    });
+    setActiveTab(SalesTab.ACCOUNTS);
+    addToast(`Converting ${lead.companyName} to Tenant...`, 'info');
   };
 
   const totalEarnings = commissions.reduce((sum, c) => sum + c.amount, 0);
@@ -344,6 +358,7 @@ const SaaSRepDashboard: React.FC<Props> = ({
               </div>
             )}
 
+            {/* FIX: Passed onDeleteLead and onConvertLead so buttons work in the list view */}
             {activeTab === SalesTab.LEADS && (
                 <SuperAdminLeads
                     leads={softwareLeads}
@@ -351,6 +366,8 @@ const SaaSRepDashboard: React.FC<Props> = ({
                     currentUser={currentUser}
                     onAddLead={onAddSoftwareLead}
                     onUpdateLead={onUpdateSoftwareLead}
+                    onDeleteLead={deleteSoftwareLead}
+                    onConvertLead={handleConvertLead}
                 />
             )}
 
@@ -359,7 +376,8 @@ const SaaSRepDashboard: React.FC<Props> = ({
                     companies={companies}
                     users={users}
                     onAddCompany={onAddCompany}
-                    onClearInitialData={() => {}}
+                    initialData={onboardingInitialData}
+                    onClearInitialData={() => setOnboardingInitialData(null)}
                 />
             )}
 
