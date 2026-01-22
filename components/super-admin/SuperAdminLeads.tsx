@@ -4,7 +4,7 @@ import {
   Plus, Search, Phone, Mail, User as UserIcon, MoreHorizontal, Trash2, ArrowRightCircle,
   Flame, TrendingUp, Clock, DollarSign, Filter, Calendar, MessageSquare, ExternalLink,
   LayoutList, ArrowUpDown, AlertCircle, CheckCircle2, XCircle, Target, Upload,
-  FileSpreadsheet, Download, Check, X, Pencil
+  FileSpreadsheet, Download, Check, X, Pencil, ChevronDown
 } from 'lucide-react';
 
 interface Props {
@@ -45,7 +45,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
   });
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Removed viewMode state since we are forcing List View
   const [filterStatus, setFilterStatus] = useState<SoftwareLeadStatus | 'All'>('All');
   const [filterPriority, setFilterPriority] = useState<LeadPriority | 'All'>('All');
   const [filterAssignedTo, setFilterAssignedTo] = useState<string | 'All'>('All');
@@ -118,6 +117,45 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
     return filtered;
   }, [leads, searchQuery, filterStatus, filterPriority, filterAssignedTo, sortField, sortDirection]);
+
+  // --- Handlers for Quick Updates in List View ---
+
+  const handleQuickStatusUpdate = (lead: SoftwareLead, newStatus: SoftwareLeadStatus) => {
+    if (lead.status === newStatus) return;
+    const now = new Date().toISOString();
+    
+    // Add activity log for status change
+    const updatedActivities = [
+      ...(lead.activities || []),
+      {
+        id: `act-${Date.now()}`,
+        type: 'Status Change' as const,
+        description: `Status changed from ${lead.status} to ${newStatus}`,
+        timestamp: now,
+        userId: currentUser.id,
+        userName: currentUser.name
+      }
+    ];
+
+    onUpdateLead({
+      ...lead,
+      status: newStatus,
+      updatedAt: now,
+      activities: updatedActivities
+    });
+  };
+
+  const handleQuickPriorityUpdate = (lead: SoftwareLead, newPriority: LeadPriority) => {
+    if (lead.priority === newPriority) return;
+    const now = new Date().toISOString();
+    onUpdateLead({
+      ...lead,
+      priority: newPriority,
+      updatedAt: now
+    });
+  };
+
+  // ------------------------------------------------
 
   const handleSave = () => {
     if (!form.companyName || !form.contactName) return;
@@ -199,19 +237,20 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
 
   const getPriorityColor = (priority: LeadPriority) => {
     switch (priority) {
-      case 'Hot': return 'text-red-600 bg-red-50 border-red-200';
-      case 'Warm': return 'text-orange-600 bg-orange-50 border-orange-200';
-      case 'Cold': return 'text-blue-600 bg-blue-50 border-blue-200';
+      case 'Hot': return 'text-red-700 bg-red-50 border-red-200';
+      case 'Warm': return 'text-orange-700 bg-orange-50 border-orange-200';
+      case 'Cold': return 'text-blue-700 bg-blue-50 border-blue-200';
     }
   };
 
-  const getPriorityIcon = (priority: LeadPriority) => {
-    switch (priority) {
-      case 'Hot': return <Flame size={14} />;
-      case 'Warm': return <TrendingUp size={14} />;
-      case 'Cold': return <Target size={14} />;
+  const getStatusColor = (status: SoftwareLeadStatus) => {
+    switch (status) {
+        case 'Closed Won': return 'text-green-700 bg-green-50 border-green-200';
+        case 'Lost': return 'text-slate-500 bg-slate-100 border-slate-200';
+        case 'Trial': return 'text-purple-700 bg-purple-50 border-purple-200';
+        default: return 'text-slate-700 bg-white border-slate-200';
     }
-  };
+  }
 
   const isFollowUpOverdue = (lead: SoftwareLead) => {
     return lead.nextFollowUpDate && new Date(lead.nextFollowUpDate) <= new Date();
@@ -537,7 +576,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                 </button>
               </th>
               <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wide">Contact</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wide">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wide">Status (Funnel)</th>
               <th className="px-4 py-3 text-left">
                 <button
                   onClick={() => {
@@ -595,17 +634,39 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                     )}
                   </div>
                 </td>
+                
+                {/* Interactive Status Dropdown */}
                 <td className="px-4 py-3">
-                  <span className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded">
-                    {lead.status}
-                  </span>
+                  <div className="relative">
+                    <select
+                      value={lead.status}
+                      onChange={(e) => handleQuickStatusUpdate(lead, e.target.value as SoftwareLeadStatus)}
+                      className={`appearance-none w-full pl-3 pr-8 py-1.5 text-xs font-bold rounded-lg border-2 cursor-pointer outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${getStatusColor(lead.status)}`}
+                    >
+                      {columns.map(status => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                  </div>
                 </td>
+
+                {/* Interactive Priority Dropdown */}
                 <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded text-xs font-bold border inline-flex items-center gap-1 ${getPriorityColor(lead.priority)}`}>
-                    {getPriorityIcon(lead.priority)}
-                    {lead.priority}
-                  </span>
+                  <div className="relative w-28">
+                    <select
+                      value={lead.priority}
+                      onChange={(e) => handleQuickPriorityUpdate(lead, e.target.value as LeadPriority)}
+                      className={`appearance-none w-full pl-3 pr-8 py-1.5 text-xs font-bold rounded-lg border cursor-pointer outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${getPriorityColor(lead.priority)}`}
+                    >
+                      {priorities.map(p => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none" />
+                  </div>
                 </td>
+
                 <td className="px-4 py-3">
                   <div className="text-sm font-semibold text-slate-900">${lead.estimatedValue?.toLocaleString() || 0}</div>
                   <div className="text-xs text-slate-500">{lead.potentialUsers} users</div>
@@ -630,26 +691,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    {lead.phone && (
-                      <a
-                        href={`tel:${lead.phone}`}
-                        onClick={() => handleAddActivity(lead, 'Call', `Called ${lead.contactName}`)}
-                        className="p-1.5 bg-green-50 text-green-600 rounded hover:bg-green-100 transition-colors"
-                        title="Call"
-                      >
-                        <Phone size={14}/>
-                      </a>
-                    )}
-                    {lead.email && (
-                      <a
-                        href={`mailto:${lead.email}`}
-                        onClick={() => handleAddActivity(lead, 'Email', `Sent email to ${lead.contactName}`)}
-                        className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors"
-                        title="Email"
-                      >
-                        <Mail size={14}/>
-                      </a>
-                    )}
                     <button
                       onClick={() => { setSelectedLead(lead); setShowActivityModal(true); }}
                       className="p-1.5 bg-slate-50 text-slate-600 rounded hover:bg-slate-100 transition-colors"
