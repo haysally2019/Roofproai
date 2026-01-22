@@ -1,668 +1,507 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollText, Plus, Search, Download, Send, CheckCircle, X, Eye, Edit, Trash2, Star, Shield, Clock, Settings, AlertTriangle, FileText } from 'lucide-react';
-import { Proposal, ProposalOption, Lead, InsuranceDamageReport } from '../types';
+import { 
+  ScrollText, Plus, Search, Download, Send, CheckCircle, X, Eye, Edit, 
+  Trash2, Star, Shield, Clock, FileSignature, ArrowLeft, Calendar, User, MapPin, Phone, Mail 
+} from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { useStore } from '../lib/store';
 import ProposalBuilder from './ProposalBuilder';
 import { generateProposalPDF } from '../lib/proposalPdf';
-import ProposalTemplateManager from './ProposalTemplateManager';
-import InsuranceDamageReportForm from './InsuranceDamageReportForm';
-import { supabase } from '../lib/supabase';
+import { Proposal, ProposalOption, Lead } from '../types';
 
-interface ProposalsProps {}
+// Database interfaces to match Supabase structure
+interface DBProposal {
+  id: string;
+  company_id: string;
+  lead_id: string;
+  number: string;
+  title: string;
+  status: 'Draft' | 'Sent' | 'Viewed' | 'Accepted' | 'Rejected';
+  created_date: string;
+  sent_date: string | null;
+  viewed_date: string | null;
+  valid_until: string;
+  project_type: 'Insurance' | 'Retail' | 'Unknown';
+  project_description: string;
+  scope_of_work: string[];
+  terms: string[];
+  timeline: string;
+  warranty: string;
+  selected_option_id: string | null;
+  view_count: number;
+  contract_id: string | null;
+  leads: {
+    name: string;
+    email: string;
+    phone: string;
+    address: string;
+  };
+}
 
-const Proposals: React.FC<ProposalsProps> = () => {
-  const { proposals, leads, companies, addProposal, updateProposal, deleteProposal, currentUser, addToast } = useStore();
-  const [activeTab, setActiveTab] = useState<'proposals' | 'damage-reports'>('proposals');
+interface DBProposalOption {
+  id: string;
+  proposal_id: string;
+  tier: 'Good' | 'Better' | 'Best';
+  name: string;
+  description: string;
+  materials: string[];
+  features: string[];
+  warranty: string;
+  timeline: string;
+  price: number;
+  savings: number | null;
+  is_recommended: boolean;
+  display_order: number;
+}
+
+const Proposals: React.FC = () => {
+  const { currentUser, addToast, leads } = useStore();
+  const [proposals, setProposals] = useState<DBProposal[]>([]);
+  const [proposalOptions, setProposalOptions] = useState<Record<string, DBProposalOption[]>>({});
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
-  const [isCreating, setIsCreating] = useState(false);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [editingProposal, setEditingProposal] = useState<Proposal | null>(null);
-  const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
+  
+  // UI States
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
+  const [isCreating, setIsCreating] = useState(false);
+  const [selectedProposal, setSelectedProposal] = useState<DBProposal | null>(null);
   const [showLeadSelector, setShowLeadSelector] = useState(false);
-  const [showTemplateManager, setShowTemplateManager] = useState(false);
-
-  const [damageReports, setDamageReports] = useState<InsuranceDamageReport[]>([]);
-  const [showDamageReportForm, setShowDamageReportForm] = useState(false);
-  const [selectedDamageReportLead, setSelectedDamageReportLead] = useState<Lead | null>(null);
-  const [editingDamageReport, setEditingDamageReport] = useState<InsuranceDamageReport | null>(null);
-  const [showDamageReportLeadSelector, setShowDamageReportLeadSelector] = useState(false);
+  const [selectedLeadForCreate, setSelectedLeadForCreate] = useState<Lead | null>(null);
 
   useEffect(() => {
-    if (activeTab === 'damage-reports') {
-      loadDamageReports();
+    if (currentUser?.companyId) {
+      loadProposals();
     }
-  }, [activeTab, currentUser?.companyId]);
+  }, [currentUser?.companyId]);
 
-  const loadDamageReports = async () => {
-    if (!currentUser?.companyId) return;
+  const loadProposals = async () => {
+    try {
+      setLoading(true);
+      const { data: proposalsData, error: proposalsError } = await supabase
+        .from('proposals')
+        .select(`
+          *,
+          leads (name, email, phone, address)
+        `)
+        .eq('company_id', currentUser?.companyId)
+        .order('created_date', { ascending: false });
 
-    const { data, error } = await supabase
-      .from('insurance_damage_reports')
-      .select(`
-        *,
-        leads (
-          id,
-          name,
-          email,
-          phone,
-          address
-        )
-      `)
-      .eq('company_id', currentUser.companyId)
-      .order('created_at', { ascending: false });
+      if (proposalsError) throw proposalsError;
 
-    if (!error && data) {
-      setDamageReports(data.map((r: any) => ({
-        id: r.id,
-        proposalId: r.proposal_id,
-        companyId: r.company_id,
-        leadId: r.lead_id,
-        inspectionDate: r.inspection_date,
-        inspectorName: r.inspector_name,
-        weatherEventDate: r.weather_event_date,
-        weatherEventType: r.weather_event_type,
-        damagedAreas: r.damaged_areas || [],
-        damagePhotos: r.damage_photos || [],
-        estimatedDamage: r.estimated_damage,
-        insuranceCarrier: r.insurance_carrier,
-        claimNumber: r.claim_number,
-        adjusterName: r.adjuster_name,
-        adjusterContact: r.adjuster_contact,
-        notes: r.notes,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at
-      })));
-    }
-  };
+      if (proposalsData) {
+        setProposals(proposalsData as any);
+        
+        // Load options for all proposals
+        const proposalIds = proposalsData.map(p => p.id);
+        if (proposalIds.length > 0) {
+          const { data: optionsData, error: optionsError } = await supabase
+            .from('proposal_options')
+            .select('*')
+            .in('proposal_id', proposalIds)
+            .order('display_order');
 
-  const handleDeleteDamageReport = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this damage report?')) return;
+          if (optionsError) throw optionsError;
 
-    const { error } = await supabase
-      .from('insurance_damage_reports')
-      .delete()
-      .eq('id', id);
-
-    if (!error) {
-      addToast('Damage report deleted successfully', 'success');
-      loadDamageReports();
-    } else {
-      addToast('Failed to delete damage report', 'error');
+          const optionsMap: Record<string, DBProposalOption[]> = {};
+          optionsData?.forEach((opt: any) => {
+            if (!optionsMap[opt.proposal_id]) optionsMap[opt.proposal_id] = [];
+            optionsMap[opt.proposal_id].push(opt);
+          });
+          setProposalOptions(optionsMap);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading proposals:', error);
+      addToast('Failed to load proposals', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleCreateProposal = (proposal: Proposal) => {
-    addProposal(proposal);
-    setIsCreating(false);
-    setSelectedLead(null);
-  };
+  const handleSaveProposal = async (proposal: Proposal) => {
+    try {
+      // 1. Upsert Proposal
+      const { data: savedProposal, error: proposalError } = await supabase
+        .from('proposals')
+        .upsert({
+          id: proposal.id,
+          company_id: currentUser?.companyId,
+          lead_id: proposal.leadId,
+          number: proposal.number,
+          title: proposal.title,
+          status: proposal.status,
+          created_date: proposal.createdDate,
+          valid_until: proposal.validUntil,
+          project_type: proposal.projectType,
+          project_description: proposal.projectDescription,
+          scope_of_work: proposal.scopeOfWork,
+          terms: proposal.terms,
+          timeline: proposal.timeline,
+          warranty: proposal.warranty,
+          view_count: proposal.viewCount
+        })
+        .select()
+        .single();
 
-  const handleUpdateProposal = (proposal: Proposal) => {
-    updateProposal(proposal);
-    setEditingProposal(null);
-    if (selectedProposal && selectedProposal.id === proposal.id) {
-      setSelectedProposal(proposal);
+      if (proposalError) throw proposalError;
+
+      // 2. Delete existing options if updating
+      await supabase.from('proposal_options').delete().eq('proposal_id', proposal.id);
+
+      // 3. Insert Options
+      const optionsToInsert = proposal.options.map((opt, index) => ({
+        id: opt.id,
+        proposal_id: proposal.id,
+        tier: opt.tier,
+        name: opt.name,
+        description: opt.description,
+        materials: opt.materials,
+        features: opt.features,
+        warranty: opt.warranty,
+        timeline: opt.timeline,
+        price: opt.price,
+        savings: opt.savings,
+        is_recommended: opt.isRecommended,
+        display_order: index
+      }));
+
+      const { error: optionsError } = await supabase
+        .from('proposal_options')
+        .insert(optionsToInsert);
+
+      if (optionsError) throw optionsError;
+
+      addToast('Proposal saved successfully!', 'success');
+      setIsCreating(false);
+      setSelectedLeadForCreate(null);
+      loadProposals();
+    } catch (error) {
+      console.error('Error saving proposal:', error);
+      addToast('Failed to save proposal', 'error');
     }
   };
 
-  const handleDeleteProposal = (id: string) => {
-    if (confirm('Are you sure you want to delete this proposal?')) {
-      deleteProposal(id);
+  const handleDeleteProposal = async (id: string) => {
+    if (!confirm('Are you sure? This action cannot be undone.')) return;
+    try {
+      await supabase.from('proposals').delete().eq('id', id);
+      addToast('Proposal deleted', 'success');
+      loadProposals();
+      if (selectedProposal?.id === id) {
+        setSelectedProposal(null);
+        setViewMode('list');
+      }
+    } catch (error) {
+      addToast('Error deleting proposal', 'error');
     }
   };
 
-  const handleSendProposal = (proposal: Proposal) => {
-    const updatedProposal = {
-      ...proposal,
-      status: 'Sent' as const,
-      sentDate: new Date().toISOString()
+  const handleSendProposal = async (proposal: DBProposal) => {
+    try {
+      await supabase
+        .from('proposals')
+        .update({ status: 'Sent', sent_date: new Date().toISOString() })
+        .eq('id', proposal.id);
+      addToast('Proposal marked as Sent', 'success');
+      loadProposals();
+    } catch (error) {
+      addToast('Error updating status', 'error');
+    }
+  };
+
+  const handleConvertToContract = async (proposal: DBProposal) => {
+    if (!proposal.selected_option_id) {
+      addToast('Please select an option first (simulate client acceptance)', 'warning');
+      return;
+    }
+    try {
+      const options = proposalOptions[proposal.id] || [];
+      const selectedOption = options.find(o => o.id === proposal.selected_option_id);
+      
+      if (!selectedOption) throw new Error('Option not found');
+
+      const contractNumber = `CNT-${new Date().getFullYear()}-${Math.floor(Math.random()*10000)}`;
+      
+      const { data: contract, error } = await supabase.from('contracts').insert({
+        company_id: proposal.company_id,
+        lead_id: proposal.lead_id,
+        proposal_id: proposal.id,
+        number: contractNumber,
+        status: 'Draft',
+        total_amount: selectedOption.price,
+        created_date: new Date().toISOString()
+      }).select().single();
+
+      if (error) throw error;
+
+      await supabase.from('proposals').update({ contract_id: contract.id, status: 'Accepted' }).eq('id', proposal.id);
+      
+      addToast('Contract created successfully!', 'success');
+      loadProposals();
+    } catch (error) {
+      console.error(error);
+      addToast('Failed to convert to contract', 'error');
+    }
+  };
+
+  const handleDownloadPDF = (proposal: DBProposal) => {
+    // Map DBProposal to Proposal type expected by PDF generator
+    const mappedProposal: Proposal = {
+      id: proposal.id,
+      leadId: proposal.lead_id,
+      leadName: proposal.leads.name,
+      leadEmail: proposal.leads.email,
+      leadPhone: proposal.leads.phone,
+      leadAddress: proposal.leads.address,
+      number: proposal.number,
+      title: proposal.title,
+      status: proposal.status,
+      createdDate: proposal.created_date,
+      validUntil: proposal.valid_until,
+      projectType: proposal.project_type,
+      projectDescription: proposal.project_description,
+      scopeOfWork: proposal.scope_of_work,
+      options: proposalOptions[proposal.id]?.map(o => ({
+        id: o.id,
+        tier: o.tier,
+        name: o.name,
+        description: o.description,
+        price: o.price,
+        materials: o.materials,
+        features: o.features,
+        warranty: o.warranty,
+        timeline: o.timeline,
+        savings: o.savings || 0,
+        isRecommended: o.is_recommended
+      })) || [],
+      selectedOptionId: proposal.selected_option_id || undefined,
+      terms: proposal.terms,
+      timeline: proposal.timeline,
+      warranty: proposal.warranty,
+      companyId: proposal.company_id,
+      viewCount: proposal.view_count
     };
-    updateProposal(updatedProposal);
-    alert('Proposal sent successfully! (In production, this would send an email to the client)');
+    
+    generateProposalPDF(mappedProposal, currentUser?.companyName || 'Roofing Company');
   };
 
-  const handleDownloadPDF = (proposal: Proposal) => {
-    const company = companies.find(c => c.id === proposal.companyId);
-    generateProposalPDF(proposal, company?.name || 'RoofPro AI');
-  };
-
-  const mockProposals: Proposal[] = proposals.length > 0 ? proposals : [
-    {
-      id: '1',
-      leadId: 'lead1',
-      leadName: 'Jennifer Martinez',
-      leadEmail: 'jennifer@example.com',
-      leadPhone: '(555) 111-2222',
-      leadAddress: '789 Elm Street, Dallas, TX 75201',
-      number: 'PROP-2024-001',
-      title: 'Residential Roof Replacement - Elm Street',
-      status: 'Accepted',
-      createdDate: '2024-01-10',
-      sentDate: '2024-01-11',
-      viewedDate: '2024-01-12',
-      respondedDate: '2024-01-15',
-      validUntil: '2024-02-10',
-      projectType: 'Retail',
-      projectDescription: 'Complete roof replacement with premium materials and extended warranty options',
-      scopeOfWork: [
-        'Complete tear-off of existing roof',
-        'Inspection and replacement of damaged decking',
-        'Installation of premium underlayment',
-        'Installation of architectural shingles',
-        'New ridge venting system',
-        'Complete cleanup and debris removal'
-      ],
-      options: [
-        {
-          id: 'opt1',
-          tier: 'Good',
-          name: 'Standard Protection',
-          description: 'Quality materials with reliable performance',
-          materials: ['GAF Timberline HDZ Shingles', 'Standard Underlayment', 'Basic Ice & Water Shield'],
-          features: [
-            '30-year shingle warranty',
-            'Standard installation',
-            '5-year workmanship warranty',
-            'Basic ventilation system',
-            'Standard cleanup'
-          ],
-          warranty: '30-Year Material + 5-Year Workmanship',
-          timeline: '3-5 days',
-          price: 12000
-        },
-        {
-          id: 'opt2',
-          tier: 'Better',
-          name: 'Enhanced Protection',
-          description: 'Premium materials with superior durability',
-          materials: ['GAF Timberline HD Impact Resistant', 'Premium Synthetic Underlayment', 'Full Ice & Water Shield'],
-          features: [
-            'Lifetime limited shingle warranty',
-            'Impact-resistant shingles',
-            '10-year workmanship warranty',
-            'Enhanced ventilation system',
-            'Premium cleanup service',
-            'Insurance discount eligible'
-          ],
-          warranty: 'Lifetime Material + 10-Year Workmanship',
-          timeline: '4-6 days',
-          price: 16500,
-          savings: 500,
-          isRecommended: true
-        },
-        {
-          id: 'opt3',
-          tier: 'Best',
-          name: 'Ultimate Protection',
-          description: 'Top-tier materials with maximum performance and aesthetics',
-          materials: ['GAF Grand Sequoia Designer Shingles', 'WeatherWatch Mineral Guard', 'Full Coverage Ice & Water'],
-          features: [
-            'Lifetime limited warranty with upgrades',
-            'Ultra-premium designer shingles',
-            '15-year workmanship warranty',
-            'Advanced ridge ventilation',
-            'White-glove service',
-            'Maximum insurance discounts',
-            'Enhanced curb appeal',
-            'Premium color selection'
-          ],
-          warranty: 'GAF Golden Pledge Ltd. Warranty (50 Years)',
-          timeline: '5-7 days',
-          price: 22000,
-          savings: 1000
-        }
-      ],
-      selectedOptionId: 'opt2',
-      terms: [
-        'Proposal valid for 30 days from issue date',
-        'Deposit required to schedule work',
-        'Payment schedule based on project milestones',
-        'All materials backed by manufacturer warranties',
-        'Licensed and insured contractors'
-      ],
-      timeline: '4-6 business days from start date',
-      warranty: 'Lifetime Material + 10-Year Workmanship',
-      viewCount: 5,
-      lastViewed: '2024-01-14'
-    },
-    {
-      id: '2',
-      leadId: 'lead2',
-      leadName: 'Robert Thompson',
-      leadEmail: 'robert@example.com',
-      leadPhone: '(555) 333-4444',
-      leadAddress: '456 Oak Lane, Fort Worth, TX 76102',
-      number: 'PROP-2024-002',
-      title: 'Insurance Claim Roof Replacement',
-      status: 'Viewed',
-      createdDate: '2024-01-18',
-      sentDate: '2024-01-19',
-      viewedDate: '2024-01-20',
-      validUntil: '2024-02-19',
-      projectType: 'Insurance',
-      projectDescription: 'Hail damage roof replacement covered by insurance claim',
-      scopeOfWork: [
-        'Document all storm damage',
-        'Coordinate with insurance adjuster',
-        'Complete roof replacement',
-        'Gutter repair and replacement',
-        'Final inspection coordination'
-      ],
-      options: [
-        {
-          id: 'opt1',
-          tier: 'Good',
-          name: 'Insurance Match',
-          description: 'Meets insurance requirements',
-          materials: ['GAF Timberline HDZ', 'Standard Underlayment'],
-          features: [
-            '30-year warranty',
-            'Insurance approved materials',
-            'Standard installation',
-            'Supplement assistance included'
-          ],
-          warranty: '30-Year Material Warranty',
-          timeline: '4-5 days',
-          price: 15000
-        },
-        {
-          id: 'opt2',
-          tier: 'Better',
-          name: 'Premium Upgrade',
-          description: 'Impact-resistant with insurance discounts',
-          materials: ['GAF Timberline HD IR', 'Premium Underlayment'],
-          features: [
-            'Lifetime warranty',
-            'Impact-resistant protection',
-            'Insurance premium discount',
-            'Supplement assistance',
-            '10-year workmanship warranty'
-          ],
-          warranty: 'Lifetime Material + 10-Year Workmanship',
-          timeline: '4-6 days',
-          price: 19000,
-          isRecommended: true
-        },
-        {
-          id: 'opt3',
-          tier: 'Best',
-          name: 'Designer Upgrade',
-          description: 'Maximum protection and aesthetics',
-          materials: ['GAF Camelot Designer Shingles', 'Premium System'],
-          features: [
-            'GAF Golden Pledge Warranty',
-            'Designer shingles',
-            'Maximum impact resistance',
-            'Highest insurance discounts',
-            '15-year workmanship warranty'
-          ],
-          warranty: 'GAF Golden Pledge 50-Year Warranty',
-          timeline: '5-7 days',
-          price: 24500
-        }
-      ],
-      terms: [
-        'Customer pays insurance deductible',
-        'Supplement assistance included',
-        'Insurance payment coordination',
-        'Work begins upon insurance approval'
-      ],
-      timeline: '4-6 business days',
-      warranty: 'Lifetime Material + 10-Year Workmanship',
-      viewCount: 3,
-      lastViewed: '2024-01-20'
-    },
-    {
-      id: '3',
-      leadId: 'lead3',
-      leadName: 'Amanda Chen',
-      leadEmail: 'amanda@example.com',
-      leadPhone: '(555) 555-6666',
-      leadAddress: '123 Pine Ave, Arlington, TX 76001',
-      number: 'PROP-2024-003',
-      title: 'Commercial Flat Roof Installation',
-      status: 'Sent',
-      createdDate: '2024-01-22',
-      sentDate: '2024-01-23',
-      validUntil: '2024-02-23',
-      projectType: 'Retail',
-      projectDescription: 'Commercial TPO flat roof system for retail building',
-      scopeOfWork: [
-        'Remove existing roof system',
-        'Install new insulation',
-        'Install TPO membrane',
-        'New metal edge and coping',
-        '20-year warranty inspection'
-      ],
-      options: [
-        {
-          id: 'opt1',
-          tier: 'Good',
-          name: 'Standard TPO System',
-          description: 'Reliable commercial roofing',
-          materials: ['45-mil TPO', 'R-20 Insulation'],
-          features: [
-            '15-year warranty',
-            'White reflective surface',
-            'Energy Star rated',
-            'Standard installation'
-          ],
-          warranty: '15-Year System Warranty',
-          timeline: '5-7 days',
-          price: 35000
-        },
-        {
-          id: 'opt2',
-          tier: 'Better',
-          name: 'Enhanced TPO System',
-          description: 'Superior protection and efficiency',
-          materials: ['60-mil TPO', 'R-30 Insulation'],
-          features: [
-            '20-year warranty',
-            'Thicker membrane',
-            'Enhanced energy efficiency',
-            'Annual inspections (5 years)',
-            'Priority service'
-          ],
-          warranty: '20-Year System Warranty',
-          timeline: '6-8 days',
-          price: 42000,
-          isRecommended: true
-        },
-        {
-          id: 'opt3',
-          tier: 'Best',
-          name: 'Premium TPO System',
-          description: 'Maximum durability and performance',
-          materials: ['80-mil TPO', 'R-40 Insulation'],
-          features: [
-            '30-year warranty',
-            'Maximum thickness protection',
-            'Superior energy savings',
-            'Annual inspections (10 years)',
-            '24/7 priority service',
-            'Preventive maintenance program'
-          ],
-          warranty: '30-Year NDL System Warranty',
-          timeline: '7-10 days',
-          price: 52000
-        }
-      ],
-      terms: [
-        'All work per building codes',
-        'Roof warranty registered',
-        'Work during business hours',
-        'Final inspection included'
-      ],
-      timeline: '6-8 business days',
-      warranty: '20-Year System Warranty',
-      viewCount: 1,
-      lastViewed: '2024-01-23'
-    }
-  ];
-
-  const filteredProposals = mockProposals.filter(proposal => {
-    const matchesSearch = proposal.leadName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         proposal.number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         proposal.title.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || proposal.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  const getStatusColor = (status: Proposal['status']) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Accepted': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-      case 'Rejected': return 'bg-red-100 text-red-700 border-red-200';
-      case 'Viewed': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'Sent': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-      default: return 'bg-slate-100 text-slate-700 border-slate-200';
+      case 'Accepted': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Rejected': return 'bg-red-100 text-red-800 border-red-200';
+      case 'Sent': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'Viewed': return 'bg-purple-100 text-purple-800 border-purple-200';
+      default: return 'bg-slate-100 text-slate-800 border-slate-200';
     }
   };
 
-  const getTierColor = (tier: ProposalOption['tier']) => {
+  const getTierColor = (tier: string) => {
     switch (tier) {
       case 'Good': return 'from-slate-500 to-slate-600';
-      case 'Better': return 'from-blue-500 to-blue-600';
-      case 'Best': return 'from-emerald-500 to-emerald-600';
+      case 'Better': return 'from-blue-600 to-blue-700';
+      case 'Best': return 'from-amber-500 to-amber-600';
+      default: return 'from-slate-500 to-slate-600';
     }
   };
 
-  const getTierBadgeColor = (tier: ProposalOption['tier']) => {
-    switch (tier) {
-      case 'Good': return 'bg-slate-100 text-slate-700 border-slate-300';
-      case 'Better': return 'bg-blue-100 text-blue-700 border-blue-300';
-      case 'Best': return 'bg-emerald-100 text-emerald-700 border-emerald-300';
-    }
-  };
+  // --- Views ---
 
-  const stats = {
-    total: mockProposals.length,
-    draft: mockProposals.filter(p => p.status === 'Draft').length,
-    sent: mockProposals.filter(p => p.status === 'Sent').length,
-    viewed: mockProposals.filter(p => p.status === 'Viewed').length,
-    accepted: mockProposals.filter(p => p.status === 'Accepted').length,
-    totalValue: mockProposals.reduce((sum, p) => {
-      const selectedOption = p.options.find(o => o.id === p.selectedOptionId);
-      return sum + (selectedOption?.price || p.options[0]?.price || 0);
-    }, 0)
-  };
+  if (isCreating && selectedLeadForCreate) {
+    return (
+      <ProposalBuilder 
+        lead={selectedLeadForCreate}
+        onSave={handleSaveProposal}
+        onCancel={() => { setIsCreating(false); setSelectedLeadForCreate(null); }}
+      />
+    );
+  }
 
   if (viewMode === 'detail' && selectedProposal) {
-    const selectedOption = selectedProposal.options.find(o => o.id === selectedProposal.selectedOptionId);
-
+    const options = proposalOptions[selectedProposal.id] || [];
+    
     return (
-      <div className="h-full flex flex-col space-y-6 pb-24 md:pb-6">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => {
-              setViewMode('list');
-              setSelectedProposal(null);
-            }}
-            className="text-blue-600 hover:text-blue-700 flex items-center gap-2"
-          >
-            ← Back to Proposals
-          </button>
+      <div className="h-full flex flex-col bg-slate-50 min-h-screen">
+        {/* Detail Header */}
+        <div className="bg-white border-b border-slate-200 px-8 py-6 flex justify-between items-center sticky top-0 z-10">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => { setViewMode('list'); setSelectedProposal(null); }}
+              className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+            >
+              <ArrowLeft className="text-slate-500" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+                {selectedProposal.title}
+                <span className={`text-xs px-3 py-1 rounded-full border ${getStatusColor(selectedProposal.status)}`}>
+                  {selectedProposal.status}
+                </span>
+              </h1>
+              <div className="flex items-center gap-4 text-sm text-slate-500 mt-1">
+                <span className="flex items-center gap-1"><FileSignature size={14}/> {selectedProposal.number}</span>
+                <span className="flex items-center gap-1"><Calendar size={14}/> Valid until {new Date(selectedProposal.valid_until).toLocaleDateString()}</span>
+              </div>
+            </div>
+          </div>
+          
           <div className="flex gap-2">
-            <button
-              onClick={() => setEditingProposal(selectedProposal)}
-              className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
-            >
-              <Edit size={20} />
-              Edit
+            <button onClick={() => handleDownloadPDF(selectedProposal)} className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg font-medium hover:bg-slate-50 transition-colors">
+              <Download size={18} /> PDF
             </button>
-            <button
-              onClick={() => selectedProposal && handleDownloadPDF(selectedProposal)}
-              className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
-            >
-              <Download size={20} />
-              Download PDF
-            </button>
-            <button
-              onClick={() => selectedProposal && handleSendProposal(selectedProposal)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <Send size={20} />
-              Send to Client
-            </button>
+            {selectedProposal.status !== 'Accepted' && (
+               <button onClick={() => handleSendProposal(selectedProposal)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                 <Send size={18} /> Send
+               </button>
+            )}
+            {selectedProposal.status === 'Accepted' && !selectedProposal.contract_id && (
+               <button onClick={() => handleConvertToContract(selectedProposal)} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors">
+                 <FileSignature size={18} /> Convert to Contract
+               </button>
+            )}
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-8 border-b border-slate-200 bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h1 className="text-3xl font-bold mb-2">{selectedProposal.title}</h1>
-                <p className="text-blue-100">{selectedProposal.number}</p>
-              </div>
-              <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium border bg-white ${getStatusColor(selectedProposal.status)}`}>
-                {selectedProposal.status}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6 mt-6">
-              <div>
-                <h3 className="text-sm font-semibold text-blue-100 uppercase mb-2">Prepared For</h3>
-                <p className="font-semibold text-lg">{selectedProposal.leadName}</p>
-                <p className="text-blue-100">{selectedProposal.leadAddress}</p>
-                <p className="text-blue-100">{selectedProposal.leadPhone}</p>
-                <p className="text-blue-100">{selectedProposal.leadEmail}</p>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-blue-100 uppercase mb-2">Proposal Details</h3>
-                <div className="space-y-1 text-blue-100">
-                  <p>Created: {new Date(selectedProposal.createdDate).toLocaleDateString()}</p>
-                  {selectedProposal.sentDate && <p>Sent: {new Date(selectedProposal.sentDate).toLocaleDateString()}</p>}
-                  <p>Valid Until: {new Date(selectedProposal.validUntil).toLocaleDateString()}</p>
-                  {selectedProposal.viewCount > 0 && <p>Viewed {selectedProposal.viewCount} times</p>}
+        {/* Detail Body */}
+        <div className="flex-1 overflow-y-auto p-8">
+          <div className="max-w-6xl mx-auto space-y-8">
+            {/* Client Info Card */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Client Details</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                    <User size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Name</p>
+                    <p className="font-medium text-slate-900">{selectedProposal.leads.name}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                    <MapPin size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Address</p>
+                    <p className="font-medium text-slate-900">{selectedProposal.leads.address}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                    <Phone size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Phone</p>
+                    <p className="font-medium text-slate-900">{selectedProposal.leads.phone}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                    <Mail size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Email</p>
+                    <p className="font-medium text-slate-900">{selectedProposal.leads.email}</p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="p-8">
-            <div className="mb-8">
-              <h3 className="text-xl font-bold text-slate-900 mb-2">Project Overview</h3>
-              <p className="text-slate-700">{selectedProposal.projectDescription}</p>
+            {/* Project Overview */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-8">
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <h3 className="text-lg font-bold text-slate-900 mb-4">Project Overview</h3>
+                  <p className="text-slate-600 leading-relaxed">{selectedProposal.project_description}</p>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <h3 className="text-lg font-bold text-slate-900 mb-4">Scope of Work</h3>
+                  <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {selectedProposal.scope_of_work.map((item, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-slate-700">
+                        <CheckCircle size={18} className="text-emerald-500 mt-0.5 shrink-0" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <h3 className="text-lg font-bold text-slate-900 mb-4">Terms & Conditions</h3>
+                  <ul className="space-y-3">
+                    {selectedProposal.terms.map((term, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-slate-600">
+                        <span className="font-mono text-slate-400">{idx + 1}.</span>
+                        {term}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
 
-            <div className="mb-8">
-              <h3 className="text-xl font-bold text-slate-900 mb-4">Scope of Work</h3>
-              <ul className="space-y-2">
-                {selectedProposal.scopeOfWork.map((item, idx) => (
-                  <li key={idx} className="flex items-start gap-2">
-                    <CheckCircle size={20} className="text-emerald-600 mt-0.5 shrink-0" />
-                    <span className="text-slate-700">{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="mb-8">
-              <h3 className="text-2xl font-bold text-slate-900 mb-6 text-center">Investment Options</h3>
+            {/* Options Grid */}
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 mb-6">Investment Options</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {selectedProposal.options.map((option) => (
-                  <div
-                    key={option.id}
-                    className={`rounded-xl border-2 overflow-hidden transition-all ${
-                      option.id === selectedProposal.selectedOptionId
-                        ? 'border-blue-500 shadow-xl scale-105'
-                        : 'border-slate-200 hover:border-slate-300'
-                    } ${option.isRecommended ? 'ring-2 ring-emerald-400' : ''}`}
+                {options.map((option) => (
+                  <div 
+                    key={option.id} 
+                    className={`bg-white rounded-2xl overflow-hidden border-2 transition-all duration-300 ${
+                      option.id === selectedProposal.selected_option_id 
+                        ? 'border-blue-600 shadow-xl scale-105 relative z-10' 
+                        : 'border-slate-100 shadow-sm hover:border-slate-300'
+                    }`}
                   >
                     <div className={`p-4 bg-gradient-to-r ${getTierColor(option.tier)} text-white`}>
-                      <div className="flex justify-between items-start mb-2">
+                      <div className="flex justify-between items-start">
                         <div>
-                          <span className="text-sm font-semibold opacity-90">{option.tier}</span>
-                          <h4 className="text-xl font-bold">{option.name}</h4>
+                          <span className="text-xs font-bold uppercase tracking-wider opacity-90">{option.tier}</span>
+                          <h4 className="text-xl font-bold mt-1">{option.name}</h4>
                         </div>
-                        {option.isRecommended && (
-                          <div className="bg-yellow-400 text-yellow-900 px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                            <Star size={12} />
-                            Best Value
+                        {option.is_recommended && (
+                          <div className="bg-white/20 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold flex items-center gap-1">
+                            <Star size={12} fill="currentColor" /> Recommended
                           </div>
                         )}
                       </div>
-                      <p className="text-sm opacity-90">{option.description}</p>
                     </div>
-
+                    
                     <div className="p-6">
                       <div className="mb-6">
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-3xl font-bold text-slate-900">${option.price.toLocaleString()}</span>
-                        </div>
+                        <span className="text-3xl font-bold text-slate-900">${option.price.toLocaleString()}</span>
                         {option.savings && (
-                          <p className="text-sm text-emerald-600 font-semibold">Save ${option.savings}</p>
+                          <span className="block text-xs font-medium text-emerald-600 mt-1">
+                            Save ${option.savings.toLocaleString()}
+                          </span>
                         )}
                       </div>
 
-                      <div className="space-y-4 mb-6">
+                      <div className="space-y-4">
                         <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Materials</p>
-                          <ul className="space-y-1">
-                            {option.materials.map((material, idx) => (
-                              <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
-                                <div className="w-1.5 h-1.5 bg-blue-600 rounded-full mt-1.5 shrink-0" />
-                                <span>{material}</span>
+                          <p className="text-xs font-bold text-slate-400 uppercase mb-2">Features</p>
+                          <ul className="space-y-2">
+                            {option.features.map((feat, i) => (
+                              <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                                <CheckCircle size={14} className="text-blue-500 mt-0.5 shrink-0"/> {feat}
                               </li>
                             ))}
                           </ul>
                         </div>
-
-                        <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Features</p>
-                          <ul className="space-y-1">
-                            {option.features.map((feature, idx) => (
-                              <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
-                                <CheckCircle size={14} className="text-emerald-600 mt-0.5 shrink-0" />
-                                <span>{feature}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        <div className="pt-4 border-t border-slate-200 space-y-2">
-                          <div className="flex items-center gap-2 text-sm text-slate-600">
-                            <Shield size={16} className="text-blue-600" />
-                            <span className="font-medium">{option.warranty}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-slate-600">
-                            <Clock size={16} className="text-slate-400" />
-                            <span>{option.timeline}</span>
-                          </div>
+                        
+                        <div className="pt-4 border-t border-slate-100">
+                          <p className="text-xs text-slate-500 mb-1">Warranty</p>
+                          <p className="text-sm font-medium text-slate-900">{option.warranty}</p>
                         </div>
                       </div>
-
-                      {option.id === selectedProposal.selectedOptionId && (
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
-                          <CheckCircle size={20} className="text-blue-600 mx-auto mb-1" />
-                          <p className="text-sm font-semibold text-blue-900">Client Selected</p>
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-
-            {selectedOption && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-8">
-                <h3 className="text-lg font-bold text-blue-900 mb-2">Selected Investment</h3>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="font-semibold text-slate-900">{selectedOption.name}</p>
-                    <p className="text-sm text-slate-600">{selectedOption.warranty}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-3xl font-bold text-blue-600">${selectedOption.price.toLocaleString()}</p>
-                    <p className="text-sm text-slate-600">Total Investment</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-6 mb-8">
-              <div className="p-6 bg-slate-50 rounded-lg">
-                <h3 className="text-lg font-bold text-slate-900 mb-3">Project Timeline</h3>
-                <p className="text-slate-700">{selectedProposal.timeline}</p>
-              </div>
-              <div className="p-6 bg-emerald-50 rounded-lg border border-emerald-200">
-                <h3 className="text-lg font-bold text-emerald-900 mb-3">Warranty Coverage</h3>
-                <p className="text-emerald-800">{selectedProposal.warranty}</p>
-              </div>
-            </div>
-
-            <div className="p-6 bg-slate-50 rounded-lg">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Terms & Conditions</h3>
-              <ul className="space-y-2">
-                {selectedProposal.terms.map((term, idx) => (
-                  <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
-                    <span className="text-slate-400">{idx + 1}.</span>
-                    <span>{term}</span>
-                  </li>
-                ))}
-              </ul>
             </div>
           </div>
         </div>
@@ -671,476 +510,170 @@ const Proposals: React.FC<ProposalsProps> = () => {
   }
 
   return (
-    <div className="h-full flex flex-col space-y-6 pb-24 md:pb-6">
-      <div className="flex items-center justify-between">
+    <div className="h-full flex flex-col p-6 space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-            <ScrollText className="text-blue-600" />
-            Proposals & Claims
+          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
+            <ScrollText className="text-blue-600" /> Proposals
           </h1>
-          <p className="text-slate-500 mt-1">Create proposals and document insurance damage</p>
+          <p className="text-slate-500 mt-1">Manage and track your customer proposals</p>
         </div>
-        <div className="flex gap-2">
-          {activeTab === 'proposals' && (
-            <>
-              <button
-                onClick={() => setShowTemplateManager(true)}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
-              >
-                <Settings size={20} />
-                Templates
-              </button>
-              <button
-                onClick={() => setShowLeadSelector(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
-              >
-                <Plus size={20} />
-                New Proposal
-              </button>
-            </>
-          )}
-          {activeTab === 'damage-reports' && (
-            <button
-              onClick={() => setShowDamageReportLeadSelector(true)}
-              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 shadow-sm"
-            >
-              <AlertTriangle size={20} />
-              New Damage Report
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="flex gap-2 border-b border-slate-200">
         <button
-          onClick={() => setActiveTab('proposals')}
-          className={`px-4 py-2 font-medium transition-colors border-b-2 ${
-            activeTab === 'proposals'
-              ? 'text-blue-600 border-blue-600'
-              : 'text-slate-600 border-transparent hover:text-slate-900'
-          }`}
+          onClick={() => setShowLeadSelector(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-colors"
         >
-          <div className="flex items-center gap-2">
-            <FileText size={18} />
-            Proposals
-          </div>
-        </button>
-        <button
-          onClick={() => setActiveTab('damage-reports')}
-          className={`px-4 py-2 font-medium transition-colors border-b-2 ${
-            activeTab === 'damage-reports'
-              ? 'text-orange-600 border-orange-600'
-              : 'text-slate-600 border-transparent hover:text-slate-900'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={18} />
-            Damage Reports
-          </div>
+          <Plus size={20} />
+          New Proposal
         </button>
       </div>
 
-      {activeTab === 'proposals' && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <p className="text-sm text-slate-500">Total Proposals</p>
-              <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
-            </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-sm text-slate-500">Accepted</p>
-          <p className="text-2xl font-bold text-emerald-600">{stats.accepted}</p>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-sm text-slate-500">Viewed</p>
-          <p className="text-2xl font-bold text-blue-600">{stats.viewed}</p>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-sm text-slate-500">Awaiting Review</p>
-          <p className="text-2xl font-bold text-yellow-600">{stats.sent}</p>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-sm text-slate-500">Total Value</p>
-          <p className="text-2xl font-bold text-blue-600">${(stats.totalValue / 1000).toFixed(0)}K</p>
-        </div>
-      </div>
-
-      <div className="flex gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
+      {/* Filters */}
+      <div className="flex gap-4 items-center bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
           <input
             type="text"
             placeholder="Search proposals..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2 bg-transparent outline-none text-sm"
           />
         </div>
+        <div className="h-6 w-px bg-slate-200" />
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="bg-transparent text-sm font-medium text-slate-600 outline-none cursor-pointer"
         >
-          <option>All</option>
-          <option>Draft</option>
-          <option>Sent</option>
-          <option>Viewed</option>
-          <option>Accepted</option>
-          <option>Rejected</option>
+          <option value="All">All Statuses</option>
+          <option value="Draft">Draft</option>
+          <option value="Sent">Sent</option>
+          <option value="Viewed">Viewed</option>
+          <option value="Accepted">Accepted</option>
+          <option value="Rejected">Rejected</option>
         </select>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Proposals List */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 overflow-hidden flex flex-col">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="text-left p-4 text-sm font-semibold text-slate-700">Proposal #</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-700">Client</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-700">Title</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-700">Status</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-700">Views</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-700">Date</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-700">Actions</th>
+                <th className="text-left py-4 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Number</th>
+                <th className="text-left py-4 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Client</th>
+                <th className="text-left py-4 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Title</th>
+                <th className="text-left py-4 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="text-left py-4 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Created</th>
+                <th className="text-right py-4 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredProposals.map((proposal) => (
-                <tr key={proposal.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-4">
-                    <button
-                      onClick={() => {
-                        setSelectedProposal(proposal);
-                        setViewMode('detail');
-                      }}
-                      className="font-semibold text-blue-600 hover:text-blue-700"
+              {proposals.filter(p => {
+                 const matchesStatus = statusFilter === 'All' || p.status === statusFilter;
+                 const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                       p.number.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                       p.leads.name.toLowerCase().includes(searchQuery.toLowerCase());
+                 return matchesStatus && matchesSearch;
+              }).map((proposal) => (
+                <tr key={proposal.id} className="hover:bg-slate-50 transition-colors group">
+                  <td className="py-4 px-6">
+                    <button 
+                      onClick={() => { setSelectedProposal(proposal); setViewMode('detail'); }}
+                      className="font-mono text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
                     >
                       {proposal.number}
                     </button>
                   </td>
-                  <td className="p-4">
-                    <p className="font-medium text-slate-900">{proposal.leadName}</p>
-                    <p className="text-sm text-slate-500">{proposal.leadAddress}</p>
+                  <td className="py-4 px-6">
+                    <div className="font-medium text-slate-900">{proposal.leads.name}</div>
+                    <div className="text-xs text-slate-500">{proposal.leads.address}</div>
                   </td>
-                  <td className="p-4">
-                    <p className="font-medium text-slate-900">{proposal.title}</p>
-                    <p className="text-sm text-slate-500">{proposal.options.length} options</p>
+                  <td className="py-4 px-6">
+                    <div className="text-sm text-slate-900 font-medium">{proposal.title}</div>
+                    <div className="text-xs text-slate-500">
+                      {proposalOptions[proposal.id]?.length || 0} Options
+                    </div>
                   </td>
-                  <td className="p-4">
-                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(proposal.status)}`}>
+                  <td className="py-4 px-6">
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusColor(proposal.status)}`}>
                       {proposal.status}
                     </span>
                   </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2">
-                      <Eye size={16} className="text-slate-400" />
-                      <span className="text-sm text-slate-600">{proposal.viewCount}</span>
-                    </div>
+                  <td className="py-4 px-6 text-sm text-slate-600">
+                    {new Date(proposal.created_date).toLocaleDateString()}
                   </td>
-                  <td className="p-4">
-                    <p className="text-sm text-slate-600">{new Date(proposal.createdDate).toLocaleDateString()}</p>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedProposal(proposal);
-                          setViewMode('detail');
-                        }}
-                        className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                        title="View"
+                  <td className="py-4 px-6 text-right">
+                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={() => { setSelectedProposal(proposal); setViewMode('detail'); }}
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="View Details"
                       >
-                        <Eye size={18} className="text-slate-600" />
+                        <Eye size={18} />
                       </button>
-                      <button
-                        onClick={() => handleDownloadPDF(proposal)}
-                        className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                        title="Download PDF"
-                      >
-                        <Download size={18} className="text-slate-600" />
-                      </button>
-                      <button
-                        onClick={() => setEditingProposal(proposal)}
-                        className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                        title="Edit"
-                      >
-                        <Edit size={18} className="text-slate-600" />
-                      </button>
-                      <button
-                        onClick={() => handleSendProposal(proposal)}
-                        className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                        title="Send"
-                      >
-                        <Send size={18} className="text-slate-600" />
-                      </button>
-                      <button
+                      <button 
                         onClick={() => handleDeleteProposal(proposal.id)}
-                        className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="Delete"
                       >
-                        <Trash2 size={18} className="text-red-600" />
+                        <Trash2 size={18} />
                       </button>
                     </div>
                   </td>
                 </tr>
               ))}
+              {proposals.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-slate-500">
+                    No proposals found. Create one to get started!
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
+      {/* Lead Selector Modal */}
       {showLeadSelector && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white">
-              <h2 className="text-2xl font-bold text-slate-900">Select Lead</h2>
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden animate-fade-in">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-lg text-slate-800">Select a Lead</h3>
               <button onClick={() => setShowLeadSelector(false)} className="text-slate-400 hover:text-slate-600">
-                <X size={24} />
+                <X size={20} />
               </button>
             </div>
-            <div className="p-6">
-              <p className="text-sm text-slate-600 mb-4">Choose which lead to create a proposal for:</p>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {leads.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500">
-                    <p>No leads available. Create a lead first.</p>
-                  </div>
-                ) : (
-                  leads.map((lead) => (
+            <div className="p-2 max-h-[60vh] overflow-y-auto">
+              {leads.length === 0 ? (
+                <div className="p-8 text-center text-slate-500">
+                  No leads available. Please add a lead first.
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {leads.map(lead => (
                     <button
                       key={lead.id}
                       onClick={() => {
-                        setSelectedLead(lead);
-                        setShowLeadSelector(false);
+                        setSelectedLeadForCreate(lead);
                         setIsCreating(true);
+                        setShowLeadSelector(false);
                       }}
-                      className="w-full p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors text-left"
+                      className="w-full text-left p-3 hover:bg-blue-50 rounded-lg transition-colors flex justify-between items-center group"
                     >
-                      <p className="font-semibold text-slate-900">{lead.name}</p>
-                      <p className="text-sm text-slate-600">{lead.address}</p>
-                      <p className="text-sm text-slate-500">{lead.phone}</p>
+                      <div>
+                        <div className="font-bold text-slate-900">{lead.name}</div>
+                        <div className="text-xs text-slate-500">{lead.address}</div>
+                      </div>
+                      <Plus size={18} className="text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </button>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
-      )}
-
-      {isCreating && selectedLead && (
-        <ProposalBuilder
-          lead={selectedLead}
-          onSave={handleCreateProposal}
-          onCancel={() => {
-            setIsCreating(false);
-            setSelectedLead(null);
-          }}
-        />
-      )}
-
-      {editingProposal && (
-        <ProposalBuilder
-          lead={leads.find(l => l.id === editingProposal.leadId) || {
-            id: editingProposal.leadId,
-            name: editingProposal.leadName,
-            address: editingProposal.leadAddress,
-            phone: editingProposal.leadPhone,
-            email: editingProposal.leadEmail,
-            status: 'New Lead' as any,
-            projectType: editingProposal.projectType,
-            source: undefined,
-            notes: '',
-            estimatedValue: 0,
-            lastContact: '',
-            companyId: editingProposal.companyId
-          }}
-          existingProposal={editingProposal}
-          onSave={handleUpdateProposal}
-          onCancel={() => setEditingProposal(null)}
-        />
-      )}
-        </>
-      )}
-
-      {activeTab === 'damage-reports' && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <p className="text-sm text-slate-500">Total Reports</p>
-              <p className="text-2xl font-bold text-slate-900">{damageReports.length}</p>
-            </div>
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <p className="text-sm text-slate-500">This Month</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {damageReports.filter(r => {
-                  const reportDate = new Date(r.createdAt || '');
-                  const now = new Date();
-                  return reportDate.getMonth() === now.getMonth() && reportDate.getFullYear() === now.getFullYear();
-                }).length}
-              </p>
-            </div>
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <p className="text-sm text-slate-500">Avg Damage</p>
-              <p className="text-2xl font-bold text-orange-600">
-                ${damageReports.length > 0
-                  ? Math.round(damageReports.reduce((sum, r) => sum + r.estimatedDamage, 0) / damageReports.length).toLocaleString()
-                  : 0}
-              </p>
-            </div>
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <p className="text-sm text-slate-500">Total Damage</p>
-              <p className="text-2xl font-bold text-red-600">
-                ${damageReports.reduce((sum, r) => sum + r.estimatedDamage, 0).toLocaleString()}
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Report Date</th>
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Lead/Property</th>
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Event Type</th>
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Damaged Areas</th>
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Est. Damage</th>
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Insurance</th>
-                    <th className="text-left p-4 text-sm font-semibold text-slate-700">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {damageReports.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-500">
-                        <AlertTriangle size={48} className="mx-auto text-slate-300 mb-2" />
-                        <p>No damage reports yet</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    damageReports.map((report) => {
-                      const lead = leads.find(l => l.id === report.leadId);
-                      return (
-                        <tr key={report.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4">
-                            <p className="font-medium text-slate-900">
-                              {new Date(report.inspectionDate).toLocaleDateString()}
-                            </p>
-                            <p className="text-sm text-slate-500">
-                              {report.inspectorName}
-                            </p>
-                          </td>
-                          <td className="p-4">
-                            <p className="font-medium text-slate-900">{lead?.name || 'Unknown'}</p>
-                            <p className="text-sm text-slate-500">{lead?.address || ''}</p>
-                          </td>
-                          <td className="p-4">
-                            <span className="inline-block px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
-                              {report.weatherEventType || 'N/A'}
-                            </span>
-                          </td>
-                          <td className="p-4">
-                            <p className="text-sm text-slate-700">{report.damagedAreas.length} areas</p>
-                          </td>
-                          <td className="p-4">
-                            <p className="font-semibold text-slate-900">
-                              ${report.estimatedDamage.toLocaleString()}
-                            </p>
-                          </td>
-                          <td className="p-4">
-                            <p className="text-sm text-slate-700">{report.insuranceCarrier || 'N/A'}</p>
-                            {report.claimNumber && (
-                              <p className="text-xs text-slate-500">#{report.claimNumber}</p>
-                            )}
-                          </td>
-                          <td className="p-4">
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => {
-                                  setEditingDamageReport(report);
-                                  setSelectedDamageReportLead(lead || null);
-                                  setShowDamageReportForm(true);
-                                }}
-                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                                title="Edit"
-                              >
-                                <Edit size={18} className="text-slate-600" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteDamageReport(report.id)}
-                                className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Delete"
-                              >
-                                <Trash2 size={18} className="text-red-600" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-
-      {showDamageReportLeadSelector && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white">
-              <h2 className="text-2xl font-bold text-slate-900">Select Lead for Damage Report</h2>
-              <button onClick={() => setShowDamageReportLeadSelector(false)} className="text-slate-400 hover:text-slate-600">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="p-6">
-              <div className="space-y-2">
-                {leads.map((lead) => (
-                  <button
-                    key={lead.id}
-                    onClick={() => {
-                      setSelectedDamageReportLead(lead);
-                      setShowDamageReportLeadSelector(false);
-                      setShowDamageReportForm(true);
-                    }}
-                    className="w-full text-left p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                  >
-                    <p className="font-semibold text-slate-900">{lead.name}</p>
-                    <p className="text-sm text-slate-600">{lead.address}</p>
-                    <p className="text-sm text-slate-500">{lead.projectType}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showDamageReportForm && selectedDamageReportLead && (
-        <InsuranceDamageReportForm
-          lead={selectedDamageReportLead}
-          existingReport={editingDamageReport || undefined}
-          onSave={(report) => {
-            setShowDamageReportForm(false);
-            setSelectedDamageReportLead(null);
-            setEditingDamageReport(null);
-            loadDamageReports();
-          }}
-          onCancel={() => {
-            setShowDamageReportForm(false);
-            setSelectedDamageReportLead(null);
-            setEditingDamageReport(null);
-          }}
-        />
-      )}
-
-      {showTemplateManager && (
-        <ProposalTemplateManager
-          onClose={() => setShowTemplateManager(false)}
-        />
       )}
     </div>
   );
