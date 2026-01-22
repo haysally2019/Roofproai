@@ -46,7 +46,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
   });
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<SoftwareLeadStatus | 'All'>('All');
   const [filterPriority, setFilterPriority] = useState<LeadPriority | 'All'>('All');
   const [filterAssignedTo, setFilterAssignedTo] = useState<string | 'All'>('All');
   const [sortField, setSortField] = useState<SortField>('createdAt');
@@ -76,11 +75,8 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
       l.nextFollowUpDate && new Date(l.nextFollowUpDate) <= new Date()
     ).length;
     const conversionRate = total > 0 ? ((closedWon / total) * 100).toFixed(1) : '0';
-    const totalValue = leads
-      .filter(l => l.status === 'Closed Won')
-      .reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
-
-    return { total, closedWon, inTrial, hot, needsFollowUp, conversionRate, totalValue };
+    
+    return { total, closedWon, inTrial, hot, needsFollowUp, conversionRate };
   }, [leads]);
 
   // Filter and sort leads
@@ -91,11 +87,10 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         l.contactName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         l.email.toLowerCase().includes(searchQuery.toLowerCase());
 
-      const matchesStatus = filterStatus === 'All' || l.status === filterStatus;
       const matchesPriority = filterPriority === 'All' || l.priority === filterPriority;
       const matchesAssignedTo = filterAssignedTo === 'All' || l.assignedTo === filterAssignedTo;
 
-      return matchesSearch && matchesStatus && matchesPriority && matchesAssignedTo;
+      return matchesSearch && matchesPriority && matchesAssignedTo;
     });
 
     filtered.sort((a, b) => {
@@ -117,15 +112,14 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
     });
 
     return filtered;
-  }, [leads, searchQuery, filterStatus, filterPriority, filterAssignedTo, sortField, sortDirection]);
+  }, [leads, searchQuery, filterPriority, filterAssignedTo, sortField, sortDirection]);
 
-  // --- Handlers for Quick Updates in List View ---
+  // --- Handlers ---
 
   const handleQuickStatusUpdate = (lead: SoftwareLead, newStatus: SoftwareLeadStatus) => {
     if (lead.status === newStatus) return;
     const now = new Date().toISOString();
     
-    // Add activity log for status change
     const updatedActivities = [
       ...(lead.activities || []),
       {
@@ -155,8 +149,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
       updatedAt: now
     });
   };
-
-  // ------------------------------------------------
 
   const handleSave = () => {
     if (!form.companyName || !form.contactName) return;
@@ -251,7 +243,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         case 'Trial': return 'text-purple-700 bg-purple-50 border-purple-200';
         default: return 'text-slate-700 bg-white border-slate-200';
     }
-  }
+  };
 
   const isFollowUpOverdue = (lead: SoftwareLead) => {
     return lead.nextFollowUpDate && new Date(lead.nextFollowUpDate) <= new Date();
@@ -293,8 +285,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         const text = evt.target?.result as string;
         const lines = text.split(/\r?\n/);
         const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, ''));
-
-        console.log('CSV Headers:', headers);
 
         const data = lines.slice(1).filter(l => l.trim()).map((line, idx) => {
           const values = parseCSVLine(line);
@@ -504,7 +494,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
             <input
@@ -516,7 +505,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
             />
           </div>
 
-          {/* Filters */}
           <select
             value={filterPriority}
             onChange={(e) => setFilterPriority(e.target.value as LeadPriority | 'All')}
@@ -556,7 +544,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         </div>
       </div>
 
-      {/* List View (Default & Only) */}
+      {/* List View */}
       <div className="flex-1 overflow-auto bg-white rounded-xl border border-slate-200">
         <table className="w-full">
           <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
@@ -722,21 +710,19 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
         )}
       </div>
 
-      {/* Lead Edit/Create Modal (COMPACT 3-COLUMN LAYOUT) */}
+      {/* Lead Edit/Create Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-fade-in">
-            {/* Header - Fixed */}
             <div className="px-6 py-4 border-b border-slate-200">
               <h3 className="font-bold text-xl">{form.id ? 'Edit Lead' : 'New SaaS Lead'}</h3>
               <p className="text-xs text-slate-500 mt-0.5">Edit lead details and status</p>
             </div>
 
-            {/* Form Content - Scrollable & Compact */}
             <div className="flex-1 overflow-y-auto p-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 
-                {/* Column 1: Core Info */}
+                {/* Column 1 */}
                 <div className="space-y-3">
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Details</h4>
                   <input
@@ -765,7 +751,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                   />
                 </div>
 
-                {/* Column 2: Contact & Status */}
+                {/* Column 2 */}
                 <div className="space-y-3">
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Contact & Status</h4>
                   <input
@@ -808,7 +794,7 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
                   </select>
                 </div>
 
-                {/* Column 3: Value & Notes */}
+                {/* Column 3 */}
                 <div className="space-y-3">
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Deal & Notes</h4>
                   <div className="grid grid-cols-2 gap-2">
@@ -857,7 +843,6 @@ const SuperAdminLeads: React.FC<Props> = ({ leads, users, currentUser, onAddLead
               </div>
             </div>
 
-            {/* Footer - Fixed */}
             <div className="px-6 py-4 border-t border-slate-200 flex justify-between items-center bg-slate-50">
               {form.id ? (
                 <button
